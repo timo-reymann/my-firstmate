@@ -42,6 +42,8 @@ This fork adds the following.
 
 - The `lavish` skill, for visual plans and reviews through `lavish-axi`.
   It is versioned in `.agents/skills/lavish/`, with its source pinned in `skills-lock.json`.
+- Guidance in `AGENTS.md` that plans, comparisons, diagrams, and structured reports go to `lavish-axi`, and that a worker, never the first mate, builds a visual plan.
+- Three optional launchers in `contrib/`: `firstmate` (resume or start the session), `firstmate-herdr` (Herdr layout with the fleet view), and `firstmate-fleet` (read-only fleet view); see [contrib/README.md](contrib/README.md).
 - A Claude hook that reminds the agent to update this list when a commit changes user-visible material (`bin/fm-readme-reminder-pretool.sh`, `docs/readme-reminder.md`).
 
 The supervision host dispatch code, which decides which wake rows the away session may take, moved out of the Pi extension folder into a neutral module (`bin/lib/fm-host-dispatch.ts`, run through `bin/fm-host-dispatch.mjs`).
