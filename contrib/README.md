@@ -2,20 +2,26 @@
 
 Three optional launchers for running firstmate day to day.
 They live outside `bin/` because they are operator conveniences, not part of the supervision contract.
-They need `bash`; `firstmate-herdr` also needs `jq`, [Herdr](https://herdr.dev) protocol 14 or newer, and [uv](https://docs.astral.sh/uv/).
+They need `bash`; the firstmate screen (`firstmate-herdr`) also needs `jq`, [Herdr](https://herdr.dev) protocol 14 or newer, and [uv](https://docs.astral.sh/uv/).
 `firstmate-tui` needs `uv`, which fetches Python 3.9 or newer and Textual on first run.
 This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 
 ## What each one does
 
-- `firstmate` opens the first mate session in the home folder, with Claude Code or OpenCode (see [Choosing the agent](#choosing-the-agent)).
+- `firstmate` is the one entry point.
+  When Herdr, `jq`, `uv` and `firstmate-tui` are usable (`firstmate-herdr --check`), it hands over to the firstmate screen, so the first mate runs in the screen's left pane; your arguments go to the agent.
+  `firstmate --plain`, or `FIRSTMATE_HERDR=0`, runs the session in this terminal instead.
+  When a prerequisite is missing, it runs in this terminal after one line that says which one.
+- In this terminal, `firstmate` opens the first mate session in the home folder, with Claude Code or OpenCode (see [Choosing the agent](#choosing-the-agent)).
   It resumes the latest session when one changed in the last two hours, and otherwise starts a new one.
   It refuses to start when another session already holds the home's `state/.lock`.
 - `firstmate-herdr` builds the firstmate screen in one Herdr tab with three panes: the activity across the top, the first mate bottom left, and the workers bottom right.
   Outside Herdr it builds a workspace named `firstmate-screen` and attaches to it; inside Herdr it builds the layout around the current pane.
-  The first mate pane runs `firstmate`; while another session holds the home's `state/.lock`, the pane shows one line with that session's pid and the command to start the first mate there once it quits.
+  The first mate pane runs `firstmate --plain`, so it never hands over to the screen again, and takes the `FIRSTMATE_*`, `CLAUDE_CONFIG_DIR` and `XDG_CONFIG_HOME` settings that are set where you started it.
+  While another session holds the home's `state/.lock`, the pane shows one line with that session's pid and the command to start the first mate there once it quits; `FIRSTMATE_FORCE=1` starts it anyway.
   The workers stay in their own `firstmate` workspace in the same Herdr session, and their tabs keep the `fm-<id>` labels that firstmate uses to find them.
-  Options: `--no-attach` builds the layout and stops, `--ratio SHARE` sets the width share of the first mate pane (default 0.6), and `--activity-ratio SHARE` sets the height share of the activity pane (default 0.28).
+  Options: `--no-attach` builds the layout and stops, `--check` stops after the prerequisite checks with the reason for a failure, `--ratio SHARE` sets the width share of the first mate pane (default 0.6), and `--activity-ratio SHARE` sets the height share of the activity pane (default 0.28).
+  `firstmate` passes these options to `firstmate-herdr` only when you run `firstmate-herdr` directly.
   Without `uv` on `PATH` it stops with the install hint.
 - `firstmate-tui` draws the two views of that screen, written in Python with Textual.
   `--pane activity` is a box with the last 8 events of the [fleet activity ledger](../docs/fleet-ledger.md) as full lines, newest first, and a "NEEDS YOU" count; events that need you (a decision, a blocked worker, a PR ready for review) have a yellow bar.
@@ -36,7 +42,7 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 
 ## Install
 
-Copy the scripts to a directory on your `PATH`, keeping them together because `firstmate-herdr` finds its siblings next to itself.
+Copy the scripts to a directory on your `PATH`, keeping them together because `firstmate` and `firstmate-herdr` find their siblings next to themselves.
 
 ```sh
 install -m 0755 contrib/firstmate contrib/firstmate-herdr contrib/firstmate-tui "$HOME/.bin/"
@@ -73,8 +79,9 @@ echo opencode > "${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/agent"
 | `CLAUDE_CONFIG_DIR` | `firstmate` | `$HOME/.claude` |
 | `FIRSTMATE_MAX_AGE_MIN` | `firstmate` | `120` (minutes a session counts as fresh) |
 | `FIRSTMATE_PROMPT` | `firstmate` | `Lets start where we left off` |
-| `FIRSTMATE_FORCE` | `firstmate` | unset; set it to start despite a live session |
-| `FIRSTMATE_DRY_RUN` | `firstmate` | unset; set it to print the command and exit |
+| `FIRSTMATE_HERDR` | `firstmate` | unset; `0` runs the session in this terminal, like `--plain` |
+| `FIRSTMATE_FORCE` | `firstmate`, `firstmate-herdr` | unset; set it to start despite a live session |
+| `FIRSTMATE_DRY_RUN` | `firstmate` | unset; set it to print the command, or the hand-over to `firstmate-herdr`, and exit |
 | `FIRSTMATE_BIN` | `firstmate-herdr` | `firstmate` next to the script |
 | `TUI_BIN` | `firstmate-herdr` | `firstmate-tui` next to the script |
 | `HERDR_BIN` | `firstmate-herdr`, `firstmate-tui` | `herdr` |
@@ -83,5 +90,5 @@ echo opencode > "${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/agent"
 | `FIRSTMATE_TUI_COLORS` | `firstmate-tui` | detected; `truecolor`, `256`, `16` or `8` |
 | `FIRSTMATE_TUI_THEME` | `firstmate-tui` | `light` when `COLORFGBG` names a light background, else `dark` |
 
-Extra arguments you pass to `firstmate` are forwarded to the agent.
+Extra arguments you pass to `firstmate` are forwarded to the agent, also through the firstmate screen; `--plain` counts only as the first argument.
 Edit the `cmd` arrays in the script if you want other default settings.
