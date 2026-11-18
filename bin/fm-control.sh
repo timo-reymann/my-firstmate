@@ -52,9 +52,6 @@
 #              endpoint, so this verb cannot tell a destroyed window from one on
 #              a tmux server it cannot address, and it will not claim a stop it
 #              cannot see.
-#              Refused on t3code before anything is sent: T3's `/mcp` tools
-#              have no session stop (bin/fm-control-lib.sh
-#              fm_control_backend_exit_supported); interrupt ends its turn.
 #   relaunch   Transactionally replace the running agent with a new one, in the
 #              SAME worktree - and the same endpoint whenever that endpoint
 #              still exists - on the same or a newly chosen
@@ -86,10 +83,6 @@
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
-#              Refused on t3code before anything is stopped: a T3 thread
-#              keeps its conversation, so a new turn or a provider change on
-#              it continues the same agent rather than a fresh one
-#              (fm_control_backend_relaunch_supported).
 #              --note is required for a ship or scout, whose replacement
 #              inherits the local copy but none of the conversation; a
 #              secondmate reconciles its own home's records at startup, so its
@@ -127,9 +120,8 @@
 #   - A backend that cannot deliver the harness's interrupt key is refused
 #     (Orca's terminal API has no Escape).
 #   - `exit` and `relaunch` require a backend with a recovery-grade agent-state
-#     classifier (tmux, herdr, or t3code), because without one the "the
-#     agent stopped" postcondition cannot be proven. Relaunch also requires
-#     replacement support, which t3code lacks. orca is
+#     classifier (tmux or herdr), because without one the "the
+#     agent stopped" postcondition cannot be proven. orca is
 #     refused rather than reported as successful blind.
 #   - An ambiguous or unreadable endpoint state refuses; only a positively
 #     classified state acts.
@@ -396,9 +388,6 @@ fm_control_harness_supported "$HARNESS" \
 FM_COMPOSER_HARNESS=$HARNESS
 
 fm_backend_validate "$BACKEND" || exit 1
-if [ "$BACKEND" = t3code ]; then
-  fm_backend_runtime_check t3code || exit 1
-fi
 
 # --- shared helpers ---------------------------------------------------------
 
@@ -591,13 +580,6 @@ deliver_interrupt() {
   if [ "$HARNESS" = devin ]; then
     devin_gen=$(fm_busy_current_gen "$STATE" "$ID" 2>/dev/null || true)
   fi
-  # T3 Code has no keys: its native interrupt confirms the run's end itself.
-  if [ "$BACKEND" = t3code ]; then
-    cancel=$(fm_backend_t3code_native_interrupt "$T") \
-      || die "interrupt was not delivered to task $ID on $BACKEND"
-    printf '%s' "${cancel:-unconfirmed}"
-    return 0
-  fi
   prepare_interrupt_ack
   send_interrupt_keys
   if [ "$INTERRUPT_ARMED" = no ]; then
@@ -703,8 +685,6 @@ retire_busy_incarnation() {
 do_exit() {
   local state cmd hazard verdict composer_state cancel absence interrupt_result=not-needed dialog
   require_state_verified_backend exit
-  fm_control_backend_exit_supported "$BACKEND" \
-    || die "task $ID runs on the $BACKEND backend, whose T3 Orchestrator V2 tools have no session stop, so 'exit' cannot stop its agent; 'interrupt' ends the running turn and teardown archives the thread"
   state=$(agent_state)
   case "$state" in
     dead)

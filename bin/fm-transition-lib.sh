@@ -2,7 +2,7 @@
 # Shared, backend-neutral agent-state transition shape and supervision policy.
 #
 # This library owns THREE contracts, deliberately backend-independent so any
-# push-capable session backend (herdr and t3code today) reuses them instead
+# push-capable session backend (herdr today) reuses them instead
 # of re-deriving a private, per-status escalation hack:
 #
 #   1. The NORMALIZED TRANSITION RECORD - the ONE shape every backend's event
@@ -38,7 +38,7 @@
 # The split is what keeps the escalation general rather than a herdr blocked
 # hack: a backend contributes only a wire->record normalizer and a stream
 # reader; the shape, the policy, and the dedupe are shared. See
-# bin/backends/herdr.sh and bin/backends/t3code.sh (fm_backend_<name>_wait_transition)
+# bin/backends/herdr.sh (fm_backend_<name>_wait_transition)
 # for the producers and bin/fm-watch.sh (the watcher's event-wait splice) for
 # the consumer.
 

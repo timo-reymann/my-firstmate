@@ -13,8 +13,7 @@
 # parent waiting on a reply to nothing.
 # Special keys instead of text: fm-send.sh <target> --key Enter
 # Key support is backend-specific: tmux/herdr support Escape, Enter, and C-c;
-# Orca supports Enter and C-c only; T3 Code maps Escape and C-c to a native
-# turn interrupt and treats Enter as a no-op.
+# Orca supports Enter and C-c only.
 #
 # Two data planes:
 #
@@ -23,8 +22,8 @@
 # the task's steering inbox (newlines are legal) - state/<id>.inbox/ for a
 # local task, or the remote home's host-local inbox reached through fm-on.sh
 # for a remote secondmate - and the endpoint receives only one short constant
-# self-describing doorbell, best-effort. Pane backends type its line plus Enter;
-# T3 Code starts one native turn. The durable record IS
+# self-describing doorbell, best-effort. Pane backends type its line plus Enter.
+# The durable record IS
 # the delivery, so the record's fate alone governs the exit: 0 = the steer is
 # durably sent (recorded); nonzero = nothing was confirmed delivered and a
 # resend is appropriate (unresolvable target, an endpoint that cannot be
@@ -63,13 +62,10 @@
 # target names an endpoint, not a task, so it stays on this plane even when
 # local metadata happens to match it (the same boundary that keeps it unmarked
 # and outside --resolve-key). Pane backends type the literal text ONCE, then
-# retry Enter without retyping; T3 Code starts one native turn. Typed-plane exit
+# retry Enter without retyping. Typed-plane exit
 # contract: 0 = submit confirmed; 3 = the text reached the live endpoint and
-# submission was attempted, but the read-back stayed unconfirmed, or an API
-# backend's outcome is unproven: a lost reply or an error that can follow a
-# commit (verify the endpoint
-# before any resend, and never submit blindly; docs/t3code-backend.md owns
-# T3 Code's request-id retention and retry policy; a marked request's
+# submission was attempted, but the read-back stayed unconfirmed (verify the
+# endpoint before any resend, and never submit blindly; a marked request's
 # pending-reply expectation stays armed because this outcome is not a proven
 # failure); any other nonzero = the send failed and nothing may be assumed
 # delivered. Submission dispatches through the target's recorded backend; the
@@ -1317,23 +1313,6 @@ else
     # surfaces through the library's own reconciliation
     # (bin/fm-pending-reply-lib.sh).
     echo "fm-send: text delivered to $T but submission is unconfirmed (verdict=pending; tried $RESOLUTION_TRIED); do not retype or blindly resend - verify with fm-peek.sh, then re-send '--key Enter' only if the composer still holds the text" >&2
-    exit 3
-    ;;
-  unconfirmed)
-    # An API backend's outcome is unproven: a lost reply or an error that can
-    # follow a commit (T3 Code commits a send before it answers). Like
-    # pending, delivery is unproven
-    # rather than refused, so the pending-reply expectation stays armed; the
-    # adapter retains the logical delivery's request id under the retry policy
-    # in docs/t3code-backend.md. A marked secondmate request is the exception:
-    # a plain rerun mints a new
-    # correlation, so its text and request id differ, and the armed attempt
-    # refuses a resend of this one.
-    if [ -n "$PENDING_REPLY_CORR" ]; then
-      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); do not resend - a rerun mints a new pending-reply correlation and would deliver twice; correlation $PENDING_REPLY_CORR stays armed, so verify with fm-peek.sh and let its reply or the watcher's reconciliation settle it" >&2
-    else
-      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); verify with fm-peek.sh, and resend only the identical text, which reuses its request id" >&2
-    fi
     exit 3
     ;;
   *)

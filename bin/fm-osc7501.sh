@@ -12,8 +12,7 @@
 #   1. the pane must have a writable controlling terminal
 #   2. the terminal must be KNOWN 7501-aware by its environment
 #      (TERM_PROGRAM=ghostty); unknown terminals silently do nothing.
-#      backend=herdr (old herdr has no protocol support) and backend=t3code
-#      (no task tty) never report
+#      backend=herdr (old herdr has no protocol support) never reports
 #   3. config/osc7501-status must not say off (default on; an unrecognized
 #      word warns once per value and reads as off). This gate is read only
 #      after the writable-tty and known-aware-terminal checks pass
@@ -583,7 +582,7 @@ osc_arm() { # --task --harness --backend --kind --state --config [--target] [--a
   # a pane without a writable tty can never report
   local dev=${FM_OSC7501_TTY:-/dev/tty}
   [ -w "$dev" ] || exit 0
-  case "$backend" in herdr | t3code) exit 0 ;; esac
+  case "$backend" in herdr) exit 0 ;; esac
   osc_env_aware || exit 0
   FM_OSC_APP="firstmate-$harness"
   FM_OSC_APP="${FM_OSC_APP:0:$FM_OSC7501_APP_MAX}"
