@@ -12,21 +12,24 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
   It resumes the latest session when one changed in the last two hours, and otherwise starts a new one.
   It refuses to start when another session already holds the home's `state/.lock`.
 - `firstmate-herdr` builds the firstmate screen in one Herdr tab with three panes: the activity across the top, the first mate bottom left, and the workers bottom right.
-  Outside Herdr it builds a workspace named `firstmate` and attaches to it; inside Herdr it builds the layout around the current pane.
-  The workers stay in the same Herdr session, and their tabs keep the `fm-<id>` labels that firstmate uses to find them.
+  Outside Herdr it builds a workspace named `firstmate-screen` and attaches to it; inside Herdr it builds the layout around the current pane.
+  The first mate pane runs `firstmate`; while another session holds the home's `state/.lock`, the pane shows one line with that session's pid and the command to start the first mate there once it quits.
+  The workers stay in their own `firstmate` workspace in the same Herdr session, and their tabs keep the `fm-<id>` labels that firstmate uses to find them.
   Options: `--no-attach` builds the layout and stops, `--ratio SHARE` sets the width share of the first mate pane (default 0.6), and `--activity-ratio SHARE` sets the height share of the activity pane (default 0.28).
   Without `uv` on `PATH` it stops with the install hint.
 - `firstmate-tui` draws the two views of that screen, written in Python with Textual.
   `--pane activity` is a box with the last 8 events of the [fleet activity ledger](../docs/fleet-ledger.md) as full lines, newest first, and a "NEEDS YOU" count; events that need you (a decision, a blocked worker, a PR ready for review) have a yellow bar.
   `--pane workers` lists the workers, needs-you first, each with its state symbol, kind, task, state, and the age of its last report; a working worker with no report for over an hour shows its age in yellow with `…`.
-  Below the list is a read-only live view of the selected worker's screen, read from Herdr about once a second.
+  Below the list is a live view of the selected worker's screen, read from Herdr about once a second.
+  `enter` on a worker starts input mode: the live view title says `INPUT`, and every key you type, including `enter`, arrows, `ctrl` combinations and pasted text, goes to that worker's Herdr pane.
+  `ctrl+]` is the one key input mode keeps for itself; it leaves input mode, and the other keys work as before again.
   A pane narrower than 34 columns folds the list to compact tabs and hides the live view.
   `--pane all`, the default, stacks both views in one terminal.
   Every state has its own symbol, so the screen also reads in 16 or 8 colours; `FIRSTMATE_TUI_COLORS` and `FIRSTMATE_TUI_THEME` override the detected colour depth and theme.
   The activity needs the ledger: create `config/fleet-ledger` in the home to turn it on; until then it shows a hint.
-- Keys in either view: `↑`/`↓` or `j`/`k` select a worker, `1`-`9` pick one, `tab` selects the next, `enter` opens the worker's real Herdr tab, `l` opens the full log, `n` shows needs-you events and selects the next worker that needs you, `a` shows all events, `t` shows the selected task's events, `y` copies the selected worker's PR URL, `m` marks its needs-you item read, `?` lists the keys, `r` refreshes, and `q` quits.
+- Keys in either view: `↑`/`↓` or `j`/`k` select a worker, `1`-`9` pick one, `tab` selects the next, `enter` types into the worker (where no live view shows, it opens the worker's real Herdr tab), `o` opens the worker's real Herdr tab, `l` opens the full log, `n` shows needs-you events and selects the next worker that needs you, `a` shows all events, `t` shows the selected task's events, `y` copies the selected worker's PR URL, `m` marks its needs-you item read, `?` lists the keys, `r` refreshes, and `q` quits.
   A read mark lasts until the worker's state, report, or PR changes.
-- `firstmate-tui` reads `bin/fm-fleet-snapshot.sh --json`, `state/fleet-ledger.jsonl`, and the worker screens, costs no model tokens, and never steers a worker.
+- `firstmate-tui` reads `bin/fm-fleet-snapshot.sh --json`, `state/fleet-ledger.jsonl`, and the worker screens, costs no model tokens, and never steers a worker on its own: only the keys you type in input mode reach a worker.
   The only file it writes is `state/firstmate-tui.json` in the home, which holds the selected worker, the activity filter, and the read marks, so both panes share them.
   `--interval SECONDS` sets the refresh period (default 6), and `--once` prints one plain frame of the pane and exits without a terminal or Textual.
 

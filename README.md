@@ -44,7 +44,7 @@ This fork adds the following.
   It is versioned in `.agents/skills/lavish/`, with its source pinned in `skills-lock.json`.
 - Guidance in `AGENTS.md` that plans, comparisons, diagrams, and structured reports go to `lavish-axi`, and that a worker, never the first mate, builds a visual plan.
 - Three optional launchers in `contrib/`: `firstmate` (resume or start the session), `firstmate-herdr` (the firstmate screen in Herdr), and `firstmate-tui` (its views); see [contrib/README.md](contrib/README.md).
-- The firstmate screen: `firstmate-herdr` builds one Herdr tab with the activity across the top (the last 8 fleet ledger events), the first mate bottom left, and the workers bottom right (needs-you first, over a read-only live view of the selected worker's screen).
+- The firstmate screen: `firstmate-herdr` builds one Herdr tab with the activity across the top (the last 8 fleet ledger events), the first mate bottom left, and the workers bottom right (needs-you first, over a live view of the selected worker's screen that you can type into).
   Both views are `contrib/firstmate-tui`, in Python and Textual, run through `uv`, which the screen needs.
   The fork ships no bash fleet view.
 - An agent setting for the `firstmate` launcher: `FIRSTMATE_AGENT` or `~/.config/firstmate/agent` selects `claude` (the default) or `opencode`.
