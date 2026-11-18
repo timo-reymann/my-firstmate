@@ -74,6 +74,14 @@ This fork adds the following.
 - An agent setting for the `firstmate` launcher: `FIRSTMATE_AGENT` or `~/.config/firstmate/agent` selects `claude` (the default) or `opencode`.
 - A Claude hook that reminds the agent to update this list when a commit changes user-visible material (`bin/fm-readme-reminder-pretool.sh`, `docs/readme-reminder.md`).
 
+This fork changes the following.
+
+- The default runtime backend is Herdr, not tmux.
+  It applies only when no `--backend`, `FM_BACKEND`, `config/backend`, `$TMUX`, or `HERDR_ENV=1` selects a backend; that order is unchanged.
+  When Herdr is missing, a spawn that only the default selected refuses and says how to choose tmux (`tmux` in `config/backend`, or `FM_BACKEND=tmux`); it never falls back on its own.
+  The default lives in `FM_BACKEND_DEFAULT_NAME` in `bin/fm-backend.sh`, checked by `fm_backend_default_check` there and called from `bin/fm-spawn.sh`; `docs/configuration.md` ("Backend selection order") documents it.
+- `contrib/README.md` also explains how the firstmate screen works, its limits, linking the launchers, and how to run their tests.
+
 The supervision host dispatch code, which decides which wake rows the away session may take, moved out of the Pi extension folder into a neutral module (`bin/lib/fm-host-dispatch.ts`, run through `bin/fm-host-dispatch.mjs`).
 Its behavior is unchanged.
 The branch contract doc is now [docs/supervision-branch.md](docs/supervision-branch.md).
@@ -115,7 +123,7 @@ Full detail on every feature lives in [docs/architecture.md](docs/architecture.m
 
 - A verified primary agent harness: Claude Code, Codex, OpenCode, Cursor Agent CLI, or Antigravity CLI (`agy`).
 - Git and the GitHub CLI, authenticated through `gh auth login`.
-- The CLI and dependencies for your selected runtime backend; tmux is the reference default.
+- The CLI and dependencies for your selected runtime backend; this fork defaults to Herdr, and tmux remains the reference backend.
 
 The first mate detects supported missing or outdated tools and offers their install or upgrade after you approve.
 Backend-specific setup is linked in [Documentation](#documentation).
@@ -166,7 +174,7 @@ The preference persists for the effective Firstmate home, and toggling it off re
 
 ### More backends
 
-Setup guides for tmux (the default) and every other supported backend (herdr, Orca) are linked in [Documentation](#documentation) below.
+Setup guides for Herdr (this fork's default), tmux, and Orca are linked in [Documentation](#documentation) below.
 
 ## How It Works
 
