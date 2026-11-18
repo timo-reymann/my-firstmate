@@ -41,6 +41,20 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
   The only file it writes is `state/firstmate-tui.json` in the home, which holds the selected worker, the activity filter, and the read marks, so both panes share them.
   `--interval SECONDS` sets the refresh period (default 6), and `--once` prints one plain frame of the pane and exits without a terminal or Textual.
 
+## How the screen works
+
+- Herdr reads `--ratio` as the share kept by the original pane, which is the first mate pane.
+- The workers pane has the label `firstmate-workers` and the activity pane `firstmate-activity`.
+  Inside Herdr, a second run finds the workers label in the current tab and does not split again.
+- A new pane shell drops text typed before its startup ends, so the launcher first waits until the shell proves it reads input.
+- Outside Herdr, the launcher starts the Herdr server when none runs, builds the `firstmate-screen` workspace, and then attaches.
+
+## Limits
+
+- Outside Herdr, an existing workspace labeled `firstmate-screen` is reused as it is.
+  The launcher adds no first mate, activity or workers pane to it.
+- The launchers need Herdr protocol 14, but Firstmate's [project groups](../docs/herdr-backend.md#project-groups) need protocol 22, so an older Herdr runs the launchers without the project sidebar.
+
 ## Install
 
 Copy the scripts to a directory on your `PATH`, keeping them together because `firstmate` and `firstmate-herdr` find their siblings next to themselves.
@@ -48,6 +62,9 @@ Copy the scripts to a directory on your `PATH`, keeping them together because `f
 ```sh
 install -m 0755 contrib/firstmate contrib/firstmate-herdr contrib/firstmate-tui "$HOME/.bin/"
 ```
+
+To follow the checkout instead of a copy, link them: `ln -s "$PWD/contrib/firstmate" "$HOME/.bin/firstmate"`, and the same for the other two.
+A link follows the branch that is checked out in the home, so switching branches there also changes the launchers.
 
 `firstmate-tui` starts through its `uv run --script` shebang, so `firstmate-tui` and `uv run contrib/firstmate-tui` both work.
 Its first run downloads Textual into the uv cache; later runs start offline.
@@ -93,3 +110,8 @@ echo opencode > "${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/agent"
 
 Extra arguments you pass to `firstmate` are forwarded to the agent, also through the firstmate screen; `--plain` counts only as the first argument.
 Edit the `cmd` arrays in the script if you want other default settings.
+
+## Tests
+
+`bin/fm-test-run.sh tests/fm-contrib-launchers.test.sh tests/fm-contrib-firstmate-tui.test.sh` runs the launcher and TUI tests over a fake `herdr` and fake fleet data.
+Check the firstmate screen against a real Herdr only in a lab session from `bin/fm-herdr-lab.sh`, never in the default session.
