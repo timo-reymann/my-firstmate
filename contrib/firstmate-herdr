@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# One command for firstmate in Herdr: the first mate pane on the left, the fleet view on the right.
+# One command for firstmate in Herdr: the activity across the top, the first mate bottom left, the workers bottom right.
+# With the bash fleet view instead of the TUI: the first mate on the left, the fleet view on the right.
 # Env overrides: FIRSTMATE_DIR, FIRSTMATE_BIN, FLEET_BIN, TUI_BIN, FIRSTMATE_FLEET_VIEW (tui or bash), HERDR_BIN,
 # FM_HERDR_SESSION (named session; default if unset).
 set -u
 
 usage() {
   cat <<'USAGE'
-Usage: firstmate-herdr [--no-attach] [--ratio SHARE] [first mate arguments...]
-  Inside Herdr: splits the current pane, then runs the first mate here.
+Usage: firstmate-herdr [--no-attach] [--ratio SHARE] [--activity-ratio SHARE] [first mate arguments...]
+  Inside Herdr: builds the layout around the current pane, then runs the first mate here.
   Outside Herdr: builds a "firstmate" workspace in the session, then attaches to it.
-  --no-attach   build the layout and stop (outside Herdr only)
-  --ratio SHARE share of the width for the first mate pane (default 0.72)
+  With firstmate-tui, one tab holds three panes: the activity across the top,
+  the first mate bottom left, and the workers bottom right.
+  With the bash fleet view: the first mate on the left, the fleet view on the right.
+  --no-attach             build the layout and stop (outside Herdr only)
+  --ratio SHARE           share of the width for the first mate pane
+                          (default 0.6, or 0.72 with the bash fleet view)
+  --activity-ratio SHARE  share of the height for the activity pane (default 0.28)
 USAGE
 }
 
@@ -22,15 +28,18 @@ tui_bin="${TUI_BIN:-$here/firstmate-tui}"
 view="${FIRSTMATE_FLEET_VIEW:-}"
 herdr_bin="${HERDR_BIN:-herdr}"
 session="${FM_HERDR_SESSION:-}"
-ratio=0.72
+ratio=
+activity_ratio=0.28
 attach=1
-label=firstmate-fleet
+label=firstmate-workers
+activity_label=firstmate-activity
 workspace_label=firstmate
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-attach) attach=0; shift ;;
     --ratio) ratio="${2:?--ratio needs a value}"; shift 2 ;;
+    --activity-ratio) activity_ratio="${2:?--activity-ratio needs a value}"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     --) shift; break ;;
     *) break ;;
@@ -53,6 +62,9 @@ case "$view" in
   bash) ;;
   *) die "FIRSTMATE_FLEET_VIEW must be tui or bash, not '$view'" ;;
 esac
+if [ -z "$ratio" ]; then
+  if [ "$view" = tui ]; then ratio=0.6; else ratio=0.72; fi
+fi
 
 protocol=$("$herdr_bin" status client 2>/dev/null | awk '/protocol:/ {print $2; exit}')
 case "${protocol:-0}" in
@@ -70,11 +82,16 @@ fi
 
 hr() { "$herdr_bin" "$@" ${sflag[@]+"${sflag[@]}"}; }
 
+# The views use the same herdr binary as the launcher, for the live view and the tab jump.
+view_env="FIRSTMATE_DIR=$(printf '%q' "$dir")"
+[ -z "${HERDR_BIN:-}" ] || view_env="$view_env HERDR_BIN=$(printf '%q' "$HERDR_BIN")"
 if [ "$view" = tui ]; then
   # The pane shell may have another PATH, so the TUI runs through the uv found here.
-  fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$uv_bin") run --script $(printf '%q' "$tui_bin")"
+  tui_cmd="$view_env exec $(printf '%q' "$uv_bin") run --script $(printf '%q' "$tui_bin")"
+  workers_cmd="$tui_cmd --pane workers"
+  activity_cmd="$tui_cmd --pane activity"
 else
-  fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$fleet_bin")"
+  workers_cmd="$view_env exec $(printf '%q' "$fleet_bin")"
 fi
 mate_cmd="exec $(printf '%q' "$firstmate_bin")"
 for a in "$@"; do mate_cmd="$mate_cmd $(printf '%q' "$a")"; done
@@ -95,19 +112,41 @@ run_when_ready() {
 }
 
 # Herdr reads --ratio as the share kept by the original pane, not by the new one.
+split() {
+  local new
+  new=$(hr pane split "$1" --direction "$2" --ratio "$3" --no-focus | jq -r '.result.pane.pane_id // empty')
+  [ -n "$new" ] || die "could not split the pane"
+  printf '%s' "$new"
+}
+
 split_fleet() {
   local new
-  new=$(hr pane split "$1" --direction right --ratio "$ratio" --no-focus | jq -r '.result.pane.pane_id // empty')
-  [ -n "$new" ] || die "could not split the pane"
+  new=$(split "$1" right "$ratio") || exit 1
   hr pane rename "$new" "$label" >/dev/null
-  run_when_ready "$new" "$fleet_cmd"
+  run_when_ready "$new" "$workers_cmd"
+}
+
+# Herdr splits only right or down, so the activity pane is split off below and swapped to the top.
+split_screen() {
+  local mate=$1 activity workers
+  activity=$(split "$mate" down "$activity_ratio") || exit 1
+  hr pane swap --source-pane "$mate" --target-pane "$activity" >/dev/null || die "could not move the activity pane to the top"
+  workers=$(split "$mate" right "$ratio") || exit 1
+  hr pane rename "$activity" "$activity_label" >/dev/null
+  hr pane rename "$workers" "$label" >/dev/null
+  run_when_ready "$activity" "$activity_cmd"
+  run_when_ready "$workers" "$workers_cmd"
+}
+
+build() {
+  if [ "$view" = tui ]; then split_screen "$1"; else split_fleet "$1"; fi
 }
 
 if [ "$inside" = 1 ]; then
   have=$(hr pane list --workspace "${HERDR_WORKSPACE_ID:-}" |
     jq -r --arg tab "${HERDR_TAB_ID:-}" --arg label "$label" \
       '.result.panes[]? | select(.tab_id == $tab and .label == $label) | .pane_id' | head -n 1)
-  [ -n "$have" ] || split_fleet "$HERDR_PANE_ID"
+  [ -n "$have" ] || build "$HERDR_PANE_ID"
   eval "$mate_cmd"
 fi
 
@@ -137,7 +176,7 @@ if [ -z "$ws" ]; then
   ws=$(printf '%s' "$created" | jq -r '.result.workspace.workspace_id // empty')
   root=$(printf '%s' "$created" | jq -r '.result.root_pane.pane_id // empty')
   [ -n "$ws" ] && [ -n "$root" ] || die "could not create the workspace"
-  split_fleet "$root"
+  build "$root"
   run_when_ready "$root" "$mate_cmd"
 fi
 
