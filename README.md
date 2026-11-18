@@ -30,8 +30,8 @@ Upstream: <https://github.com/kunchenguid/firstmate>.
 This fork removes the following.
 
 - Agents: Grok, Pi, `pi-signed`, and Oh My Pi (`omp`) are no longer supported.
-- Backends: cmux, Paseo, Rex, tern, Zellij, and T3 Code are no longer supported.
-  tmux, Herdr, Orca, and hc remain.
+- Backends: cmux, Paseo, Rex, tern, hc, Zellij, and T3 Code are no longer supported.
+  tmux, Herdr, and Orca remain.
 - The Pi worker account pin, the `ultra` effort level that existed only for native Codex through Pi, and the Pi stream-silence watcher option.
 - The Claude Calm working-ship sprite.
   The rest of Calm is unchanged.
