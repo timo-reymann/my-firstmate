@@ -111,7 +111,7 @@ The reject-other-harness cross-check judges comm-strength vantages only, because
 That narrowing changes only which vantages the cross-check judges; the comm-strength requirement itself is unchanged.
 A single-process harness has no descendant that adds a distinct verdict, which is why `claude` reports one.
 The portable regression pins every half without any harness installed: `tests/fm-harness-precedence.test.sh` asserts that this two-process topology decides at comm strength, that the descent probe reaches a strength the top-of-session probe cannot, that a sibling branch answering a foreign harness contributes no verdict, that a foreign args-only verdict at the deepest vantage leaves the comm-strength identity intact, and that equal-depth ties choose the comm-strength leaf regardless of process ordering.
-The run did not reach `opencode`, `pi`, `pi-signed`, `kimi`, or `muse`, which were not installed, and stopped at the same pre-existing liveness failure for `cursor` 3.18.9, whose resolved binary on that machine is the editor rather than `cursor-agent`; those adapters are unverified by this run.
+The run did not reach `opencode`, `kimi`, or `muse`, which were not installed, and stopped at the same pre-existing liveness failure for `cursor` 3.18.9, whose resolved binary on that machine is the editor rather than `cursor-agent`; those adapters are unverified by this run.
 
 ## tmux
 
@@ -135,7 +135,6 @@ zsh
 ```
 
 A persistent parent shell waiting for a child remained reported as the parent process, while a shell that directly execed a simple command changed identity with the process itself.
-Pi and pi-signed 0.82.0 were reverified on 2026-07-27 through real isolated `fm-spawn.sh` launches.
 
 ### Agent liveness name sources
 
@@ -161,8 +160,6 @@ Observed identities, and the resulting verdict:
 | claude | 2.1.220 | `2.1.220` | `claude` | alive |
 | codex | codex-cli 0.146.0 | `codex` | `codex` | alive |
 | opencode | 1.18.11 | `opencode` | `opencode` | alive |
-| pi | 0.82.0 | `pi-launcher` | `pi-signed`, `pi` | alive |
-| pi-signed | 0.82.0 | `pi-launcher` | `pi-signed`, `pi` | alive |
 | kimi | 0.31.1 | `kimi` | `kimi` | alive |
 
 In that 2026-08-03 run, Claude Code was the only harness whose title did not attribute it; every other adapter was attributed by both sources.
@@ -235,22 +232,6 @@ ok - harness liveness: claude 2.1.220 (Claude Code) classifies alive
 # checked 7 installed harness(es)
 ```
 
-Installed-wrapper checks:
-
-```sh
-basename "$(command -v pi-signed)"
-pi-signed --version
-pi --version
-```
-
-Observed bounded output:
-
-```text
-pi-signed
-0.82.0
-0.82.0
-```
-
 ### Harness-adapter instruction routing
 
 Two checks keep the evidence boundaries separate.
@@ -263,7 +244,7 @@ FM_HARNESS_ADAPTER_INSTRUCTION_EVAL=1 FM_HARNESS_ADAPTER_LOCAL_MODEL=ambient-rou
 
 That local evaluation demonstrates instruction-driven scenario selection, but it does not claim that a native harness loaded the selected files.
 The guard prints the exact installed version or unavailable status for every native harness so absent tools and unexercised provider transports remain explicit rather than becoming passes.
-Native loader behavior still requires the applicable live agent-tool check; no uniform deterministic zero-provider transport currently spans Claude, Codex, OpenCode, and Pi, and the other five tools remain unavailable where their binaries are absent.
+Native loader behavior still requires the applicable live agent-tool check; no uniform deterministic zero-provider transport currently spans Claude, Codex, and OpenCode, and the other tools remain unavailable where their binaries are absent.
 
 Bounded output from the 2026-08-29 local run:
 
@@ -281,36 +262,6 @@ ok - local model ambient-router-gemma4:e4b selected every operation scenario and
 # installed native tools recorded without overstating loader coverage: 4
 # unavailable native tools: pi-signed grok kimi cursor muse
 ```
-
-The isolated process and endpoint checks used:
-
-```sh
-tmux display-message -p -t "$target" '#{pane_current_command}'
-ps -o comm= -p "$wrapper_pid"
-ps -o comm= -p "$engine_pid"
-FM_HOME="$fixture_home" bin/fm-crew-state.sh "$task_id"
-```
-
-Observed bounded shapes:
-
-```text
-pi-launcher
-.../pi-signed
-.../Pi Launcher.app/Contents/Resources/pi/pi
-state: done ...
-```
-
-Both launches executed a submitted tool instruction and touched the generated `turn_end` marker.
-The pi-signed launch retained `harness=pi-signed`, while the plain comparison retained `harness=pi`.
-The exact wrapper ancestry was `pi-signed` parent to Pi engine child, and the plain Pi Launcher path also traversed the signed wrapper on this installation.
-That shared plain-Pi path is retained as disconfirming evidence against using ancestry as runtime-selection authority.
-Firstmate therefore sets the exact `FM_PI_HARNESS` selection marker on both worker launch paths, while an unmarked Pi-family process remains `pi`.
-Both recorded runtime identities now classify the exact `pi-launcher` foreground command as `alive`.
-
-Backend applicability was reviewed across every spawn adapter.
-Tmux needs the exact `pi-launcher`, `pi-signed`, `pi`, and `Pi` process identities for recovery-grade liveness.
-Herdr uses native registered-agent state and needs no process-name branch.
-Zellij has no verified recovery-grade agent process probe, while Orca, cmux, and tern do not support secondmate spawns, so those backends retain their existing generic ordinary-launch semantics without a new secondmate liveness matcher.
 
 The current classifier matrix and its refresh guard are recorded in [Composer classification matrix](#composer-classification-matrix), with portable shape coverage in `tests/fm-composer-lib.test.sh` and `tests/fm-composer-ghost.test.sh`.
 Kimi pointer delivery and OpenCode busy-queue behavior remain pinned by `tests/fm-kimi-harness.test.sh`, `tests/fm-tmux-submit-busy.test.sh`, and `tests/fm-composer-lib.test.sh`.
@@ -345,7 +296,7 @@ The dedicated tmux cell removed ambient tmux variables, required a socket-bound 
 Valid cleanup removed only the exact task-bound target and left the control window live.
 The metadata-only validation covers tmux, Herdr, Zellij, Orca, cmux, Paseo, and Rex before backend dispatch, and now covers tern as well once the parent records a green portable run; do not treat the pre-tern transcript above as proof of the tern fixture.
 `tests/fm-backend-t3code.test.sh` covers T3 thread bindings.
-Claude, Codex, OpenCode, Pi, pi-signed, Kimi, Cursor, and Muse share that backend cleanup boundary; their harness-specific hook files, tokens, transcript bindings, and session-log sidecars are cleaned only after it, so no harness needs a separate endpoint parser.
+Claude, Codex, OpenCode, Kimi, Cursor, and Muse share that backend cleanup boundary; their harness-specific hook files, tokens, transcript bindings, and session-log sidecars are cleaned only after it, so no harness needs a separate endpoint parser.
 
 ### Endpoint close
 
@@ -557,36 +508,12 @@ The lab home was deleted and the test entry was removed from the store and verif
 That automated spawn case runs against a fake claude, so it asserts the store entry and the launch command and nothing more; the live arms above are what establish that the entry actually suppresses the dialog.
 The composer-classification record below observes the same gate from the other side, where an untrusted worktree left Claude and Muse unverified because the guard reads a first-launch trust dialog as an unreadable composer.
 
-## Pi seeded-secondmate project trust
-
-[`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the seeded-secondmate project-trust approval contract and compatibility fallback.
-The live guard below isolates Pi's trust-gate behavior in secondmate-shaped homes; portable launch-command coverage separately verifies that spawn selects the flag for the intended launches.
-
-Verified 2026-10-02 on pi 0.82.0 through the default-on live guard (disposable `PI_CODING_AGENT_DIR` / `HOME` only; never `~/.pi`):
-
-```sh
-bash tests/fm-pi-seeded-home-trust-live-e2e.test.sh
-```
-
-```
-# live pi version: 0.82.0
-ok - fresh seeded Pi secondmate-shaped home stalls on Trust project folder? without --approve
-ok - seeded home with --approve starts past the trust dialog without rewriting trust.json
-ok - unseeded path without --approve still prompts on Trust project folder?
-# all fm-pi-seeded-home-trust-live-e2e checks passed (3)
-```
-
-Portable launch-command coverage lives in `tests/fm-spawn-dispatch-profile.test.sh` (`test_pi_seeded_secondmate_preapproves_project_trust`, `test_pi_worker_launch_omits_seeded_home_approve`, `test_pi_approve_probe_omits_unsupported_flag`).
-
 ## Launch-prompt backstop signatures
 
 `bin/fm-busy-lib.sh`'s launch-prompt backstop (`fm_busy_launch_prompt_parked`) reclassifies a launch whose busy record is still pinned at the fm-spawn seed as `unknown launch-prompt`, rather than `busy fm-spawn`, when the captured pane matches that harness's own recognized trust, sign-in, or first-run dialog.
 Each signature below was live-verified against the real installed binary through `tests/fm-launch-prompt-signals-live-e2e.test.sh` (`FM_LAUNCH_PROMPT_SIGNALS_LIVE=1`), which is what refreshes this record after an upgrade.
 
-An initial Pi signature sourced only from the installed binary's own UI strings ("Project trust", the internal panel-title component, never the dialog's own rendered heading) was wrong and never matched the real screen.
-This guard's first live run caught that before it shipped, which is the evidence for why this class of check must be driven end to end rather than read off strings or a component name.
-
-Verified 2026-09-22 on Claude Code 2.1.278, pi 0.86.1, and gemini 0.60.0.
+Verified 2026-09-22 on Claude Code 2.1.278 and gemini 0.60.0.
 
 ```sh
 FM_LAUNCH_PROMPT_SIGNALS_LIVE=1 bash tests/fm-launch-prompt-signals-live-e2e.test.sh
@@ -595,11 +522,8 @@ FM_LAUNCH_PROMPT_SIGNALS_LIVE=1 bash tests/fm-launch-prompt-signals-live-e2e.tes
 ```
 # live claude version: 2.1.278 (Claude Code)
 ok - claude: a real launch parked on its own rendered trust dialog surfaces through the watcher gate
-# live pi version: 0.86.1
-ok - pi, pi-signed, omp: a real Pi-engine launch parked on its own rendered trust dialog surfaces through the watcher gate
 # live gemini version: 0.60.0
 ok - gemini: a real launch parked on its own rendered auth or trust dialog surfaces through the watcher gate
-# checked 3 launch-prompt signature(s) against real installed binaries
 ```
 
 Claude, launched `--dangerously-skip-permissions` into a brand-new worktree under the operator's own already-onboarded config (the shape a real crewmate spawn produces):
@@ -620,23 +544,6 @@ Claude, launched `--dangerously-skip-permissions` into a brand-new worktree unde
    Yes, I trust this folder
 
  Enter to confirm · Esc to cancel
-```
-
-Pi, launched into a fresh worktree carrying a project-local `.pi/extensions/` file (the trust-requiring resource that actually gates the dialog) under an isolated `HOME`:
-
-```
- Trust project folder?
- /tmp/fm-launch-prompt-pi.XXXXXX/wt
-
- This allows pi to load .pi settings and resources, install missing project packages, and execute project extensions.
-
- → Trust
-   Trust parent folder (/tmp/fm-launch-prompt-pi.XXXXXX)
-   Trust (this session only)
-   Do not trust
-   Do not trust (this session only)
-
- ↑↓ navigate  enter select  escape/ctrl+c cancel
 ```
 
 Gemini, launched `GEMINI_CLI_TRUST_WORKSPACE=true gemini -y` with no `GEMINI_API_KEY` and no prior OAuth credential:
@@ -662,17 +569,17 @@ Gemini, launched `GEMINI_CLI_TRUST_WORKSPACE=true gemini -y` with no `GEMINI_API
 The real pane renders this inside a bordered box, omitted here for readability; that border is exactly what proves the point below.
 
 That capture demonstrated why each signature function matches the FULL captured tail rather than the Rovo/AGY busy-footer convention of the last 12 non-blank lines: a bordered dialog box renders many short lines of pure border and padding (`│  ...  │`) that are NOT whitespace-only, so the 12-line reduction pushed this exact heading text out of the window and silently defeated the match on the first attempt.
-None of these three runs ever answered its dialog (Escape only, never Enter), so no credential store was written to and no model tokens were spent.
+None of these runs ever answered its dialog (Escape only, never Enter), so no credential store was written to and no model tokens were spent.
 
 ## Worker account pin sign-in check
 
-`bin/fm-worker-account-lib.sh` decides whether a pinned account is signed in from vendor output: the exit status of `claude auth status`, the JSON of `pi auth check`, and the provider column of `pi --list-models`.
-`tests/fm-worker-account-live-e2e.test.sh` asks the real installed runners about synthetic roots that need no login and no network, under a throwaway `HOME`.
-A Claude root whose `settings.json` names an `apiKeyHelper` reports `loggedIn: true`, a Pi root holding a stored API key reports `ready`, and a provider registered by an extension in the Pi root's `extensions/` answers `pi auth check` with `not_ready`/`provider_not_found` while `pi --list-models` lists it.
-Each refusal is paired with the divergence it depends on: the same runner, given `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or the extension's key variable, answers signed in for the empty root, so the refusal proves the check's cleared environment.
+`bin/fm-worker-account-lib.sh` decides whether a pinned account is signed in from vendor output: the exit status of `claude auth status`.
+`tests/fm-worker-account-live-e2e.test.sh` asks the real installed runner about synthetic roots that need no login and no network, under a throwaway `HOME`.
+A Claude root whose `settings.json` names an `apiKeyHelper` reports `loggedIn: true`.
+Each refusal is paired with the divergence it depends on: the same runner, given `ANTHROPIC_API_KEY`, answers signed in for the empty root, so the refusal proves the check's cleared environment.
 Replacing `env -i` with `env` in the check makes the guard fail on the Claude refusal.
 
-Verified 2026-09-22 on Claude Code 2.1.278 and pi 0.86.1 on Linux; pi-signed was not installed.
+Verified 2026-09-22 on Claude Code 2.1.278 on Linux.
 
 ```sh
 bash tests/fm-worker-account-live-e2e.test.sh
@@ -680,12 +587,9 @@ bash tests/fm-worker-account-live-e2e.test.sh
 
 ```
 ok - claude 2.1.278 (Claude Code): the pin check accepts a signed-in root and refuses an empty one despite an ambient API key
-ok - pi 0.86.1: the pin check reads auth check and the model listing, and refuses what only an ambient credential signs in
-skip-runner: pi-signed is not installed, so its pin check was not exercised
-# worker account live guard checked: claude pi
 ```
 
-The guard submits no prompt and spends no tokens, so it runs by default wherever a runner is installed; rerun it after every Claude or Pi upgrade.
+The guard submits no prompt and spends no tokens, so it runs by default wherever a runner is installed; rerun it after every Claude upgrade.
 
 ## Claude worker tool exclusions
 
@@ -715,10 +619,10 @@ bin/fm-test-run.sh tests/fm-claude-tool-exclude-live.test.sh
 
 ## Secondmate busy contract
 
-Verified 2026-09-22 on this host with Claude Code 2.1.278, OpenCode 1.18.31, and Pi 0.86.1.
+Verified 2026-09-22 on this host with Claude Code 2.1.278 and OpenCode 1.18.31.
 
 A tmux-backed secondmate's active-turn gate reads the parent home's semantic busy record.
-Launches of opencode, pi, pi-signed, and omp arm that record and load the same hook or extension an ordinary worker uses, and those hooks do not touch the parent's turn-ended marker.
+An opencode launch arms that record and loads the same plugin an ordinary worker uses, and that plugin does not touch the parent's turn-ended marker.
 A Claude secondmate arms the same record through busy hooks in the parent home's `state/<id>.claude-settings.json`, passed as Claude Code's `--settings` file, and does not write the mate home's `.claude/settings.local.json`.
 That `--settings` load and the merge of its hook entries with the home's own hooks rest on Claude Code's documentation (<https://code.claude.com/docs/en/cli-reference>, <https://code.claude.com/docs/en/hooks>) and not on a live run recorded in this section: the sample output below predates the `--settings` mechanism.
 A Claude secondmate is the one exception on Stop: its home's tracked Stop guard is the only Stop writer, recording idle when it allows the Stop and busy when it blocks it into a continuation, because Claude runs Stop hooks in parallel.
@@ -766,9 +670,6 @@ ok - grok grok 1.0.40 (eb1a2256660d) [stable]: secondmate spawn stays unarmed an
 # checked 4 harness(es); absent: pi-signed omp codex
 ok - secondmate busy contract live guard checked every installed harness
 ```
-
-Pi's real parked pane classified `unknown launch-prompt`.
-That is the launch-prompt backstop: the same spawn's record classified `busy fm-spawn` for a non-prompt mid-turn tail, which is what the active-turn gate reads while a turn is in progress.
 
 ## Codex hook trust
 
@@ -894,7 +795,7 @@ ok - zellij (zellij 0.44.0): unrelated pane change never confirms delivery (verd
 ok - live composer-matrix guard verified 8 live surface(s)
 ```
 
-All six installed harnesses' real idle composers reached a proven `empty` (Claude auto-updated to 2.1.227 between the audit and this rerun, so the shipped classifier is proven against the newer release as well), including Pi through the tmux foreground-process identity probe and OpenCode through the left-bar shape; Codex and OpenCode first parked on vendor update-available modals that the strict classifier correctly refused until the guard's single non-submitting Escape dismissed them.
+All six installed harnesses' real idle composers reached a proven `empty` (Claude auto-updated to 2.1.227 between the audit and this rerun, so the shipped classifier is proven against the newer release as well), including OpenCode through the left-bar shape; Codex and OpenCode first parked on vendor update-available modals that the strict classifier correctly refused until the guard's single non-submitting Escape dismissed them.
 The strict blank-row posture held live (a blank shell row deferred injection), and a zellij pane changing for reasons unrelated to submission never confirmed a delivery, replacing the retired content-diff heuristic's false positive.
 Kimi was not installed on the verification machine; its bordered shape is pinned by the portable byte-capture regressions in `tests/fm-composer-lib.test.sh`, which also carry the other five adapters' capability profiles for every harness under both a UTF-8 locale and `LC_ALL=C`.
 This guard is the refresh command after an upgrade to any matrix-covered harness; rerun it and update the versions above rather than trusting this table across releases.
@@ -928,7 +829,7 @@ after:  ok - opencode (1.19.0): real idle composer classifies empty
         ok - opencode (1.19.0): the same idle pane read cursorless is not pending (verdict: unknown)
 ```
 
-The same two guard failures appear in BOTH runs and are the documented environmental ones, not this change's: `claude` 2.1.287 parks on its first-run theme picker, and `pi` 1.2.0 parks on an untrusted-folder dialog for this disposable worktree's parent path, which the guard's header states it correctly refuses to confirm.
+The same guard failure appears in BOTH runs and is the documented environmental one, not this change's: `claude` 2.1.287 parks on its first-run theme picker, which the guard's header states it correctly refuses to confirm.
 Codex, Kimi, Muse, and zellij were not installed, so they were reported absent rather than verified.
 The cursorless arm is the one that matters for the doorbell, because it is the arm that refuses the skipping verdict: on the recorded live pane it read `unknown`, which defers, and not `pending`. That verdict is not the footer exemption doing the work - a cursorless read selects the bottom-most shape on the screen instead of the cursor-anchored run, so whatever opencode draws below the composer's floor row decides it, and on this record's capture, which keeps only the composer, the same pane read cursorless reaches the same run and reads `empty`.
 
@@ -972,7 +873,7 @@ The same panes accepted `fm_backend_send_text_submit` at the same moment because
 The footer zone is a property of any envelope a glyph row inside it proves, not of the separator pair specifically, so the same statusLine footer under claude's BORDERED composer (the shape a wide pane renders) is demoted identically; `test_composer_footer_zone_is_shape_independent` carries that box shape, asserts the statusLine is never the extracted composer content, and pins both counterweights - typed text inside that same box under that same footer still reads `pending`, and codex's startup banner, which holds no glyph row and therefore proves nothing, still yields to the live bare row drawn contiguously below it.
 
 The demotion is deliberately ASYMMETRIC: `empty` is the only verdict that authorizes `fm-send` to type into a pane, so the rule may move a verdict toward refusing but never toward `empty`.
-It therefore counts a footer zone only when every row in it is demonstrably furniture - omp's status row, a braille animation row, claude's permission-mode hint row (`⏵⏵ bypass permissions on`), or a row leading with an agent glyph OTHER than the one that proved the envelope, which is what the `→` statusLine is on a `❯` claude pane.
+It therefore counts a footer zone only when every row in it is demonstrably furniture - a braille animation row, claude's permission-mode hint row (`⏵⏵ bypass permissions on`), or a row leading with an agent glyph OTHER than the one that proved the envelope, which is what the `→` statusLine is on a `❯` claude pane.
 A run containing unclaimed activity (`Working on request...`, `→ ran npm test (3 failures)`) is not furniture in either row order and keeps invalidating the envelope above it, and a row leading with the SAME glyph the envelope was proven by (`❯ my typed draft`) is a live composer that keeps winning, so a visible draft is never overwritten.
 The one exception, the selected row of Claude 2.1.291's slash-command popup, which leads with that same `❯`, is recorded in [Claude Code 2.1.291 marks the popup's selected row](#claude-code-21291-marks-the-popups-selected-row).
 `test_composer_footer_zone_refuses_rather_than_allows` pins both directions on the bordered-box and separator-pair shapes.
@@ -1007,7 +908,7 @@ claude -n <name>                                            tmux:  empty (typed 
 
 The classifier now accepts a bare agent-glyph row sandwiched between a width-proven titled top rule and its solid closing rule (`_fm_composer_titled_rule_row` and `_fm_composer_bare_rule_sandwich` in `bin/fm-composer-lib.sh`, issues #5601 and #5558).
 After the fix the named Herdr pane read `empty`, and the daemon's real injection path wrote the operational record, typed the doorbell, sent Enter, and confirmed the submit on that pane.
-`test_matrix_claude_named_session_titled_rule` in `tests/fm-composer-lib.test.sh` pins idle, ghost-suggestion, typed, and extraction cases on every capability profile, the unnamed ghost case, and the Pi blank-row non-regression.
+`test_matrix_claude_named_session_titled_rule` in `tests/fm-composer-lib.test.sh` pins idle, ghost-suggestion, typed, and extraction cases on every capability profile, and the unnamed ghost case.
 The composer-matrix guard's `claude-named` arm requires the cursorless read of a real named Claude pane to be exactly `empty`:
 
 ```sh
@@ -1151,16 +1052,14 @@ ok - opencode (1.18.33): the doorbell reached a real worker, which acted and ack
 ```
 
 OpenCode needed `FM_SEND_INBOX_LIVE_TIMEOUT=560` because its configured model was still mid-turn at the default 240 seconds.
-Pi 0.87.1 was installed but not verified: its configured model returned an account error (`The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account`) before it read the inbox.
 
 ## Waiting-worker command ceilings
 
 The `# Waiting` section of the ship and scout briefs (`bin/fm-brief.sh`) has a worker hold every external wait inside one blocking shell command, bounded by what its harness lets one command run.
 That section is generated only when `config/wait-no-turns` is present.
-Those bounds were read from the installed vendor code on 2026-09-11, macOS arm64, with Pi 0.85.1, codex-cli 0.154.0, and Claude Code 2.1.268.
+Those bounds were read from the installed vendor code on 2026-09-11, macOS arm64, with codex-cli 0.154.0 and Claude Code 2.1.268.
 
 ```sh
-grep -n "Timeout in seconds" "$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/tools/bash.js"
 strings -n 20 "$(readlink -f "$(command -v codex)")" | grep -o "Non-empty writes default to [^.]*; empty polls wait [^.]*\."
 strings -n 8 "$(readlink -f "$(command -v claude)")" | grep -oE '=120000,[A-Za-z0-9_$]+=600000;' | head -1
 ```
@@ -1168,12 +1067,10 @@ strings -n 8 "$(readlink -f "$(command -v claude)")" | grep -oE '=120000,[A-Za-z
 Observed output:
 
 ```text
-28:    timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.
 =120000,ARo=600000;
 ```
 
-Pi's bash tool runs a command with no time limit unless the call passes `timeout`, so the brief asks for at most 2700 seconds, which stays under the watcher's 3600-second busy-turn bound.
 Codex yields a still-running command back to the model, and one empty `write_stdin` poll then waits up to 300000 ms.
 Claude Code's Bash tool defaults to 120000 ms and accepts at most 600000 ms; `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` override those two values.
 
@@ -1188,7 +1085,7 @@ sleep 40; echo "checked at $(date +%s)"              # rc=0
 
 An earlier `sleep 60` chained ahead of a status check was refused before execution, with a message pointing at `Monitor` with an until-loop and at `run_in_background: true`, and adding "Do not chain shorter sleeps to work around this block".
 The blocking foreground `until` loop is therefore the wait a Claude Code worker may use, and it is what the brief names, because the refusal's own `run_in_background` suggestion is the one shape a waiting worker must not take: a backgrounded call returns at once and so does not wait at all.
-The brief's portable regression is `tests/fm-brief.test.sh`; rerun these commands after upgrading any of the three harnesses and update the numbers in the brief when they move.
+The brief's portable regression is `tests/fm-brief.test.sh`; rerun these commands after upgrading either harness and update the numbers in the brief when they move.
 
 ## Gemini
 
@@ -1992,7 +1889,6 @@ ok - forced teardown retains a nested secondmate home and its grandchild's Herdr
 Real captures verified these active distinctions:
 
 - Claude and Codex use bare `❯` and `›` agent composers.
-- Pi uses content between complete separator rows and requires exact native Pi identity.
 - Dim or faint suggestion text is ghost content, while normally styled text is pending input.
 - On a kiro pane only, a near-achromatic truecolor run up to `FM_COMPOSER_GHOST_GRAY_LUMA_MAX` is ghost content, while a chromatic glyph at similar luminance stays real; every other harness keeps the shared ceiling, so Claude's grey slash-command input stays typed input.
 - On a kiro pane only, a 256-colour index is luminance-tested as ghost content inside the 232-255 greyscale ramp, whose RGB is fixed by definition; every other index, and every index on another harness, is not tested at all.
@@ -2001,7 +1897,7 @@ Real captures verified these active distinctions:
 - Codex 0.154's idle braille starfield rows are composer furniture, with the dated Herdr evidence and refresh command in [Composer classification matrix](#composer-classification-matrix).
 
 `tests/fm-composer-ghost.test.sh`, `tests/fm-composer-lib.test.sh`, and the Herdr composer cases pin the exact captured ANSI bytes.
-The U+2063 operational and routed-request separators were exercised through a real Pi-on-Herdr path; the byte-exact active regression is:
+The byte-exact active regression for the U+2063 operational and routed-request separators on Herdr is:
 
 ```sh
 FM_SEND_MARKER_HERDR_E2E=1 \
@@ -2053,23 +1949,6 @@ ok - real herdr: an agent that does not stop fails closed instead of being repor
 The registry read through `herdr pane report-agent` is the same source `fm_backend_herdr_agent_state` classifies, and since 2026-09-10 that registration counts as an agent only while `pane process-info` shows a harness process behind it, so the guard backs the registration with a real process named like a harness (using `fm_agent_standin` from [`tests/lib.sh`](../../tests/lib.sh)) and then stops that process, with no real harness launched.
 That command is the guard that refreshes this record; run it after every Herdr upgrade rather than trusting the version above.
 
-For Pi on Herdr 0.9.0, `herdr agent get` reflects whether the agent process remains live; its registration does not persist merely because the pane and parent shell do.
-A Pi launched as a child of the pane shell (not via `exec`) that then `/quit`s or is SIGKILL'd leaves the pane and shell in place, and `agent get` returns `agent_not_found`.
-A sibling live idle Pi stays `agent=pi` with `agent_status=idle`.
-`fm_backend_herdr_pane_agent_state` maps that `agent_not_found` leftover shell to `no-agent` and `fm_backend_herdr_agent_state` maps it to `dead` (relaunch-allowed), while the live idle pane stays `alive`.
-`herdr pane get` `.agent_status` can still read `idle` after the occupant is gone; liveness is `agent get`, never that pane field.
-
-```sh
-tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh
-```
-
-Refresh that live pair after every Herdr upgrade. Observed 2026-09-10 on Herdr 0.9.0 / protocol 22 with Pi 0.82.0 in an isolated `fm-lab-` session:
-
-```text
-ok - agent get distinguishes leftover-shell (dead/no-agent) from live idle Pi
-ok - pane get agent_status lag cannot keep an exited occupant classified alive
-```
-
 ### Endpoint recovery classification
 
 Measured 2026-09-10 on macOS aarch64 against Herdr 0.9.0 (protocol 22) in an isolated `fm-lab-` session.
@@ -2119,34 +1998,17 @@ The Herdr refusal when a shell accepts the command but does not move is not exer
 
 ### Stale agent registration
 
-Measured 2026-09-10 on macOS aarch64 against Herdr 0.9.0 (protocol 22) and Pi 0.85.1 in an isolated `fm-lab-` session (upstream issue #4115, duplicates #3639, #3487, #2908, #3545).
+Measured 2026-09-10 on macOS aarch64 against Herdr 0.9.0 (protocol 22) in an isolated `fm-lab-` session (upstream issue #4115, duplicates #3639, #3487, #2908, #3545).
 
-Herdr keeps a Pi registration after the Pi process has exited to a shell when a nested interactive shell sits under the pane's top shell, which is the crew shape `treehouse get` leaves behind; a plain `/quit` directly under the top shell, and a `kill -9` of Pi, both released it on this version.
-Reproduced in the lab with a nested `zsh` under the pane shell, then `pi` with no prompt, then `/quit`:
+Herdr keeps an agent registration after the agent process has exited to a shell when a nested interactive shell sits under the pane's top shell, which is the crew shape `treehouse get` leaves behind.
 
-```sh
-herdr pane run w1:p1 zsh --session "$LAB"; herdr pane run w1:p1 pi --session "$LAB"
-herdr agent get w1:p1 --session "$LAB" | jq -c '.result.agent | {agent, agent_status}'
-herdr pane process-info --pane w1:p1 --session "$LAB" | jq -c '.result.process_info | {shell_pid, fg: .foreground_process_group_id, procs: [.foreground_processes[] | {pid, name, argv0}]}'
-herdr pane send-text w1:p1 '/quit' --session "$LAB"; herdr pane send-keys w1:p1 Enter --session "$LAB"
-herdr agent get w1:p1 --session "$LAB" | jq -c '.result.agent | {agent, agent_status}'
-herdr pane process-info --pane w1:p1 --session "$LAB" | jq -c '.result.process_info | {shell_pid, fg: .foreground_process_group_id, procs: [.foreground_processes[] | {pid, name, argv0}]}'
-```
-
-```text
-{"agent":"pi","agent_status":"idle"}
-{"shell_pid":87754,"fg":35952,"procs":[{"pid":35952,"name":"node","argv0":"pi"}]}
-{"agent":"pi","agent_status":"idle"}
-{"shell_pid":87754,"fg":35834,"procs":[{"pid":35834,"name":"zsh","argv0":"zsh"}]}
-```
-
-Before the fix `fm_backend_agent_state herdr` read that second state as `alive`, so `bin/fm-control.sh <id> relaunch` and `bin/fm-spawn.sh --relaunch` were refused for as long as the registration lived, which is hours.
+Before the fix `fm_backend_agent_state herdr` read that state as `alive`, so `bin/fm-control.sh <id> relaunch` and `bin/fm-spawn.sh --relaunch` were refused for as long as the registration lived, which is hours.
 The registration is still present after the wait, and Herdr's own `pane report-agent` leaves the same shape behind on any pane, which is what the lifecycle-control guard uses.
 
-Two vendor facts the fix rests on, both read from the outputs above and from `fm_backend_herdr_pane_process_state`'s `pane process-info` parse:
+Two vendor facts the fix rests on, read from `fm_backend_herdr_pane_process_state`'s `pane process-info` parse:
 
-- Pi's process presents with kernel name `node` and argv0 `pi` (its foreground group also carries Pi's child `node` helpers with argv0 such as `npm view ... version`), so a running Pi is attributed by argv[0] exactly as the tmux probe attributes it; a symlink named `claude` to `sleep` presents as name `sleep`, argv0 `claude`.
-- Herdr creates the record with its own placeholder `agent_status` of `unknown` the moment it notices Pi, before Pi's extension reports `idle`; that transient reads `unknown` in the pane classifier as it always did, and only a lifecycle status is subject to the process-level proof.
+- A harness process is attributed by argv[0] exactly as the tmux probe attributes it; a symlink named `claude` to `sleep` presents as name `sleep`, argv0 `claude`.
+- Herdr creates the record with its own placeholder `agent_status` of `unknown` the moment it notices an agent, before the agent reports `idle`; that transient reads `unknown` in the pane classifier as it always did, and only a lifecycle status is subject to the process-level proof.
 
 Subcommand presence below the 0.9.0 measurement, checked 2026-09-10 on macOS aarch64 against the pinned upstream release clients fetched from `https://github.com/ogulcancelik/herdr/releases/download/v<version>/herdr-macos-aarch64` (now redirected to `herdrdev/herdr`):
 
@@ -2165,89 +2027,14 @@ process-info  Show pane process information
 
 This proves subcommand presence in the client only, not the server response shape, which is measured only on 0.9.0 above.
 
-The live guard that refreshes this record runs by default wherever Herdr and Pi are installed, spends no model token, and fails naming both versions:
-
-```sh
-tests/fm-herdr-pi-stale-registration-live-e2e.test.sh
-```
-
-Observed 2026-09-10:
-
-```text
-# pi 0.85.1 under herdr 0.9.0: registered idle, foreground [{"name":"node","argv0":"node"},{"name":"node","argv0":"node"},{"name":"node","argv0":"rpiv-ask-user-question version"},{"name":"node","argv0":"npm view gentle-engram version"},{"name":"node","argv0":"pi"}]
-ok - real herdr 0.9.0 + pi 0.85.1: a running registered pi classifies alive at process level
-# herdr 0.9.0 kept the pi registration (idle) after /quit under a nested shell: the stale-registration branch is exercised
-ok - real herdr 0.9.0 + pi 0.85.1: the registration left behind by a quit pi reads stale-agent and recovers as dead
-```
-
 `tests/fm-control-herdr-smoke.test.sh` proves the same shape through the control plane with no harness launched (the two `stale` lines under "Agent lifecycle control" above): a registration over a real agent-named process reads `alive`, stopping that process makes the pane read `stale-agent` and recover as `dead` while `agent get` still reports the record, `exit` then reports `already-stopped`, and `--relaunch` reuses the same endpoint with the local copy intact.
 `tests/fm-backend-herdr.test.sh` pins the logic portably with canned `process-info` bodies over real processes, driving the signals apart: the identical shell-only foreground reads `stale-agent` for a childless shell and `live` when an agent-named process is still a descendant of that shell, a `working`, `done`, or `blocked` record over a shell-only pane reads the same as `idle`, an unreadable process view reads `unknown` and refuses husk closing, a transient prompt helper beside the shell settles into `stale-agent` on the next shell-only sample while a foreground that never settles within the bound still reads `live`, and `busy_state` verifies a `working` record before reporting busy.
 `tests/fm-crew-state.test.sh` pins the recovery classifier: a stale registration over a shell-only pane reports agent gone rather than alive or unreachable, and a stale `working` record never reports the pane working.
 A stale-registration pane is never a husk: create, reclaim, presentation recovery, and session cleanup keep refusing it, and only recovery reuses it.
 
-### Pane status authority across a relaunch
-
-Measured 2026-09-21 on Linux x86_64 against Herdr 0.9.1 (client protocol 22) and Pi 0.86.1, in an isolated `fm-lab-` session (`bin/fm-herdr-lab.sh`), after the same freeze was observed live on a relaunched Pi crewmate whose pane read `idle` while its validation pipeline ran.
-
-The stale registration above is not only a recovery-classification problem: it is the pane's status AUTHORITY, and it is bound to one agent session identity. Herdr applies a lifecycle/session report only when it matches what it bound, so an agent started FRESH in that pane - the shape `bin/fm-control.sh <id> relaunch` produced before this fix - reports a new session into a pane that ignores it. The pane then stays at whatever the previous agent last reported: working reads idle, indefinitely, because the registration outlives its process and nothing from outside repairs it.
-
-Reproduced with a real Pi under a nested shell, `/quit`, and a second fresh Pi in the same pane:
-
-```sh
-# nested shell, then a real pi (a prompt is what makes the extension report;
-# session_start alone did not register on this version)
-herdr pane send-text w1:p1 'zsh' --session "$LAB"; herdr pane send-keys w1:p1 Enter --session "$LAB"
-herdr pane send-text w1:p1 "$PI --tui-mode regular 'say ready'" --session "$LAB"; herdr pane send-keys w1:p1 Enter --session "$LAB"
-herdr agent get w1:p1 --session "$LAB" | jq -c '.result.agent | {agent_status, session: .agent_session.value}'
-herdr pane send-text w1:p1 '/quit' --session "$LAB"; herdr pane send-keys w1:p1 Enter --session "$LAB"
-# then start a SECOND fresh pi in the same pane and re-read
-```
-
-```text
-{"agent_status":"idle","session":"/home/u/.pi/agent/sessions/--wt--/2026-09-21T14-10-08-776Z_01a0c44d.jsonl"}
-# after /quit: the registration and its session are still there, process gone
-{"agent_status":"idle","session":"/home/u/.pi/agent/sessions/--wt--/2026-09-21T14-10-08-776Z_01a0c44d.jsonl"}
-# after a FRESH second pi started working in that pane: unchanged
-{"agent_status":"idle","session":"/home/u/.pi/agent/sessions/--wt--/2026-09-21T14-10-08-776Z_01a0c44d.jsonl"}
-```
-
-Two repair paths were measured and do not work, so the reference is preserved rather than cleared:
-
-- `herdr pane report-agent-session` / `report-agent` from another process are accepted (rc=0) and never applied, for `--source herdr:pi`; the same source's reports are accepted when the reporting process is the registered pane agent (Pi's own extension) and when a custom source is used, which is how the smoke fixtures register one.
-- `herdr pane release-agent --source herdr:pi --agent pi` on that stale registration is accepted (rc=0) and changes nothing, matching its documented guard that it only ends authority when the agent process exits.
-
-Resuming the bound session instead makes the replacement's reports land, which is what `bin/fm-spawn.sh` now does for a relaunch:
-
-```text
-# C: quit the fresh second pi, then pi --session <the bound path> with a slow turn
-poll 8: {"agent_status":"working","session":".../2026-09-21T14-10-08-776Z_01a0c44d.jsonl"}
-```
-
-The read that supplies the reference is `bin/backends/herdr.sh`'s `fm_backend_herdr_pane_agent_session_ref`, the per-harness rule is `bin/fm-control-lib.sh`'s `fm_control_relaunch_resume_flag`, and the launch argument is composed by `relaunch_resume_args` in `bin/fm-spawn.sh`; `docs/herdr-backend.md` "Agent status authority and relaunch" owns the contract. Nothing here changes `resume` as a control verb, and only a relaunch asks for it.
-
 ### Away-mode transport
 
-The away daemon is no longer launched on Pi; the away posture there is the record `bin/fm-afk-contract.sh` owns.
-The Pi/Herdr away posture and return transport was verified on 2026-09-08 against a real Pi primary in an isolated Herdr lab session, Herdr 0.9.0 and Pi 0.82.0:
-
-```sh
-FM_AFK_PI_HERDR_E2E=1 HERDR_LAB_HELPER=bin/fm-herdr-lab.sh \
-  tests/fm-afk-pi-herdr-return-e2e.test.sh
-```
-
-Relevant transport output:
-
-```text
-ok - real Pi primary: the away posture is recorded with no daemon launched
-ok - real Pi/Herdr: nothing injects into the captain pane under the away posture
-evidence: herdr=herdr 0.9.0 pi=0.82.0 target=fm-lab-fm-afk-pi-return-37189-7133:w1:p1 archived-records=2
-```
-
-Observed guarantees: `fm-afk-launch.sh start` refused on the Pi primary and the posture was recorded with no daemon pid, flag, or terminal; a pending real Pi draft was left untouched with nothing submitted into the captain pane; the unmarked return request was recognized as the return, rendered the brief health first, and opened the catch-up gate on the live blocker; resolving the blocker cleared the gate, and a clean re-entry and return left exactly one archived record per away window.
-The current guard uses one `enter` call for each entry, so no separate confirmation sits between `/afk` and the durable record.
-The current catch-up reporting boundary is pinned by `tests/fm-afk-return.test.sh` and the same live entry point: Bearings continues through a pending return catch-up, projects its posture as an action-free warning outside Captain's Call, and drops that warning after the gate clears, while an active away window still refuses.
-The fixture captures submitted input through Pi's `input` extension hook, so the lab agent directory needs no provider credentials.
-The daemon injection transport into a live composer keeps its coverage in `tests/fm-afk-inject-herdr-e2e.test.sh` for the harnesses that still run the daemon, and the dedicated Herdr daemon workspace topology is covered by `tests/fm-afk-launch.test.sh` and preserves the captain tab's pane count.
+The daemon injection transport into a live composer keeps its coverage in `tests/fm-afk-inject-herdr-e2e.test.sh`, and the dedicated Herdr daemon workspace topology is covered by `tests/fm-afk-launch.test.sh` and preserves the captain tab's pane count.
 
 ## Zellij
 
@@ -2549,7 +2336,6 @@ Every tool below printed `interrupt-delivered ... verified=agent-alive cancel=un
 | Claude Code 2.1.308 | `haiku` | `working`, `done`, `blocked` (`claude-code`) | `claude-hook` | `empty` idle and after each submit |
 | Codex 0.163.0 | `gpt-6-luna` | `working`, `idle` (`codex`) | `unknown codex-unverified`, the shared Codex contract | `empty` |
 | OpenCode 1.19.3 | `openai/gpt-6-luna-fast` | none | `opencode-plugin` | `empty` with the cursor-anchored read |
-| Pi 0.87.0 and Pi signed 0.87.0 | `openai-codex/gpt-6-luna` | none | `pi-ext` | `empty` |
 | Muse Code 1.4.11 | default | `working`, `done` (`muse`) | `rex-native` while working, `muse-session-log` after | `empty` |
 | Devin 3000.11.1 | default | none | `devin-hook` | `empty` |
 
@@ -2560,7 +2346,7 @@ The launches set `DISABLE_AUTOUPDATER=1`, `OPENCODE_DISABLE_AUTOUPDATE=1`, and `
 Untested on Rex:
 
 - Cursor Agent 2026.09.28 is installed but not signed in on this machine; its tab showed `Press any key to log in...`, the composer read `unknown`, and `exit` correctly refused to type into that screen.
-- Kimi, Oh My Pi, Gemini, Rovo Dev, Antigravity, Command Code, and Polytoken are not installed here, so Command Code stays refused on Rex.
+- Kimi, Gemini, Rovo Dev, Antigravity, Command Code, and Polytoken are not installed here, so Command Code stays refused on Rex.
 
 The idle composer of every installed tool the live guard covers, read on Rex with and without the cursor:
 
@@ -3094,207 +2880,15 @@ Refresh this harness-dependent proof before accepting a cursor upgrade:
 FM_HARNESS_LIVENESS_DRIFT=1 bin/fm-test-run.sh tests/fm-harness-liveness-drift-live-e2e.test.sh
 ```
 
-## Pi supervision branch
-
-The supervision-branch extension (`.pi/extensions/fm-branch-supervision.ts`, [docs/pi-supervision-branch.md](../pi-supervision-branch.md)) builds its second session through the Pi SDK surface: `createAgentSession` (including its `model`, `modelRuntime`, and `thinkingLevel` options), `DefaultResourceLoader` with `extensionFactories`, `SessionManager`, `createBashToolDefinition` with a `spawnHook`, `sendCustomMessage` for routine notes, `appendEntry` and `registerEntryRenderer` for captain outcomes, the `before_provider_request` hook, the command context's model registry for picker candidates, a fresh `ModelRuntime` for isolated-branch resolution, and Pi's own `getSupportedThinkingLevels`/`clampThinkingLevel` plus its `getThinkingLevel` and `thinking_level_select` extension surface for effort.
-In TUI mode, its `/supervision-model` model list is drawn with Pi's own `SelectList`, `Input`, `fuzzyFilter`, and `DynamicBorder` through the extension context's `ui.custom` surface, which is what bounds and searches a long catalog.
-
-Processing-retry visibility was verified on 2026-09-27 against Pi 0.87.1 with a local intercepted provider stream, without credentials or an external provider request:
-
-```sh
-bin/fm-test-run.sh tests/fm-pi-branch-extension.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 npm exec --yes --package=typescript@5.9.3 -- bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh tests/fm-pi-primary-types.test.sh
-```
-
-```text
-ok - real Pi SDK 0.87.1 suppresses only empty or exact-repeat retry finals, retains first and differing replies after reopen, buffers retry streaming, and keeps outcomes retryable
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.87.1
-```
-
-The guard runs the extension through Pi's actual message event runner, renders its streamed replies with the stock assistant component, and checks both live agent state and a reopened session file.
-The portable processing-turn case additionally covers whitespace-only replies, a one-character difference, prose alongside acknowledgment calls, signed reasoning and tool-call preservation, rejected and partial acknowledgements, busy follow-ups, user steering, and both orderings of a user message batched with a processing request.
-Other primary harnesses do not load this Pi extension, and these event and persistence boundaries are independent of the runtime session backend.
-
-Evidence produced 2026-08-25 on macOS 26.5.2 arm64, Node v24.13.1:
-
-- Historical real-SDK guard: `FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh` against the globally installed `@earendil-works/pi-coding-agent` 0.81.1 printed `ok - real Pi SDK 0.81.1 accepts the branch session construction and preserves an unpromptable wake`.
-  The guard read no credentials and made no provider call: an isolated empty `PI_CODING_AGENT_DIR` left model resolution empty, so the branch's first prompt failed fast and exercised the former direct-branch fallback.
-  That fallback probe predates watcher-owned settlement and is not current evidence for the replacement-safe delivery boundary.
-  The same run confirms that a real `ModelRegistry` over that empty agent dir still exposes the picker-facing availability surface, then pins `openai/no-such-live-model` and proves that the branch's own `ModelRuntime` refuses the unresolvable pin instead of silently running supervision on main's model.
-- Model-pin precedence: the same guard run printed `ok - real Pi SDK 0.81.1 applies an explicit branch model on create and over a reopened session's recorded model`.
-  It declares a local `fm-live-fake` provider in an isolated `models.json`, never contacts it, and proves through `session.model` that an explicit model is applied on create, still wins over the model a reopened session recorded, and is absent-pin-restorable - the SDK behavior needed when a model or effort change reopens the current main session's branch conversation.
-- Effort-pin vendor contract: the same guard run printed `ok - real Pi SDK 0.81.1 reports its own supported effort levels and applies an explicit branch effort over a reopened session's recorded level`.
-  Over its own local never-contacted provider it confirms that `getSupportedThinkingLevels` still returns `["off","minimal","low","medium","high","xhigh","max"]` for a model mapping every extended level, narrows to `["off","minimal","low","medium","high"]` for a reasoning model mapping none, returns `["off"]` for a non-reasoning model, and that `clampThinkingLevel` lowers `max` to `high` on the narrow model while collapsing an unrecognized token to `off` - which is why the extension rejects an unrecognized pin before that clamp can see it.
-  It then proves through `session.thinkingLevel` that an explicit effort is applied on create, that a reopened session with no override restores its own recorded level, that an explicit effort beats that recorded level, and that an over-ceiling effort is clamped rather than refused.
-  The recorded-level cases need a session file Pi will actually restore from, and Pi flushes one only once an assistant message exists, so the guard appends the level change and that message through the real `SessionManager` rather than hand-writing the format.
-- Picker primitives: on 2026-08-26, after the final portable-shell and sentinel fixes, `bin/fm-test-run.sh tests/fm-pi-branch-extension.test.sh` again printed `ok - the installed Pi still bounds the picker's list and ranks its search` against the same installed 0.81.1 package.
-  That case imports the real `SelectList`, `Input`, `fuzzyFilter`, and `DynamicBorder`, renders a 42-row catalog through the real `SelectList` at the visible bound the extension asks for, and fails naming the installed version if Pi stops exporting a primitive or stops bounding what it renders; it skips when no npm package is installed, and the portable stubbed cases in the same file hold the ordering, search, and branch-only-pin behavior everywhere.
-- Strict typecheck: `tests/fm-pi-primary-types.test.sh` printed `ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.81.1` with the branch extension and its imported libraries included.
-  [The extension's effort-vocabulary assertion](../../.pi/extensions/fm-branch-supervision.ts) owns that invariant; the [typecheck](../../tests/fm-pi-primary-types.test.sh) owns the checked SDK matrix.
-- Historical custom-message provider conversion: on 2026-08-26, `FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh` against installed `@earendil-works/pi-coding-agent` 0.84.1 printed `ok - real Pi SDK 0.84.1 delivers a custom message to the provider as user text carrying only content, so the captain outcome's typed envelope is what reaches the model`.
-  The guard passes a typed captain outcome and a plain rendered routine note through Pi's exported `convertToLlm`, proves that `customType` and `display` are not model-visible identity, and classifies the resulting provider text with `bin/fm-operational-input.sh`.
-  This evidence explains the superseded model-relay path but is no longer the captain-delivery contract.
-
-### 2026-08-28 Pi 0.84.4 SDK compatibility refresh
-
-The credential-free live guard and strict typecheck were rerun against the installed `@earendil-works/pi-coding-agent` 0.84.4 package after the Pi primary compatibility repair.
-The live guard used an isolated empty `PI_CODING_AGENT_DIR`, inspected no credentials, and made no provider call.
-
-```sh
-npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh
-```
-
-```text
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.84.4
-ok - real Pi SDK 0.84.4 accepts the branch session construction and preserves an unpromptable wake
-ok - real Pi SDK 0.84.4 applies an explicit branch model on create and over a reopened session's recorded model
-ok - real Pi SDK 0.84.4 reports its own supported effort levels and applies an explicit branch effort over a reopened session's recorded level
-ok - real Pi SDK 0.84.4 delivers a custom message to the provider as user text carrying only content, so the captain outcome's typed envelope is what reaches the model
-FM_TEST_END 2026-08-29T01:01:01Z tests/fm-pi-branch-live-e2e.test.sh exit=0 duration_ms=2520 gate_skip=false
-```
-
-The focused extension suite also exercised the installed Pi 0.84.4 picker and outcome-renderer consumers; [`calm-mode-feasibility.md`](../calm-mode-feasibility.md#2026-08-28-pi-0844-outcome-renderer-compatibility-verification) owns the version-scoped renderer evidence.
-
-### 2026-08-29 deterministic captain-outcome delivery
-
-The credential-free live guard, focused extension suite, store suite, and strict typecheck were run against the locally installed `@earendil-works/pi-coding-agent` 0.84.3 package.
-No model was selected or prompted, no provider call was made, and the active Pi session was not changed.
-
-```sh
-bin/fm-test-run.sh tests/fm-pi-branch-extension.test.sh
-bin/fm-test-run.sh tests/fm-branch-supervision.test.sh
-npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh
-```
-
-```text
-ok - captain outcomes are exact and exactly once across crash, reload, busy main, compaction, and an unrelated assistant response
-ok - startup replay cannot advance the cursor across an unrendered captain outcome
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.84.3
-ok - real Pi SDK 0.84.3 immediately renders appendEntry in the active transcript, persists it across reopen, and excludes it from model context
-```
-
-The live probe loads the extension through Pi's real resource loader and AgentSession, subscribes a stock InteractiveMode, verifies `ExtensionAPI.appendEntry` synchronously inserts the exact registered custom row into its active chat once, reopens the resulting session file to verify exact structured data, and verifies the entry is absent from `buildSessionContext().messages`.
-The focused regression recreates the incident topology with stale compaction framing and an immediately preceding unrelated assistant response, then covers idle and busy delivery, cold startup with late fleet-lock acquisition, the crash boundary after entry persistence but before cursor advancement, and repeated reload without duplication.
-
-### 2026-09-01 sequence-keyed captain-outcome processing
-
-The focused extension suite, store suite, strict typecheck, and credential-free live guard were run against a locally installed `@earendil-works/pi-coding-agent` 0.84.4 package selected with `FM_PI_PACKAGE_DIR`, on macOS 26.5.0 arm64, Node v24.13.1.
-No model was selected or prompted, no provider call was made, and the active Pi session was not changed.
-
-```sh
-FM_PI_PACKAGE_DIR=<pi-0.84.4 package> bin/fm-test-run.sh tests/fm-pi-branch-extension.test.sh
-bin/fm-test-run.sh tests/fm-branch-supervision.test.sh
-FM_PI_PACKAGE_DIR=<pi-0.84.4 package> npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 FM_PI_PACKAGE_DIR=<pi-0.84.4 package> bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh
-```
-
-```text
-ok - a captain outcome reaches main's model as one typed, sequence-keyed processing request while routine notes stay plain
-ok - a captain outcome opens one sequence-keyed processing turn, survives empty and unrelated answers, is re-presented at run end and session start, and closes only on its acknowledgement
-ok - the processed marker is sequence-bound, never ahead of the read cursor, never backwards, and migrates delivered history once
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.84.4
-ok - real Pi SDK 0.84.4 immediately renders appendEntry in the active transcript, persists it across reopen, and excludes it from model context
-```
-
-The focused regression recreated the two 2026-08-31 incident shapes against the real store scripts: a delivered decision outcome whose processing turn returned an empty assistant message, and one whose turn repeated an unrelated prior answer.
-In both, the processed marker held, the same sequence was presented again at the run boundary and after a session replacement, the triggered-turn budget gave way to a next-prompt copy without duplicates, and only `fm_branch_processed` with the presented sequence closed the outcome; a routine outcome never entered the path.
-The migration result in the historical output above is superseded: the current absent-marker rule is owned by `bin/fm-branch-outcome.sh`, and `tests/fm-branch-supervision.test.sh` covers it.
-On this machine the globally installed npm package is 0.81.1, whose stock `ToolExecutionComponent` rendering differs from the 0.84 line and fails the suite's first rendering-consumer case before any delivery case runs, which is why `FM_PI_PACKAGE_DIR` points at the 0.84.4 install above.
-
-### 2026-09-02 historical post-construction provider-error fallback
-
-The focused extension suite, strict typecheck, and real-SDK guard were run against the npm `@earendil-works/pi-coding-agent` 0.84.4 package on macOS 26.5.0 arm64, Node v24.13.1, before fallback ownership moved from the branch extension to the watcher.
-The real-SDK case configured an isolated local OpenAI-compatible model, intercepted its only `fetch` in-process with the incident's non-retryable 429 `Monthly usage limit reached` response, read no user credential, and allowed no external provider request.
-It proved that Pi persisted an assistant message with `stopReason: "error"` and resolved the constructed branch prompt normally, after which the extension released the claimed-row grant, retained the durable queue row, and returned the exact wake to main as a follow-up.
-
-```sh
-FM_PI_PACKAGE_DIR="$HOME/.npm/_npx/1f276a68aabfc75c/node_modules/@earendil-works/pi-coding-agent" bash tests/fm-pi-branch-extension.test.sh
-FM_PI_PACKAGE_DIR="$HOME/.npm/_npx/1f276a68aabfc75c/node_modules/@earendil-works/pi-coding-agent" bash tests/fm-pi-primary-types.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 FM_PI_PACKAGE_DIR="$HOME/.npm/_npx/1f276a68aabfc75c/node_modules/@earendil-works/pi-coding-agent" bash tests/fm-pi-branch-live-e2e.test.sh
-```
-
-```text
-ok - a settled branch turn without a durable outcome falls back and releases its grant for main replay
-ok - post-construction provider errors fall back immediately and repeated failures defer later wakes directly to main
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.84.4
-ok - real Pi SDK 0.84.4 returns a post-construction 429 wake to main without losing its durable row
-```
-
-The current portable regression proves that only consecutive provider errors count toward the two-error broken-branch latch: a durable report between errors resets the streak, the error that reaches the threshold rejects to watcher-owned fallback, and the next wake remains on main without another branch prompt.
-`tests/fm-pi-watch-extension.test.sh` owns the provider-free integration evidence that watcher fallback remains pending until Pi accepts the main follow-up or the branch settles successfully, and that a follow-up accepted while main is streaming neither stalls the successor chain nor escapes replacement replay until Pi consumes it.
-[`pi-supervision-branch.md`](../pi-supervision-branch.md) owns the current cooldown, recovery, and re-latch contract and points to the regression that now covers it.
-
-Scope of the earlier evidence: the installed signed `pi` CLI (0.82.0 at verification time) is a compiled binary whose bundled SDK is not importable from Node, so the importable npm package is the only surface the guard and the typecheck can pin.
-The extension executes inside the signed CLI's own runtime, so a CLI upgrade can drift ahead of the npm surface; refresh the SDK construction, picker, and renderer evidence after every Pi upgrade by rerunning the applicable live guard probes and picker regression with `FM_PI_PACKAGE_DIR` pointing at a matching npm install when one exists.
-The [strict production-consumer typecheck](../../tests/fm-pi-primary-types.test.sh) owns its dependency contract; historical typecheck commands and outputs here do not describe its current SDK selection.
-The [live-guard contract](../pi-supervision-branch.md#live-guards) owns the current fallback observations and fixture limits; rerun it against the matching importable Pi package to refresh SDK fallback evidence.
-
-### 2026-09-02 streaming-time watcher delivery
-
-The focused watcher suite, strict typecheck, and credential-free live guard were run against the npm `@earendil-works/pi-coding-agent` 0.84.4 package selected with `FM_PI_PACKAGE_DIR`, on macOS 26.6.2 arm64, Node v24.14.1, after the watcher extension stopped waiting for `before_agent_start` before settling a main delivery.
-No credential was read, no request left the machine, and the active Pi session was not changed.
-
-```sh
-bin/fm-test-run.sh tests/fm-pi-watch-extension.test.sh
-FM_PI_PACKAGE_DIR=<pi-0.84.4 package> npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 FM_PI_PACKAGE_DIR=<pi-0.84.4 package> bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh
-```
-
-```text
-ok - Pi hung successor falls back to one typed actionable wake
-ok - Pi streaming-time wake delivery keeps the successor chain and replays only unconsumed wakes
-ok - Pi retries a verified successor that failed during wake delivery once that delivery settles
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.84.4
-ok - real Pi SDK 0.84.4 queues a streaming-time watcher wake without before_agent_start, keeps the successor chain, and surfaces consumption of both follow-ups
-```
-
-The live probe loads the tracked watcher extension through Pi's real resource loader into a real AgentSession whose only provider is a local fake with its fetch intercepted in-process and held open mid-stream.
-It proved that a follow-up the extension sends while main is streaming raises no `before_agent_start` at queue time or when the run reaches it, joins the run as a user `message_start` carrying the exact wake text in its own model turn, and is followed by a verified successor and delivery of the next close; a follow-up sent to the idle main raises `before_agent_start` with the exact text before its user `message_start`.
-The portable regression drives the same shape with a fake main that never raises `before_agent_start` while streaming, then proves a replacement replays only the follow-up Pi had not consumed and that an exhausted restoration delivers its typed failure without launching a further arm.
-A second regression holds a branch settlement open while the verified successor exits with a failure, and proves that failure takes the ordinary bounded retry once the delivery settles rather than leaving the generation with no watcher and no retry.
-
-### 2026-09-04 off-thread supervision outcome delivery
-
-The real-TUI responsiveness guard, focused extension suite, store suite, and strict typecheck were run on macOS 26.5.0 arm64, Node v24.13.1, tmux 3.6a, against the signed Pi launcher 0.82.0 for the TUI arms and the npm `@earendil-works/pi-coding-agent` 0.81.1 package for the typecheck.
-The lab used a scratch `FM_HOME`, a scratch project holding a copy of the tracked extension, a private tmux socket, a scratch session directory, and `--offline`; only `/new` was ever sent, so no model turn ran and no request left the machine, and the captain's own Pi session was not touched.
-
-```sh
-FM_PI_BRANCH_RESPONSIVENESS_E2E=1 bash tests/fm-pi-branch-responsiveness-live-e2e.test.sh
-bin/fm-test-run.sh tests/fm-pi-branch-extension.test.sh
-bin/fm-test-run.sh tests/fm-branch-supervision.test.sh
-npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
-```
-
-```text
-pi 0.82.0 keystroke echo, worst observed: floor 22.6 ms, extension idle 35.6 ms, extension delivering 36.8 ms
-ok - supervision outcome delivery keeps the real Pi 0.82.0 TUI echoing keystrokes at its unloaded floor
-ok - outcome delivery keeps the event loop running and interleaved reports stay ordered and exactly once
-ok - a session replaced mid-delivery cancels cleanly and the stored outcome still arrives exactly once
-ok - a failing store script surfaces to the branch and its outcome is neither lost nor delivered twice
-ok - a failed cursor write re-delivers a routine note exactly once more while a captain outcome stays deduplicated
-skip: installed Pi 0.81.1 predates the stock renderer contract 0.84.4 this case compares against
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.81.1
-```
-
-That skip is the renderer case declining to render a verdict on a Pi older than the contract it compares against: since 0.84.4 the stock renderer no longer supplies an implicit reset at multiline boundaries and the extension emits that reset itself, so an older installed Pi differs legitimately.
-It names the installed version and the floor rather than degrading quietly, and a package whose version cannot be read at all is still a failure.
-
-The same guard against the pre-change extension in the same lab measured a 676.9 ms worst keystroke echo while delivering two outcomes and a 295.3 ms worst echo with nothing to deliver, against a 49.2 ms extension-free floor, and failed as designed.
-Measured through the same real `fm_branch_report` tool and real `bin/` scripts with a 1 ms interval timer, the largest single block of the JavaScript thread fell from 273 ms to 2.0 ms for a routine outcome, from 286 ms to 2.0 ms for a captain outcome, and from 134 ms to 1.9 ms for main's acknowledgement, against a 1.3-2.2 ms idle-loop floor.
-Those absolute figures are specific to this host and Pi version; the guards assert the relationship (delivery must stay in the class of the same machine's own floor) rather than a remembered millisecond number.
+## Supervision branch away posture
 
 ### 2026-09-18 away posture parks main
 
-The watcher and branch extension suites, the fleet-record, decision-answer, return, and merge suites, the credential-free live guard, and the strict typecheck were run on macOS 26.5 arm64 (Darwin 25.5.0), Node v24.13.1, against the globally installed npm `@earendil-works/pi-coding-agent` 0.81.1 package for the live guard and the npx-cached 0.85.1 package for the typecheck.
-No model was selected or prompted, no provider call was made, and the captain's own Pi session was not changed.
+The fleet-record, decision-answer, return, and merge suites were run on macOS 26.5 arm64 (Darwin 25.5.0).
+No model was selected or prompted and no provider call was made.
 
 ```sh
-bin/fm-test-run.sh tests/fm-pi-watch-extension.test.sh tests/fm-pi-branch-extension.test.sh
 bin/fm-test-run.sh tests/fm-branch-supervision.test.sh tests/fm-send-resolve-key.test.sh tests/fm-afk-return.test.sh tests/fm-pr-merge.test.sh
-FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-pi-branch-live-e2e.test.sh
-FM_PI_PACKAGE_DIR=<pi-0.85.1 package> npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
 ```
 
 ```text
@@ -3307,22 +2901,18 @@ ok - relocated branch spawn admits only already-queued dispatchable work, includ
 ok - the away spend cap is rechecked under the task-set lock so concurrent spawns cannot both publish
 ok - fm-send --resolve-key: a decision answer refuses the attended branch before sending, a blocked: key stays steering, and the away-posture record relocates the answer
 ok - under the away-posture record the branch merges a granted green task, is held without a grant, cannot waive a red check, and is refused at the partition while attended
-ok - real Pi SDK 0.81.1 accepts the branch session construction and preserves an unpromptable wake
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 0.85.1
 ```
 
 Every record read in those regressions ultimately goes through the real `bin/fm-afk-contract.sh`, with fixture wrappers used only to archive at deterministic call boundaries; an absent record, an archived record, and an invalid record are proven to restore attended guarded-action behavior rather than being assumed to.
-At that verification, checking against the installed 0.81.1 package reported a pre-existing `ModelsRefreshOptions.providers` mismatch in the branch's provider-registration path that the away-posture change did not touch; the option exists from the 0.84 line on, which is why that typecheck evidence used the newer package as the earlier entries did.
-The real Pi/Herdr return guard (`FM_AFK_PI_HERDR_E2E=1 tests/fm-afk-pi-herdr-return-e2e.test.sh`) remains the owner of the live return-brief proof; it loads no supervision extension into its synthetic primary and does not yet exercise the parked-main scenario, which is a follow-up for a Herdr-lab-guarded task.
 
 ### 2026-09-20 the away words execute
 
-The away-record owner, launch, return, merge, branch-supervision, contributions, merge-poll security, and Pi branch extension suites were run on macOS 26.6.2 arm64 (Darwin 25.6.0), Node v24.14.1, after the away record became the captain's words alone (version 2, with version 1 still readable) and the per-task merge-grant list retired.
-No model was selected or prompted, no provider call was made, and the captain's own Pi session was not changed.
+The away-record owner, launch, return, merge, branch-supervision, contributions, and merge-poll security suites were run on macOS 26.6.2 arm64 (Darwin 25.6.0), Node v24.14.1, after the away record became the captain's words alone (version 2, with version 1 still readable) and the per-task merge-grant list retired.
+No model was selected or prompted and no provider call was made.
 The 2026-09-18 entry above records the retired grant model's merge matrix; the lines below supersede it for the merge gate.
 
 ```sh
-bin/fm-test-run.sh tests/fm-afk-contract.test.sh tests/fm-afk-launch.test.sh tests/fm-afk-return.test.sh tests/fm-pr-merge.test.sh tests/fm-branch-supervision.test.sh tests/fm-contributions.test.sh tests/fm-pr-check-security.test.sh tests/fm-pi-branch-extension.test.sh
+bin/fm-test-run.sh tests/fm-afk-contract.test.sh tests/fm-afk-launch.test.sh tests/fm-afk-return.test.sh tests/fm-pr-merge.test.sh tests/fm-branch-supervision.test.sh tests/fm-contributions.test.sh tests/fm-pr-check-security.test.sh
 ```
 
 ```text
@@ -3345,163 +2935,6 @@ ok - under the away-posture record the wake carries the verbatim read-back tail,
 ```
 
 The merge suite and the security suite dominate the wall time.
-
-## Pi worker model-stream observation
-
-Verified on 2026-10-13 with the installed Pi 1.2.0 SDK and Node v24.13.0.
-On an unverified Pi version, the guard exercises the spawn-time inert path with its exact warning, no stream handlers, and ordinary busy/idle classification; stream observation stays off until the version is verified.
-Refresh this token-free guard after a Pi upgrade:
-
-```sh
-bash bin/fm-test-run.sh tests/fm-pi-worker-stream-live-e2e.test.sh
-```
-
-Observed output:
-
-```text
-ok - real Pi 1.2.0 stream, tool, completion, and background request phases
-ok - real Pi 1.2.0 default-off worker
-Firstmate model-stream observation write failed; inspect worker instrumentation.
-ok - real Pi 1.2.0 instrumentation deadline terminated writer and output-holding descendant
-ok - real Pi 1.2.0 stream, tool, completion, and background request phases
-# pi-signed unavailable: signed executable not exercised
-ok - real Pi 1.2.0 worker stream lifecycle, background exclusion, and default-off behavior
-```
-
-The guard runs the generated worker extension through Pi's real resource loader, model runtime, agent loop, and custom tool execution in isolated directories.
-Synthetic transport holds an accepted response, supplies substantive and empty events, enters a tool phase, and completes a subsequent request.
-The real provider callback is also exercised outside the foreground agent loop to disconfirm background-request tracking.
-An isolated copy of the toolkit injects one stalled writer command and a descendant that retains output, proving the real extension's deadline ends both processes and Pi continues through its remaining phases.
-No external provider, credentials, primary extension, or live fleet is used.
-The signed executable was absent and is not credited as live-verified on this version.
-The portable busy-state, adapter-wiring, and watcher-triage suites own generation/request rejection and inspection notification behavior.
-
-The unverified-version fallback was checked on 2026-10-31 with installed Pi 1.4.0 and Node v24.22.1 using the same command above.
-The guard asserted the exact spawn warning and absence of stream handlers, then exercised ordinary busy/idle behavior through the real SDK.
-Observed output:
-
-```text
-ok - real Pi 1.4.0 default-off worker
-# pi-signed unavailable: signed executable not exercised
-ok - real Pi 1.4.0 unverified-version warning, inert stream observation, and existing busy/idle behavior
-```
-
-## Native Codex through Pi
-
-Verified on 2026-09-08 with Pi 0.85.1 and the installed `pi-codex-native` 0.2.1 adapter.
-Run this token-free guard after updating Pi, Codex, or the adapter:
-
-```sh
-FM_PI_CODEX_NATIVE_LIVE=1 bash tests/fm-pi-codex-native.test.sh
-```
-
-Observed result: `"result": "PASS"`.
-The guard runs the real Pi runtime, native adapter, three FirstMate primary extensions, native MCP transport, and FirstMate's durable outcome scripts in an isolated home.
-It verifies native `ultra` on initial and operational turns and after restart, startup operational input, watcher arming, a notification while main is idle, outcome read and one acknowledgement, refusal of a duplicate acknowledgement, and no reprocessing after restart.
-Its native App Server peer and watcher-close process are deterministic fixtures; it does not claim a real backend or a live model was tested by that command.
-`tests/fm-busy-state.test.sh`, `tests/fm-busy-adapter-wiring.test.sh`, and `tests/fm-watch-triage.test.sh` cover separate progress notification, unchanged semantic busy state, rejection of a superseded worker's events, and progress refreshing the busy-age bound without fabricating a completed turn.
-
-## Oh My Pi (omp)
-
-omp runs crewmate, scout, secondmate, and primary work; [`supervision.md`](supervision.md#omp-oh-my-pi-native-delivery-2026-09-05) owns the primary evidence.
-The evidence below was produced on 2026-09-05 against omp 18.1.11 (`~/.local/bin/omp`, a Bun-compiled single binary) on macOS 26 arm64 through the Herdr backend with the `openai-codex/gpt-6-astra` model, building on the 2026-09-02 adapter investigation against 18.1.2.
-
-### Process identity and markers
-
-`ps -o comm=` reports the bare name `omp` for the agent process, from both its `!` bash path and the model's bash tool, so identity is the anchored name; `ompd` and `comp` never match.
-The bun global package (`bun install -g @oh-my-pi/pi-coding-agent`) installs `~/.bun/bin/omp` as a symlink to `dist/cli.js` with a `#!/usr/bin/env bun` shebang, so its process is named `bun` and only its arguments (`bun <path>/omp`) name omp.
-`bin/fm-omp-process-lib.sh` owns both shapes: the exact name `omp`, or `bun` whose argument right after bun is a script named exactly `omp`, including an install path that contains spaces.
-`ompd`, `comp`, and another script followed by an `omp` argument never match.
-`tests/fm-omp-harness.test.sh` and `tests/fm-session-lock-ancestry.test.sh` pin these shapes with real processes; the former also drives `bin/fm-harness.sh` and `bin/fm-lock.sh` from a bun-run script.
-
-The token-free guard refreshes the installed-omp evidence and spends no model tokens: it starts omp in JSON-RPC mode with no prompt, and a loaded extension runs `bin/fm-harness.sh` and `bin/fm-lock.sh` from inside that process; the guard passes only when the saved lock names that process's pid.
-
-```text
-FM_OMP_IDENTITY_LIVE=1 bash tests/fm-omp-primary-live-e2e.test.sh
-ok - omp omp/18.12.3 (bun-package): detected as omp and acquired the session lock with no model tokens
-```
-
-Run on 2026-11-10 against omp 18.12.3, the bun package at `~/.bun/bin/omp`, on macOS 26 arm64.
-Before the change the same install detected as `unknown` and the lock refused with `cannot locate harness process in ancestry`.
-The portable cases ran on macOS only; the Linux procps shape (`comm` is the exec name `bun`) is covered by the fake-ps cases in `tests/fm-session-lock-ancestry.test.sh`, not by a Linux run.
-omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, and the default profile sets neither `PI_CODING_AGENT_DIR` nor `OMP_PROFILE` in the process environment.
-`FM_OMP_HARNESS=omp` is Firstmate's own launch marker and wins over an inherited `CLAUDECODE` only under a real omp ancestor; `tests/fm-omp-harness.test.sh` pins both directions with real processes.
-
-### Composer
-
-Under the captain's `unicode` symbol preset the idle screen through Herdr was a bare `❯` (U+276F) row followed directly by the status row:
-
-```text
-❯
- π  · ◔ GPT-6-Astra · 🌳 …-workspace · ⑂ detached · ◫ 15.4%/272K ⟲ · (sub)
-```
-
-Before the status-row rule the shared classifier folded that row into the bare composer's wrap region and read the idle pane `pending`, so `bin/fm-send.sh` skipped its doorbell on the first live omp worker.
-After the rule, the same live Herdr capture read `empty`, a steer's doorbell landed, and the worker opened a turn on it.
-`tests/fm-composer-lib.test.sh` pins the unicode idle row, the nerd-preset idle row, the busy spinner row, and typed text over the same fixture in both locales.
-
-### Busy state and lifecycle
-
-| Fact | Observed |
-| --- | --- |
-| Semantic source | `omp-ext`: `busy source=omp-ext event=agent-start` on the brief, `idle source=omp-ext event=agent-end` at its natural end, `busy` again on a steer, `idle` after a control-plane interrupt |
-| Rendered busy row | `⎋ Working…` (U+2026) above the composer and a braille spinner plus elapsed cell (`⠧ 36s`) in the status row; the omp busy regex accepts only those two TUI signals, not the `Working...` that headless `-p` writes to stderr, since no supervised omp pane runs headless |
-| Interrupt | `bin/fm-control.sh <id> interrupt` delivered a single Escape (`verified=agent-alive cancel=unconfirmed`), the composer read `empty`, and omp raised `agent_end` |
-| Exit | `bin/fm-control.sh <id> exit` typed `/quit`; Herdr then reported the pane `dead` |
-| Extension loading | a file named both by `-e` and by `<cwd>/.omp/extensions` loads twice; discovery is top-level and cwd-only |
-| Extension tools | the openai-codex model invokes a registered tool by writing `xd://<tool>` through omp's virtual-file bridge |
-
-### End-to-end
-
-A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --model openai-codex/gpt-6-astra --effort low` on Herdr and driven to completion:
-
-1. the launch delivered its brief positionally under the tracked posture overlay and the agent executed it with no approval prompt;
-2. the busy record moved seed, busy, idle exactly as the extension contract states;
-3. the report landed and the `done:` status line was appended;
-4. `bin/fm-send.sh` rang the doorbell once the composer read `empty`, and the worker opened a turn on the inbox record;
-5. `bin/fm-control.sh <id> interrupt` cancelled the running turn;
-6. `bin/fm-control.sh <id> exit` stopped the agent and `bin/fm-teardown.sh` returned the worktree and closed the item.
-
-`FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` refreshes the primary evidence; the worker path above is refreshed by repeating the scout dispatch after any omp upgrade.
-
-### Profile flag
-
-Verified on 2026-10-24 against omp 18.4.3 (`~/.bun/bin/omp`, a Bun package install) on macOS 15 arm64, for the [per-secondmate omp profile](../configuration.md#per-secondmate-omp-profile) pin.
-omp extracts `--profile` from anywhere in its arguments, so the flag Firstmate places right after the executable and before `--config` is honored, and it applies to subcommands such as the catalog check's `models --json`:
-
-```text
-$ OMP_SKIP_SETUP=1 omp --profile speak4 --config .omp/fm-worker-overlay.yml --version
-18.4.3
-$ OMP_SKIP_SETUP=1 omp --profile speak4 models --json | jq -r '[.models[].provider]|unique|join(" ")'
-amazon-bedrock anthropic bedrock-mantle ollama openai-codex
-$ OMP_SKIP_SETUP=1 omp --profile BAD models --json
-Error: Invalid OMP profile "BAD". Profile names must match ^[a-z0-9][a-z0-9._-]{0,63}$, cannot be "." or "..", cannot end with ".", and cannot be a Windows reserved device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, or any of those with an extension).
-```
-
-`bin/fm-omp-profile-lib.sh` enforces the same name rule before launch, and `tests/fm-omp-harness.test.sh` pins the flag position, the profile-scoped catalog check, and the unpinned launch through a fake omp.
-Repeat these commands after an omp upgrade to refresh this record.
-
-### Remote second mate on Linux
-
-Verified on 2026-10-28 against omp 18.13.3 (a Bun-compiled binary installed through mise) on Linux x86_64 with Herdr 0.9.1, driven from a macOS primary through a scratch home on both sides.
-The agent process reads `comm=omp` with its executable inside the mise install tree, so the anchored name identifies it on Linux as on macOS and no launcher-specific identity rule is needed:
-
-```text
-$ bin/fm-spawn.sh <id> --secondmate          # config/secondmate-harness: omp anthropic/claude-opus-5-5 high
-spawned <id> harness=omp kind=secondmate mode=secondmate yolo=off window=remote:<id> worktree=<remote-home> remote=<host> backend=herdr
-$ bin/fm-on.sh <id> fm-remote-secondmate-control.sh state <id>
-alive
-$ bin/fm-remote-secondmate-relaunch.sh <id> omp anthropic/claude-opus-5-5 high
-relaunched <id> harness=omp from=omp model=anthropic/claude-opus-5-5 effort=high backend=herdr endpoint=fm-remote:w1:p2 worktree=<remote-home>
-# on the host, the relaunched agent process
-comm=omp FM_OMP_HARNESS=omp HERDR_SESSION=fm-remote
-$ bin/fm-teardown.sh <id>
-teardown <id> complete (remote <host>:<remote-home>)
-```
-
-Two `bin/fm-send.sh fm-<id>` steers, one before and one after the relaunch, were moved to `handled/` by the agent and answered with correlated lines in the remote `state/parent-replies.status`; the second answer reported `bin/fm-harness.sh` resolving `omp` from the agent's own tool shell and the session lock held by the omp process.
-Retirement removes the remote home, and with it the route state that holds the busy records omp arms, so the host-local teardown skips retiring those records once that state directory is gone.
-`tests/fm-remote-secondmate-omp.test.sh` is the portable regression for the remote gates and retirement; repeat the commands above after an omp or Herdr upgrade to refresh this record.
 
 ## Busy inbox escalation
 
@@ -3556,40 +2989,6 @@ On 2.0.11 the brief stays unsent and the shared composer classifier reads it as 
 On 2.0.22 the brief is submitted on its own, yet the composer still reads pending, which is why the gate treats the worker's busy-state plugin record as proof of delivery and the composer only as a veto on the Enter.
 `opencode debug config` on 2.0.11 normalized the launch's legacy `{"permission":{"*":"allow"}}` into an allow-all `permissions` rule; the same command printed no configuration on 2.0.22, so on 2.0.22 the legacy shape rests on the earlier 2.0.21 verification recorded in the OpenCode harness reference.
 `tests/fm-spawn-dispatch-profile.test.sh` pins the gate's outcomes portably: an auto-submitted brief gets no extra Enter, a prefilled brief gets exactly one, a composer that reads unknown before it draws gets its one Enter only once it reads pending, a composer that only reads unknown gets its one Enter at the submit deadline, and a turn that never starts fails the spawn.
-
-## Pi repeated-read containment
-
-Verified on 2026-10-27 UTC on Linux x86_64 with Node 24.22.1 and npm 11.19.1.
-The operator contract, opt-in default and migration procedure are owned by [configuration](../configuration.md#pi-repeated-read-containment).
-The supported SDK matrix is Pi 1.1.0 and 1.2.0, with each release's sibling packages pinned to the same version rather than resolving newer 1.x packages through public dependency ranges.
-TypeScript 5.9.3 checked all tracked Pi consumers with strict no-emit settings for both versions.
-The real SDK fixture uses synthetic provider responses, intercepted fetches and fake Bash operations; it never sends a request to an inference endpoint.
-
-```sh
-bash tests/fm-pi-primary-types.test.sh
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.1.0
-ok - read guard real SDK events/abort against Pi 1.1.0
-ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.2.0
-ok - read guard real SDK events/abort against Pi 1.2.0
-```
-
-Each SDK passed alternating synthetic 85/65-pair histories, SSH-shaped reads, `cut`, outer groups, multiline `nl`/`wc`/`head`/`tail`/`od` pipelines, escaped-newline continuations, duplicate batches and truncated results with compaction.
-Changing output, failed results, foreign ownership, absent opt-in, unknown grouped stages and grouped mutators remained allowed; unrecognized commands are outside the detector rather than denied execution.
-The resumed SDK session retained the stop across marked operational input, extension input and a journal reopen, then accepted deliberate RPC user input.
-No provider fetch occurred after a stop notice, including the small-context compaction case.
-
-Installed Pi 1.4.0 separately passed the token-free RPC guard below, using a synthetic in-process provider, a fake Bash tool and private home/session directories.
-It executed the known multiline grouped read three times, aborted before a fourth execution, refused an operational reset, accepted a fresh RPC user reset and persisted one stop notice plus a proven-owner activation receipt.
-The guard verifies that its Pi process group exits during cleanup.
-
-```sh
-bash bin/fm-test-run.sh tests/fm-read-repetition-live.test.sh
-ok - Pi 1.4.0 installed RPC read guard: veto, abort, durable latch, operational denial and user reset
-```
-
-`tests/fm-read-repetition.test.sh` independently exercises ownership denials and regain, configuration bounds, default-off registration, reset provenance, bounded history, group-recognition controls and preservation of the ignored legacy guard/helper/configuration through a real pre-feature Git fast-forward.
-No macOS or Windows ancestry, native-adapter interception, separate native-tool execution, terminal screenshot/display, worker or fleet-wide protection is claimed.
-The runtime fixture does not reproduce spontaneous model-loop onset or establish a model/serving root cause.
 
 ## OpenCode 1 compatibility of the dual-export plugins
 

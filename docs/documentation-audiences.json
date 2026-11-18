@@ -242,15 +242,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/harness-adapters/references/harness/omp.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/harness-adapters/references/harness/opencode.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": ".agents/skills/harness-adapters/references/harness/pi.md",
       "audience": "agent-runtime"
     },
     {
@@ -450,14 +442,6 @@
       "audience": "operator-current"
     },
     {
-      "path": "docs/pi-supervision-branch.md",
-      "audience": "maintainer-architecture"
-    },
-    {
-      "path": "docs/plans/2026-10-12-2032-feat-pi-stream-silence-plan.md",
-      "audience": "maintainer-architecture"
-    },
-    {
       "path": "docs/remote-secondmates.md",
       "audience": "operator-current"
     },
@@ -498,15 +482,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": "docs/supervision-protocols/omp.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": "docs/supervision-protocols/opencode.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "docs/supervision-protocols/pi.md",
       "audience": "agent-runtime"
     },
     {
@@ -516,6 +492,10 @@
     {
       "path": "docs/supervision-protocols/unknown.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/supervision-branch.md",
+      "audience": "maintainer-architecture"
     },
     {
       "path": "docs/supervision-host.md",

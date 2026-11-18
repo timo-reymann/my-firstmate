@@ -169,7 +169,6 @@ The only sanctioned teardown is `tern_safe_kill_session <session_id> <want_name>
 - Native agent state requires a Tern window control endpoint; remote-host or headless daemon access that can `ls`/`capture` may still lack `ctl`.
 - Multiplexers swallow TSP: a Tern block hosting tmux or Herdr never shows native Tern agent state.
 - There is no verified native push-event wait (`tern events` is not treated as an agent-transition stream; `has_push` stays herdr-only).
-- On Tern 0.9.4 remote-host blocks observed here, plain and `--ansi` capture of an omp TSP surface are empty, and `--surfaces` returns transcript text without omp's composer, so composer-only submit proof is `unknown` for omp and native state is the submit path when `ctl` works.
 - Creating a session or tab does not attempt focus restore; focus behaviour is not live-verified here.
 - A target can disappear after structural readiness and before the operation.
 - Large 64-bit ids are authoritative; tooling that coerces JSON numbers can corrupt endpoints.

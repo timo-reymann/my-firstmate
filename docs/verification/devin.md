@@ -110,7 +110,7 @@ raw fast Esc pair: Revert to step picker open; exit refused; interrupt closed it
 Herdr names the pane from its own screen-detection manifest; with Claude hook import left on, it still reported `devin`, so the feared Claude mislabel did not reproduce.
 `/no-mistakes` typed through `fm-send` submitted as a slash command and loaded the skill.
 A second `fm-send` while the worker ran `sleep 40` rendered no cancellation, and both the running instruction and the queued one completed.
-`exit` on Herdr refuses for a Devin worker: the cursorless composer classifier finds the `❭` row but reads the plain rule below it as an unpaired Pi separator and answers `unknown`.
+`exit` on Herdr refuses for a Devin worker: the cursorless composer classifier finds the `❭` row but reads the plain rule below it as an unpaired separator and answers `unknown`.
 
 ## Coverage and limits
 

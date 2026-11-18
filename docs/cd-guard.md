@@ -82,12 +82,11 @@ It does not permit `cd /home/project`, because an absolute-path `cd` to anything
 
 ## Transport and fail-open behavior
 
-`bin/fm-cd-pretool-check.sh` supports every harness-engine entry shape used by the tracked adapters, with pi-signed sharing Pi's shape:
+`bin/fm-cd-pretool-check.sh` supports every harness-engine entry shape used by the tracked adapters:
 
 - Claude sends stdin JSON at `.tool_input.command` and adds `--claude` to preserve Claude's stderr-only deny requirement.
 - Codex sends stdin JSON at `.tool_input.command` without `--claude`.
 - OpenCode sends the exact command string through `--command <exact string>`.
-- Pi, pi-signed, and omp send the exact command string through `--command <exact string>`.
 - Cursor sends stdin JSON at `.tool_input.command` and adds `--cursor`, which renders the deny as Cursor's own returned decision object.
 
 Processing order is cheapest-first: a strict-superset prefilter, then the primary-checkout scope, then the Node policy owner.
@@ -106,7 +105,6 @@ Identical in shape to `docs/arm-pretool-check.md`:
 - Deny leaves stdout empty because Claude ignores a PreToolUse deny when stdout is nonempty; `--claude` is accepted for the tracked Claude entry and renders the same way.
 - Codex blocks on exit 2 and displays stderr.
 - OpenCode throws only when the checker exits 2.
-- Pi, pi-signed, and omp return `{block: true}` only when the checker exits 2.
 
 ## Shared classifier ownership
 
@@ -122,8 +120,6 @@ The cd-guard never duplicates shell lexing; it adds only the cd-specific decisio
 | Claude | `.claude/settings.json` PreToolUse Bash hook forwarding stdin with `--claude` | Blocks the tool call; stderr deny object, stdout empty. |
 | Codex | `.codex/hooks.json` PreToolUse hook that anchors from `pwd -P`, verifies the hook-loaded firstmate root, and forwards the payload | Blocks on exit 2 and displays stderr. |
 | OpenCode | `.opencode/plugins/fm-primary-cd-check.js` `tool.execute.before` on 1.x, `execute.before` for the `shell` tool on 2.x | Throws, which surfaces as the failed tool result. |
-| Pi | `.pi/extensions/fm-primary-turnend-guard.ts` `tool_call` handler | Returns `{block: true}`; piggybacks on the already-loaded primary extension so no extra `-e` flag is needed. |
-| omp | `.omp/extensions/fm-primary-turnend-guard.ts` `tool_call` handler | Returns `{block: true, reason}` and omp surfaces the reason to the model; runs before the watcher-arm seatbelt in the same auto-discovered extension, so no `-e` flag is needed. |
 | Cursor | `.cursor/hooks.json` `preToolUse` hook matching `tool_name` `Shell`, forwarding stdin with `--cursor` | Prints Cursor's own `{"permission":"deny","user_message":...}` object on stdout and exits 0, because Cursor reads the returned object rather than the exit status. Without `--cursor` the Cursor-delivered payload is the Claude-settings duplicate Cursor also loads, and allows; `docs/arm-pretool-check.md` owns that shared predicate. |
 
 Each harness runs the cd-guard alongside the watcher-arm seatbelt; the two are independent checks, and either deny blocks the command.
@@ -131,7 +127,7 @@ Each harness runs the cd-guard alongside the watcher-arm seatbelt; the two are i
 ## Automated validation
 
 `tests/fm-cd-pretool-check.test.sh` owns the acceptance matrix.
-Every block and allow case runs through Codex-shaped stdin, Claude-shaped stdin, OpenCode-shaped CLI, and Pi-shaped CLI entry forms.
+Every block and allow case runs through Codex-shaped stdin, Claude-shaped stdin, and OpenCode-shaped CLI entry forms.
 The suite also proves the home exemption (a literal absolute `cd` to the primary checkout, with and without a symlink, allowed; a child, sibling, parent, `pushd`, option-bearing, unexpanded, or glob target denied), the end-to-end cwd-leak regression (a firstmate-owned backlog write leaking into a project clone, then denied at the exact command), the checkout scoping (fires in a git-cloned secondmate fixture, inert in a crewmate/scout linked worktree, inert outside a firstmate checkout, inert outside a git repo), the fail-open transport behavior, the prefilter fast path, the policy CLI output contract, and the per-harness wiring.
 
 Run:
@@ -156,7 +152,6 @@ Harness versions and outcomes:
 - **Claude Code 2.1.207** - blocked. Claude reported the top-level command "denied by the `PreToolUse` hook (`fm-cd-pretool-check.sh`)", the `BLOCKED` sentinel was absent, and the subshell form was permitted to run. A prior control `touch` proved the harness executed commands.
 - **codex-cli 0.144.0** - blocked. Codex logged `error=Command blocked by PreToolUse hook: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"[persistent-cd] a persistent top-level directory change ..."}`, the `BLOCKED` sentinel was absent, and the subshell `ALLOWED` sentinel was created. Both the arm and cd PreToolUse hooks ran per command (two `hook: PreToolUse Completed` lines), confirming Codex re-feeds the payload to each hook in the array.
 - **OpenCode 1.17.18** - blocked. `opencode run` printed `✗ cd projects/foo && touch ... failed` with `Error: {"hookSpecificOutput":...,"permissionDecision":"deny"},"systemMessage":"[persistent-cd] ..."}`, the `BLOCKED` sentinel was absent, and the subshell `ALLOWED` sentinel was created.
-- **Pi 0.80.6** - blocked. The `BLOCKED` sentinel was absent while the subshell `ALLOWED` sentinel was created; that differential (top-level denied, subshell run, in the same session) can only come from the guard.
 
 The launch commands mirrored `docs/arm-pretool-check.md`'s validation:
 
@@ -164,5 +159,4 @@ The launch commands mirrored `docs/arm-pretool-check.md`'s validation:
 claude -p "$PROMPT" --dangerously-skip-permissions --output-format text
 codex exec --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "$PROMPT"
 OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' opencode run --print-logs --log-level INFO "$PROMPT"
-pi -p -e .pi/extensions/fm-primary-turnend-guard.ts --no-context-files --no-session "$PROMPT"
 ```

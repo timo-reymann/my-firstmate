@@ -20,7 +20,6 @@
     }
   ],
   "default": [
-    { "harness": "codex", "model": "gpt-5.5", "effort": "medium" },
-    { "harness": "pi", "model": "anthropic/claude-sonnet-5", "effort": "medium", "provider": "claude" }
+    { "harness": "codex", "model": "gpt-5.5", "effort": "medium" }
   ]
 }

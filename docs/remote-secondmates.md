@@ -135,7 +135,7 @@ It never touches a worker whose checkout still exists.
 ### What the remote account must provide
 
 - The remote account must provide the required toolchain, the selected worker runtime, the selected session backend, and credentials that work on that host.
-- A [worker account pin](configuration.md#worker-account-pin-configclaude-account-configpi-account) for the second mate or its workers lives in the remote home's own configuration on that host.
+- A [worker account pin](configuration.md#worker-account-pin-configclaude-account) for the second mate or its workers lives in the remote home's own configuration on that host.
 - The origin URL named for each project must be reachable from the remote account, because projects are cloned on that host rather than copied from the primary.
 
 ## Non-interactive tool contract
@@ -340,7 +340,7 @@ A file at `~/.local/bin/fm-remote-entrypoint.sh` that is not Firstmate's own sym
 | Requirement | Tools |
 | --- | --- |
 | Always required | `git`, `jq`, the selected backend's CLI (`herdr` or `rex`), compatible `tasks-axi`, and `treehouse` |
-| At least one of | `claude`, `codex`, `opencode`, `pi`, `pi-signed`, `kimi`, or `omp` |
+| At least one of | `claude`, `codex`, `opencode`, or `kimi` |
 | Additionally required on macOS | `lsof`, so the doctor and guard can prove which process owns the session socket |
 
 ## Provision a route
@@ -749,7 +749,6 @@ bin/fm-test-run.sh tests/fm-secondmate-sync.test.sh
 bin/fm-test-run.sh tests/fm-remote-reply.test.sh
 bin/fm-test-run.sh tests/fm-remote-backlog-handoff.test.sh
 bin/fm-test-run.sh tests/fm-remote-secondmate-lifecycle-e2e.test.sh
-bin/fm-test-run.sh tests/fm-remote-secondmate-omp.test.sh
 bin/fm-test-run.sh tests/fm-remote-secondmate-trace-context.test.sh
 ```
 

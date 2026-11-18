@@ -766,14 +766,14 @@ It hands the visible pane's ANSI viewport plus Herdr's capability facts to the f
 - Bordered boxes.
 - Bare agent-glyph rows, including muse's `⟩`, which the adapter's retired local pattern silently omitted.
 - opencode's left bar.
-- The Pi separator region this adapter pioneered, admitted only when native `agent get` identity is exactly Pi and state is idle or done.
+- The separator region, admitted only when native `agent get` identity is exactly polytoken and state is idle or done.
 - Cortex Code's titled rounded top rule, admitted only when native `agent get` identity is exactly `cortex`, which the adapter reads lazily and only when the classifier answers `need-identity` for a titled rounded box holding an agent prompt glyph; the same box on any other pane stays ambiguous, and Cortex is [verified](verification/cortex.md) on Herdr for crewmates and scouts only.
 
-### Pi composer states
+### Separated composer states
 
-A blocked Pi is parked on an interactive prompt, so its blank composer region is a menu's and not a free composer's.
+A blocked agent is parked on an interactive prompt, so its blank composer region is a menu's and not a free composer's.
 That state defers instead of proving emptiness.
-A working Pi, pending middle row, missing identity, incomplete separator pair, or over-tall candidate remains unknown or pending.
+A working agent, pending middle row, missing identity, incomplete separator pair, or over-tall candidate remains unknown or pending.
 Identity stays a lazy second read, consulted only when a separator pair could change the verdict.
 
 ### Placeholder and ghost text
@@ -833,8 +833,8 @@ This prevents closing the workspace's last tab before a replacement exists.
 ### Stale agent registrations
 
 A registration alone never proves an agent.
-Herdr keeps a Pi registration after the Pi process has exited to a plain shell, whenever a nested interactive shell sits under the pane's top shell.
-In that case `agent get` still reports `agent=pi` with its last status.
+Herdr can keep an agent's registration after its process has exited to a plain shell, whenever a nested interactive shell sits under the pane's top shell.
+In that case `agent get` still reports the agent with its last status.
 That nested shell is the shape the interactive `treehouse get` leaves behind; fresh Herdr spawns lease durably instead (see [Restart recovery](#restart-recovery)), but older or hand-driven panes can still have it (measured on Herdr 0.9.0 - [verification](verification/runtime-backends.md) "Stale agent registration"; upstream issue #4115).
 
 So before a registered agent counts as live, the pane classifier reads `pane process-info` and the real process table.
@@ -876,31 +876,13 @@ Neither the stopped-server exception nor the stale-registration verdict widens h
 Those paths still refuse an unreadable pane.
 A `stale-agent` pane is reused by recovery, never closed as a husk, because the shell it holds may be a nested worktree shell.
 
-Native registration still identifies Pi by name where tmux would see a generic interpreter.
 The process-level proof only decides whether that registration is backed by a running process.
-`tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh` pins the live-Pi versus leftover-shell distinction.
+`tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh` pins the live-agent versus leftover-shell distinction.
 [`verification/runtime-backends.md`](verification/runtime-backends.md#agent-lifecycle-control) owns the versioned evidence.
 
 The session-start sweep and the watcher's dedicated secondmate liveness tick use this probe.
 Idle secondmates remain exempt from stale-pane escalation.
 [Secondmate endpoint recovery](architecture.md) owns the shared supervision mechanism.
-
-## Agent status authority and relaunch
-
-A pane has ONE status authority, and for Pi with the integration installed that authority is the lifecycle hooks - Herdr then skips screen detection for the pane, which is the `full_lifecycle_hook_authority` reason `herdr agent explain` prints for it.
-That authority is bound to a session identity, and in the crew shape the registration outliving its process ([above](#restart-and-liveness-behavior)) is that same binding: the record stays, the agent it named is gone.
-
-An agent started FRESH in such a pane reports a new session and Herdr ignores its reports, so the pane stays frozen at whatever the previous agent last reported - a crewmate running its pipeline reads `idle` until its task ends, and nothing from outside repairs it (measured 2026-09-21 on Herdr 0.9.1 against a real Pi; `pane report-agent-session` and `pane report-agent` for `herdr:pi` are accepted without being applied unless the reporter is the registered pane agent, and `pane release-agent` on the stale record changes nothing).
-A fresh spawn never meets this: it gets a new pane with nothing bound.
-
-So a **relaunch** preserves the binding instead of fighting it: before the Pi-family launch line is composed, `bin/fm-spawn.sh` reads the pane's recorded session reference through `fm_backend_herdr_pane_agent_session_ref` and passes it back as Pi's own `--session <path-or-id>` (`relaunch_resume_args`; `bin/fm-control-lib.sh`'s `fm_control_relaunch_resume_flag` owns which adapters and which registration labels qualify).
-The replacement therefore starts on the exact identity the authority is bound to, and its `working`/`idle`/`blocked` reports land again.
-The reference is the endpoint's own record, never a guess about which session is recent, and only a `pi` label may supply it: a registration belonging to another adapter is ignored, as is an unreadable, missing, or malformed one, in which case the relaunch is the ordinary fresh session it always was.
-A relaunch that changes harness AWAY from Pi is not repaired by this and keeps the pre-existing behavior; only the adapter the authority belongs to can resume its session.
-
-The session file may not exist any more: Pi creates it at exactly that path, so the identity survives either way.
-The read grants no send, close, or lifecycle authority of its own - it is a read of Herdr's record.
-The portable halves are pinned by `tests/fm-backend-herdr.test.sh` (the read, against a canned CLI) and `tests/fm-control.test.sh` (the per-adapter rule), and `tests/fm-control-herdr-smoke.test.sh` exercises the relaunch path against the real binary; the versioned live measurement, including the reproduction and the resume that lifts it, is [`verification/runtime-backends.md`](verification/runtime-backends.md) "Pane status authority across a relaunch".
 
 ## Push events and polling fallback
 
@@ -941,8 +923,7 @@ The pane-independent max-defer alert is configured in [`wedge-alarm.md`](wedge-a
 ### Where the daemon runs
 
 - Harnesses with native tracked background execution can run the daemon in their terminal.
-- Pi and pi-signed no longer launch the away daemon; their ordinary supervision session continues under the posture record.
-- A non-Pi home that runs the supervision host also skips the daemon for `/afk`; see [supervision-host.md](supervision-host.md).
+- A home that runs the supervision host skips the daemon for `/afk`; see [supervision-host.md](supervision-host.md).
 - For another harness without native tracked background execution, `bin/fm-afk-launch.sh` runs the daemon in a Herdr workspace, as described next.
 
 In that last case, `bin/fm-afk-launch.sh`:
@@ -1005,7 +986,6 @@ tests/fm-backend-herdr-workspace-per-home-e2e.test.sh
 tests/fm-backend-herdr-launcher-workspace-e2e.test.sh
 tests/fm-backend-herdr-presentation-e2e.test.sh
 tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh
-tests/fm-herdr-pi-stale-registration-live-e2e.test.sh
 tests/fm-backend-herdr-eventwait-smoke.test.sh
 tests/fm-control-herdr-smoke.test.sh
 tests/fm-herdr-session-cleanup.test.sh
@@ -1013,7 +993,6 @@ tests/fm-herdr-session-cleanup-e2e.test.sh
 tests/fm-herdr-groups.test.sh
 tests/fm-herdr-attached-viewer-live-e2e.test.sh
 tests/fm-afk-inject-herdr-e2e.test.sh
-tests/fm-afk-pi-herdr-return-e2e.test.sh
 ```
 
 Real Herdr tests follow [destructive lab safety](#destructive-lab-safety).

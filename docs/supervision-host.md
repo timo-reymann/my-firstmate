@@ -1,45 +1,40 @@
 # Supervision host
 
-The supervision host runs the supervision branch's contract beside a primary that is not Pi.
+The supervision host runs the supervision branch's contract ([supervision-branch.md](supervision-branch.md)) beside the primary.
 This doc explains how it does that and which script owns each part, for maintainers changing the host, its engine, or a primary's arm owner.
 
-On Pi the branch is a second conversation inside the captain's own process ([pi-supervision-branch.md](pi-supervision-branch.md)).
-Off Pi no such process exists.
-So the host owns the watcher cycle for the primary and runs the branch as a headless engine session.
+The host owns the watcher cycle for the primary and runs the branch as a headless engine session.
+These parts decide what the branch may do:
 
-It is one architecture with Pi's, not a second one.
-These parts are shared with Pi and decide what the branch may do:
-
-- The same branch prompt.
-- The same row eligibility.
-- The same records.
-- The same guarded scripts.
+- The branch prompt.
+- The row eligibility.
+- The records.
+- The guarded scripts.
 
 A close is the output a watcher cycle prints when it ends.
 An arm owner is the component in each primary harness that starts watcher cycles and reads their close.
 
 ## Scope today
 
-The host runs by default on a Claude primary and is opt-in per home on the other five primaries it supports; [configuration.md](configuration.md#supervision-host-configsupervision-host) owns the home gate and inherited opt-out.
+The host runs by default on a Claude primary and is opt-in per home on the other four primaries it supports; [configuration.md](configuration.md#supervision-host-configsupervision-host) owns the home gate and inherited opt-out.
 A home that does not run the host behaves exactly as it does without it.
-Today it runs beside a Claude, Cursor, OpenCode, omp, Codex, or Antigravity (`agy`) primary: away on all six, and attended on Claude and Cursor, the primaries with a verified [dialog mirror](#the-dialog-mirror).
+Today it runs beside a Claude, Cursor, OpenCode, Codex, or Antigravity (`agy`) primary: away on all five, and attended on Claude and Cursor, the primaries with a verified [dialog mirror](#the-dialog-mirror).
 
 ### Behavior by posture and harness
 
-- Attended (no away record: no `state/.afk-contract`, or quiet mode's) on Claude and Cursor, the engine takes the wakes the Pi branch would take and never wakes main for a routine outcome; see [Postures](#postures).
+- Attended (no away record: no `state/.afk-contract`, or quiet mode's) on Claude and Cursor, the engine takes the wakes the branch's offer rule gives it and never wakes main for a routine outcome; see [Postures](#postures).
   Every other close reaches main exactly as the plain watcher arm delivers it.
-- Attended on OpenCode, omp, Codex, and agy, the host is a pass-through: every close reaches main as without the host.
+- Attended on OpenCode, Codex, and agy, the host is a pass-through: every close reaches main as without the host.
 - Away (an away record exists), the host hands each close to the engine.
   Main stays parked unless the host hands the wake back.
 - `/afk` launches no away daemon on a home of those harnesses that runs the host, because the host is the away session there.
 - `/quiet` enters nothing where the attended host runs, and elsewhere launches the daemon; see [Quiet mode](#quiet-mode).
   While the daemon's flag `state/.afk` exists, the host stands aside exactly as the plain arm does.
-- Pi keeps its in-process branch whatever the file says, and no Pi engine is built.
 - Kimi has no primary supervision protocol, so it has no arm owner to run the host.
 
 ### Not yet on the host
 
-Attended supervision beside a Codex primary, running the host by default on the other five primaries, and the daemon's retirement are later steps of the same design.
+Attended supervision beside a Codex primary, running the host by default on the other four primaries, and the daemon's retirement are later steps of the same design.
 Until they land, their current behavior stays as described in their own owners.
 
 ## Components and their owners
@@ -49,11 +44,11 @@ Until they land, their current behavior stays as described in their own owners.
 | The loop | `bin/fm-supervision-host.sh` | Its header owns the per-close order, the park boundary and elapsed clock, arm-exit sampling and signal-observation latency, ownership checks, predecessor cleanup, state files, and tunables. |
 | The arm owners | Each primary's existing arm owner | Runs the host for a home that runs it and delivers a handed-back wake to main; see [Arm owners](#arm-owners). |
 | The engine | `bin/fm-supervision-engine-lib.sh` | Owns the home gate, including the default on Claude and the opt-out, the verified-engine list, and one bounded engine turn, including the reap of engine tool processes that outlive it. |
-| Row eligibility and the offer rule | `bin/fm-branch-dispatch.mjs` | The command entry to `.pi/extensions/lib/fm-branch-dispatch.ts`, so the host and the Pi extension compute branch-claimable rows, their task scope, and whether the branch may take a close (`branchOfferForWake`) from one owner; it also renders the wake message with the same away-posture tail, or the dialog mirror at its head. |
+| Row eligibility and the offer rule | `bin/fm-host-dispatch.mjs` | The command entry to `bin/lib/fm-host-dispatch.ts`, the one owner of branch-claimable rows, their task scope, and whether the branch may take a close (`branchOfferForWake`); it also renders the wake message with the away-posture tail, or the dialog mirror at its head. |
 | Warm-cache compaction | `bin/fm-warm-compact-lib.sh` | While parked, the host compacts the idle primary and its idle engine conversation once per idle episode when the home opted in; [configuration.md](configuration.md#warm-cache-compaction-configwarm-compact) owns the gate and guards. |
 | The grant and the drain | `bin/fm-wake-grant.sh` | Publishes the branch's rows bound to the host's own process; [watcher-continuity.md](watcher-continuity.md#per-actor-acknowledgement) owns the per-actor drain and acknowledgement the engine runs. |
-| The prompt | `bin/fm-branch-prompt.sh` | Emits the same byte-stable prompt the Pi branch runs; each wake names its host's report surface. |
-| The report surface | `bin/fm-branch-report.sh` | The command twin of the Pi branch's `fm_branch_report` tool, with the same task scoping; see [The report surface](#the-report-surface). |
+| The prompt | `bin/fm-branch-prompt.sh` | Emits the byte-stable branch prompt; each wake names its host's report surface. |
+| The report surface | `bin/fm-branch-report.sh` | Records the branch's outcome with the branch's task scoping; see [The report surface](#the-report-surface). |
 | Leases and authority | `bin/fm-lease-lib.sh` | Owns the per-task leases, the main-owned role partition, and the away relocation; see [Leases and authority](#leases-and-authority). |
 | The dialog mirror | `bin/fm-host-mirror.sh` | Owns the mirror files, writers, verified-writer list, and feed; see [The dialog mirror](#the-dialog-mirror). |
 | The captain-outcome drain | `bin/fm-wake-drain.sh` | Presents visible new and unprocessed outcomes in its `BRANCH OUTCOMES` section; `bin/fm-branch-outcome.sh mark-processed` is main's acknowledgement; see [Captain outcomes](#captain-outcomes). |
@@ -70,11 +65,10 @@ The host's header owns the output contract they read.
 | Claude | the [Stop/StopFailure auto-arm](watcher-continuity.md#claude-stop-hook), `bin/fm-claude-stop-autoarm.sh`, inside its single-flight generation | the hook's exit-2 rewake (`Stop hook feedback`) |
 | Cursor | the `stop` hook park, `bin/fm-turnend-guard-cursor.sh` | the park's `watcher` follow-up |
 | OpenCode | the TUI plugin, `.opencode/plugins/fm-primary-watch-arm.js`, which restarts its own successor after each close | a `watcher` prompt through `ctx.session.prompt` |
-| omp | the watch extension, `.omp/extensions/fm-primary-omp-watch.ts`, which restarts its own successor after each close | the extension's `watcher` follow-up |
 | Codex | the foreground checkpoint, `bin/fm-watch-checkpoint.sh`, or the native Stop park on a home that [opts in](configuration.md#codex-native-stop-park-configcodex-stop-park) | checkpoint output, or the native thread queue; see [the Codex protocol](supervision-protocols/codex.md) |
 | Antigravity (`agy`) | the Stop-hook park, `bin/fm-turnend-guard-agy.sh` | the park's `watcher` follow-up |
 
-Hook, plugin, extension, and checkpoint owners pass their harness as the primary pin.
+Hook, plugin, and checkpoint owners pass their harness as the primary pin.
 The host pins dispatched work to the primary's crew harness rather than the engine's.
 
 Every arm owner reads the file at every arm.
@@ -94,7 +88,7 @@ The host's engine runs with these settings:
 - The session-lock holder as `FM_LEASE_HOLDER_PID`.
 - The primary's harness pin.
 
-So every guarded script treats it exactly as it treats the Pi branch.
+So every guarded script treats it as the supervision branch.
 
 ## Postures
 
@@ -103,8 +97,8 @@ Only an away record is away: no record, or the record daemon-backed quiet mode w
 
 ### Attended
 
-The host asks the Pi branch's offer rule (`branchOfferForWake`, through `bin/fm-branch-dispatch.mjs offer`) whether the branch may take the close.
-So a close reaches main off Pi exactly when it would on Pi: a check trigger, a decision-owned signal or stale trigger, and a scan that is unsafe or holds nothing for the branch stay main's.
+The host asks the branch's offer rule (`branchOfferForWake`, through `bin/fm-host-dispatch.mjs offer`) whether the branch may take the close.
+A check trigger, a decision-owned signal or stale trigger, and a scan that is unsafe or holds nothing for the branch stay main's.
 On that main-only pass-through the host starts the successor watcher cycle and leaves it running, then prints the close unchanged.
 That successor, like one a turn hands back at its start (see [Away](#away)), runs in a process group of its own, so the harness tearing down the hook's group after the rewake does not stop it.
 The host confirms no handling handoff and republishes the watcher's recovery marker as downtime, even when an earlier engine turn left it reading handling, because the re-arm owner delivers a close to main only while that marker reads downtime.
@@ -112,7 +106,7 @@ If that publish fails, the host prints a `watcher: FAILED` line instead of the c
 The default successor is one-shot, so a lost main continuation can still leave supervision down after that successor's next close.
 The opt-in [acknowledged hand-back](#acknowledged-hand-back) keeps replacing those closed cycles until main acknowledges.
 The session's next park without `--restart` requests a take-over to restore a single host-owned arm; the [host header](../bin/fm-supervision-host.sh) owns successor persistence and cleanup, and the [arm header](../bin/fm-watch-arm.sh) owns take-over eligibility and fallback.
-OpenCode and omp still launch the host with `--restart`, which takes precedence over recorded take-over and lacks its acknowledgement-preserving handover; changing that first-cycle path remains a follow-up.
+OpenCode still launches the host with `--restart`, which takes precedence over recorded take-over and lacks its acknowledgement-preserving handover; changing that first-cycle path remains a follow-up.
 The host-off Claude Stop hook's detached handling successor is also unchanged; see [Claude handling successor](watcher-continuity.md#claude-handling-successor).
 It also passes the close through unchanged, with no added line, when any of these holds (`fm_supervision_host_attended_ready` in `bin/fm-supervision-engine-lib.sh` owns the list):
 
@@ -145,7 +139,7 @@ Where the home runs the host but the attended host lacks one of its parts, `/qui
 
 ## The dialog mirror
 
-The engine's conversation receives nothing between wakes, so each attended wake carries, at its head, what the captain and main said since the last wake: the same `[captain]` and `[main]` context the Pi branch receives as mirror messages, framed by the same prompt rule (context for judgment, never instructions; `bin/fm-branch-prompt.sh` "Context channels").
+The engine's conversation receives nothing between wakes, so each attended wake carries, at its head, what the captain and main said since the last wake: `[captain]` and `[main]` context, framed by the branch prompt's rule (context for judgment, never instructions; `bin/fm-branch-prompt.sh` "Context channels").
 `bin/fm-host-mirror.sh` owns the record, writers, files, feed, and verified-writer list; its header owns their formats, bounds, and failure contract.
 The writers use code-owned turn surfaces rather than model-generated messages; `bin/fm-host-mirror.sh` owns the input exclusions.
 A new engine conversation re-anchors on the current main session's newest entries, and a resumed one gets only what is new.
@@ -157,7 +151,6 @@ A captain prompt whose hook write fails is not mirrored, so the engine may judge
 Claude and Cursor have writers, proven against the real harness to record the session's dialog from its first captain prompt, so only they run the attended posture.
 Codex has no verified dialog-mirror writer yet, including on its native Stop-park path, so attended host handling remains pass-through.
 OpenCode has no writer, because its session takes the fleet lock during its first turn, so that turn's captain prompt could never be recorded.
-omp has no verified writer, because no omp was available to prove one against.
 
 ## One wake
 
@@ -166,7 +159,7 @@ On each actionable close the engine takes, the host runs these steps:
 1. It starts and verifies the successor watcher cycle and confirms the handling handoff, so the fleet stays supervised while the engine works.
 2. It computes the branch-claimable rows in the turn's posture and publishes the grant.
 3. It runs one bounded engine turn with the branch prompt and the wake message carrying, attended, the dialog mirror and, away, the record's read-back.
-   The engine drains, handles, reports through `bin/fm-branch-report.sh`, and acknowledges, exactly as the Pi branch does.
+   The engine drains, handles, reports through `bin/fm-branch-report.sh`, and acknowledges.
 4. It releases the branch's leases and grant, whether or not the wake was handled.
 5. For a handled wake, it settles the handling-successor recovery transition and then parks on that successor.
    If settlement fails, it logs `handling-settle-failed` and still parks, leaving a later main-only pass-through to restore the handoff or deliver the restore failure to main.
@@ -204,7 +197,7 @@ One example is a Cursor park superseded by the return turn's own end, which stop
 
 A captain outcome the attended engine records while the captain remains attended wakes main once, through the owner's ordinary wake path, with one `supervision-host: branch-outcome:` line naming its store rows.
 Main drains, and `bin/fm-wake-drain.sh` presents it in its `BRANCH OUTCOMES` section with the exact `bin/fm-branch-outcome.sh mark-processed --through <seq>` acknowledgement.
-That presentation is what the Pi branch's visible entry is, so it advances the store's read cursor through the rows it presents.
+That presentation advances the store's read cursor through the rows it presents.
 Every later drain, including the session-start digest, presents unprocessed captain outcomes again until main acknowledges them, so an ignored outcome costs no extra turn and is never lost.
 The drain's header owns the section's bounds; these rules keep it bounded and in order:
 
@@ -213,13 +206,13 @@ The drain's header owns the section's bounds; these rules keep it bounded and in
 - The byte cap shows only the oldest contiguous run of captain outcomes, so the printed acknowledgement covers exactly the rows shown, and it counts the newer ones it holds back, which follow once the run is acknowledged.
 - Routine outcomes never open a main turn: the next drain lists the newest visible one once, for awareness and with nothing to acknowledge, and collapses older visible routine notes into a count; silent routine outcomes never appear.
 
-The section runs only for main on a home that runs the host and whose primary is not Pi, and never while the away record exists.
+The section runs only for main on a home that runs the host, and never while the away record exists.
 The drain is the only presenter of these outcomes and the only owner of their read cursor, the away window's included: the return brief counts the window's outcomes and points at the section instead of listing them.
 On a Claude Code primary the Calm mod separately shows bounded, display-only supervision notes to the captain ([`calm.md`](calm.md#supervision-notes-on-claude-code)); it moves no outcome marker and adds nothing to main's context.
 A long away window no longer requires a drain per outcome: each task's captain outcomes collapse to one line, subject to the captain byte cap, and visible routine notes past the section's limit collapse into a count; after main acknowledges all captain outcomes no later drain shows anything from the window again.
 A drain that cannot read or project the store (jq missing included), print the section, or advance its read cursor says so and marks nothing it has not shown as read, and it exits nonzero, so the return keeps its catch-up gated until a check drains again and records the presentation, rather than clearing over outcomes a later drain would present again.
 The section's budgets count bytes in any locale, so a multibyte summary is cut on a whole UTF-8 character boundary to fit them.
-An unprocessed captain outcome is never adopted as processed, including across an index repair or a switch to Pi; the absent-marker rule is owned by `bin/fm-branch-outcome.sh`.
+An unprocessed captain outcome is never adopted as processed, including across an index repair; the absent-marker rule is owned by `bin/fm-branch-outcome.sh`.
 A home already switched to the host can re-present its unacknowledged outcomes after an upgrade or interrupted switch, so each captain line shows its recorded age and the section asks main to check current task state before acting.
 Main's reply to the captain covers only the outcomes still open, as if an already-settled one had never been listed.
 Main runs the printed acknowledgement for every presented outcome, settled and handled open ones alike.
@@ -285,7 +278,7 @@ When the captain returned during a failed turn that recorded visible outcomes, t
 
 ### The broken-session latch
 
-The host copies the Pi branch's broken-session policy ([pi-supervision-branch.md](pi-supervision-branch.md#broken-branch-latch-and-recovery)), with an engine error in place of a provider error: a turn that exited nonzero, hit its bound, or ended without a complete successful result.
+An engine error is a turn that exited nonzero, hit its bound, or ended without a complete successful result.
 Two consecutive engine errors latch the session: every wake reaches main for a five-minute cooldown, the attended close unchanged and the away close with a `supervision-host:` line, after which one wake probes the engine, and each probe that ends in another engine error doubles the cooldown up to one hour.
 A turn that records a report without an engine error clears the latch; a turn with a complete engine result but no report neither counts toward it nor clears it, while an engine error counts even if no report was recorded.
 The first trip adds one `supervision-host:` line to the failing turn's handback; a recovery is only recorded in the host ledger, so a routine probe stays off main.
@@ -322,7 +315,7 @@ But a host absorbs its own wakes, so it ends its park itself before that registr
 
 `FM_SUPERVISION_HOST_PARK_SECONDS` sets that boundary (default 27,000).
 A value that is not a positive integer below 28,800 is treated as the default.
-The OpenCode and omp owners have no hook timeout and keep the same default, so their parks end on the same cadence.
+The OpenCode owner has no hook timeout and keeps the same default, so its parks end on the same cadence.
 
 ### At the boundary
 
@@ -333,7 +326,7 @@ Main drains and acknowledges, and the owner starts the next park:
 | Primary | When the next park starts |
 |---|---|
 | Claude and Cursor | At the next turn end. |
-| OpenCode and omp | At once. |
+| OpenCode | At once. |
 
 The host checks the boundary on every loop pass, so closes that are already waiting cannot carry it past the boundary.
 It also starts no engine turn that could still be running at the boundary (the turn bound plus the engine grace).
@@ -438,8 +431,8 @@ Such a process is never recorded and survives the turn, the same residual `bin/f
 The default model is `sonnet`, which handled every measured wake correctly at a fraction of a larger model's cost.
 `config/supervision-host` can name another.
 
-The Claude engine runs beside any of the six primaries, but only a Claude primary selects it by default when the host is enabled, even with no file.
-A Cursor, OpenCode, omp, Codex, or agy home names it (`claude`, optionally with a model) in `config/supervision-host`.
+The Claude engine runs beside any of the five primaries, but only a Claude primary selects it by default when the host is enabled, even with no file.
+A Cursor, OpenCode, Codex, or agy home names it (`claude`, optionally with a model) in `config/supervision-host`.
 `/afk` there says so when the file selects no engine.
 
 ## Verification
@@ -454,13 +447,11 @@ Each arm owner's own suite covers its host mode against a stub host.
 | `tests/fm-supervision-host-hook.test.sh` | Claude Stop-hook re-arm, successor take-over, lost hand-back continuations, and guarded retry submission. |
 | `tests/fm-claude-stop-autoarm.test.sh` | The Claude arm owner's host mode against a stub host. |
 | `tests/fm-cursor-primary.test.sh` | The Cursor arm owner's host mode against a stub host. |
-| `tests/fm-pi-watch-extension.test.sh` | The OpenCode plugin's host mode against a stub host. |
-| `tests/fm-omp-harness.test.sh` | The omp arm owner's host mode against a stub host. |
 | `tests/fm-watch-checkpoint.test.sh` | The Codex checkpoint's host mode against a stub host. |
 | `tests/fm-supervision-instructions.test.sh` | The rendered protocol. |
 | `tests/fm-host-mirror.test.sh` | The dialog mirror's writers through the tracked Claude and Cursor registrations, the home gate, the feed, and the verified-writer list. |
 | `tests/fm-afk-launch.test.sh` | The home gate on each primary, the `/afk` daemon refusal, and `/quiet` on a home that runs the host: the statement, the paused statement, each named missing part, the quiet daemon fallback that carries its recorded mode, a failed quiet start that archives its quiet record, and the refusal under a live away record until the return. |
-| `tests/fm-afk-return.test.sh` | The return's drain-owned read-cursor advance through the away window on a host home, and none on Pi. |
+| `tests/fm-afk-return.test.sh` | The return's drain-owned read-cursor advance through the away window on a host home. |
 | `tests/fm-supervision-host-live-e2e.test.sh` | Runs a real engine turn; opt-in because it spends tokens. |
 | `tests/fm-supervision-host-attended-live-e2e.test.sh` | Opt-in credentialed guard for repeated attended main-only hand-backs to an idle Claude primary, the successor's own close, a close that turns main-only at its turn, and a stand-in remote listener; accepts a pre-fix ref for a negative control. |
 | `tests/fm-supervision-host-herdr-live-e2e.test.sh` | Opt-in credentialed guard that a real Claude primary in an isolated herdr session loses its hand-back continuation, receives the detached retry through the inherited pane, drains, and acknowledges, with one watcher retained. |

@@ -111,34 +111,6 @@ There is no `projectionBasis` field; its absence means `cycle_average`.
 Projection confidence is not present on every known runway, so selection must preserve that absence as uncertainty rather than fabricate it.
 The schema compatibility and account-matching contract is owned by [`quota-array-dispatch`](../../.agents/skills/quota-array-dispatch/SKILL.md#1-eligibility); this schema-5 evidence does not reinterpret an absent runway, pace, or selection field.
 
-## Provider-family counterfactual that this producer schema supports
-
-Verified 2026-07-30 on Pi 0.82.0 and quota-axi 0.1.16.
-
-```sh
-pi --list-models terra
-```
-
-```text
-provider      model          context  max-out  thinking  images
-openai-codex  gpt-5.6-terra  272K     128K     yes       yes
-```
-
-The Pi catalog is authoritative for Pi model support and reports the provider family in its own column.
-In this capture, the catalog lists `openai-codex/gpt-5.6-terra`, and the Codex row above reports 64% remaining at `all_models`.
-No Terra-specific window exists in the snapshot, and `quota-axi auth --json` lists no `pi:openai-codex` source.
-Both absences are missing model-level and source-level detail, not contradictory evidence, so this candidate is dispatchable with the model-level uncertainty disclosed.
-
-```sh
-pi --list-models gpt-9.9-nonexistent
-```
-
-```text
-No models matching "gpt-9.9-nonexistent"
-```
-
-A listing that reaches the account and returns no row is the authoritative negative that does block a candidate.
-
 ## Credential sources are independent per provider
 
 Verified 2026-07-30 against quota-axi 0.1.16.
@@ -164,10 +136,9 @@ Verified 2026-07-30 against quota-axi 0.1.16.
 
 Observed source statuses are `available`, `expired` (with an `error` slug), and `missing`.
 
-- A provider can carry a healthy source beside a missing or expired one, so a provider must not be collapsed to a single status. Claude's `oauth-file` is missing while its keychain source is available, and Kimi's standalone CLI credential is expired while its Pi source is available.
-- In this captured setup, only `pi:xai` and `pi:kimi-coding` have `pi:`-prefixed sources.
-  The Pi `openai-codex` candidate used the Codex store listed above; this observation does not establish the credential source for another account or setup.
-  The [eligibility procedure](../../.agents/skills/quota-array-dispatch/SKILL.md#1-eligibility) owns how missing authentication evidence affects dispatch.
+- A provider can carry a healthy source beside a missing or expired one, so a provider must not be collapsed to a single status. Claude's `oauth-file` is missing while its keychain source is available, and Kimi's standalone CLI credential is expired while its `pi:kimi-coding` source is available.
+
+The [eligibility procedure](../../.agents/skills/quota-array-dispatch/SKILL.md#1-eligibility) owns how missing authentication evidence affects dispatch.
 
 Neither this per-source shape nor `state.authStatus` exists before quota-axi 0.1.16.
 `bin/fm-bootstrap.sh` enforces the current compatibility floor through `bin/fm-quota-axi-lib.sh`.

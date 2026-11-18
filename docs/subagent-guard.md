@@ -175,7 +175,7 @@ When that script is absent the message still defers to intake classification and
 
 ## Harness wiring
 
-Every supported primary harness was reviewed except omp, whose row below rests on its bundled material rather than a live enumeration.
+Every supported primary harness was reviewed.
 Applicability turns on one question: does the harness expose built-in delegation tools that a primary session could use instead of `bin/fm-spawn.sh`?
 
 | Harness | Delegation surface | Status |
@@ -183,9 +183,7 @@ Applicability turns on one question: does the harness expose built-in delegation
 | Claude | 16 known tools, listed above | Scoped guard wired and live-verified; untracked local deny list verified and recommended. |
 | Antigravity | present (`invoke_subagent`, `define_subagent`) | Scoped guard wired and live-verified via `.agents/hooks.json` PreToolUse hook (`bin/fm-subagent-pretool-check.sh --agy`). |
 | Codex | none | Not applicable, verified empirically below. Codex 0.144.1 exposes no subagent, sub-task, or delegated-agent tool, so there is nothing to remove or intercept. `.codex/hooks.json` is unchanged. |
-| omp | present, per bundled material | Not wired and unverified. omp ships a built-in task delegation tool: its bundled docs list `tools/task.md` and the captain-level `task.maxConcurrency` setting governs it. No Firstmate delegation seatbelt is wired for it yet, and its status stays unverified until a live tool enumeration is recorded the way the Codex row was. |
 | OpenCode | present, exact tokens unconfirmed | Not wired pending live verification. See below. |
-| Pi | none reported | Not wired pending live verification. See below. |
 
 ### Antigravity, verified and wired
 
@@ -229,22 +227,20 @@ SUBAGENT_TOOL=no
 `multi_tool_use.parallel` batches calls to the tools above; it does not spawn an agent.
 Codex is therefore not applicable today, and this table row is the tripwire: if a future Codex release adds a delegated-agent tool, wire `.codex/hooks.json` the same way its `Bash` PreToolUse entries already forward stdin to a checker.
 
-### OpenCode and Pi, inspected but not wired
+### OpenCode, inspected but not wired
 
-The integration surface of each was inspected and each is structurally wireable for the shipped guard.
+The integration surface was inspected and is structurally wireable for the shipped guard.
 
 - OpenCode's tracked plugins gate on `input?.tool !== "bash"` inside `tool.execute.before`, and block by throwing.
   Swapping that comparison for a call into this checker with `--tool` is the whole change.
-- Pi's tracked extension gates on `event.toolName !== "bash"` inside `pi.on("tool_call", ...)` and blocks by returning `{block: true}`.
-  The same change applies. A parallel evaluation reports that Pi exposes no delegation tool at all, which would make it not applicable, but that was not verified here.
 
-Neither is wired in this change because neither binary is installed on the host where this work was done, so the exact tool-name tokens could not be confirmed and the wiring could not be validated against the real harness.
+It is not wired in this change because its binary is not installed on the host where this work was done, so the exact tool-name tokens could not be confirmed and the wiring could not be validated against the real harness.
 This repo's rule in the `firstmate-coding-guidelines` skill is that a harness hook must be validated in a scratch project before it is trusted.
 Wiring an unvalidated matcher would trade a known gap for an unknown breakage.
 
-The bounded follow-up for each is identical to the Codex procedure above.
+The bounded follow-up is identical to the Codex procedure above.
 On a host with the binary installed, ask the harness to enumerate its tools, then wire the matcher and re-run the live matrix below.
-`bin/fm-subagent-pretool-check.sh` needs no change for any of them: it already accepts the `--tool` CLI form OpenCode and Pi use.
+`bin/fm-subagent-pretool-check.sh` needs no change for it: it already accepts the `--tool` CLI form OpenCode uses.
 
 ## Live validation record, 2026-07-22
 

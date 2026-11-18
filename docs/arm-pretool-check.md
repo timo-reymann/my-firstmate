@@ -23,7 +23,7 @@ It tokenizes the bytes and classifies lexical execution positions only.
 `bin/fm-arm-pretool-check.sh` supports these entry forms:
 
 - Stdin JSON at `.tool_input.command` for Claude and Codex.
-- `--command <exact string>` for OpenCode, Pi, pi-signed, and omp.
+- `--command <exact string>` for OpenCode.
 - `--background` as a compatibility-only field that never changes the decision.
 - `--claude` to preserve Claude's stderr-only deny requirement.
 - `--agy` for Antigravity CLI, reading stdin JSON from `.toolCall.args.CommandLine`, `.toolCall.args.command`, or `.tool_input.command`, denying redundant manual arming when a watcher is healthy, and emitting `{"decision":"deny","reason":...}` on stdout with exit 0.
@@ -153,7 +153,6 @@ Prose may improve without changing adapter behavior.
 - Deny leaves stdout empty because Claude ignores a PreToolUse deny when stdout is nonempty; `--claude` is accepted for the tracked Claude entry and renders the same way.
 - Codex blocks on exit 2 and displays stderr.
 - OpenCode throws only when the checker exits 2.
-- Pi, pi-signed, and omp return `{block: true}` only when the checker exits 2.
 
 ## Harness wiring
 
@@ -162,8 +161,6 @@ Prose may improve without changing adapter behavior.
 | Codex | `.tool_input.command` | The `.codex/hooks.json` command forwards the complete stdin payload and Codex blocks on exit 2. |
 | Claude | `.tool_input.command` | `.claude/settings.json` forwards stdin with `--claude`, leaving stdout empty and returning the stderr deny object. |
 | OpenCode | `output.args.command` for the 1.x `bash` tool; `event.input.command` for the 2.x `shell` tool's `execute.before` event | `.opencode/plugins/fm-primary-pretool-check.js` passes one `--command` argument and throws only for exit 2. |
-| Pi / pi-signed | `event.input.command` | `.pi/extensions/fm-primary-turnend-guard.ts` passes one `--command` argument and returns `{block: true}` only for exit 2. |
-| omp | `event.input.command` | `.omp/extensions/fm-primary-turnend-guard.ts` passes one `--command` argument and returns `{block: true, reason}` only for exit 2; omp surfaces the reason verbatim to the model (verified 18.1.2). |
 | Cursor | `.tool_input.command` | `.cursor/hooks.json` matches `tool_name` `Shell` and forwards stdin with `--cursor`. Cursor reads the RETURNED object rather than the exit status, so `--cursor` prints `{"permission":"deny","user_message":"[code] reason"}` on stdout and exits 0; only that rendering is verified to block the command and surface the reason. |
 
 Cursor also loads `<project>/.claude/settings.json`, so the tracked Claude entry receives the same event. Without `--cursor` a Cursor-delivered payload is that duplicate and allows without re-classifying, decided from the payload's own `cursor_version` by `bin/fm-hook-host-lib.sh`; [`turnend-guard.md`](turnend-guard.md#harness-integrations) owns why that predicate reads the payload rather than the environment.
@@ -184,7 +181,6 @@ Harness versions were:
 Claude Code 2.1.206
 codex-cli 0.144.0
 OpenCode 1.17.15
-Pi 0.80.5
 ```
 
 Every harness was instructed to issue these exact shell command strings as separate tool calls:
@@ -193,7 +189,7 @@ Every harness was instructed to issue these exact shell command strings as separ
 printf 'UNRELATED_EXECUTED\n'
 pgrep -fl '/bin/fm-watch.sh' || true
 source '<scratch-project>/config/x-mode.env'; bin/fm-watch-checkpoint.sh --seconds 180
-tmux send-keys -t isolated-pi-lab "printf '%s\n' 'bin/fm-watch-arm.sh &'"; tmux send-keys -t isolated-pi-lab Enter
+tmux send-keys -t isolated-lab "printf '%s\n' 'bin/fm-watch-arm.sh &'"; tmux send-keys -t isolated-lab Enter
 bin/fm-watch-arm.sh &
 ```
 
@@ -203,32 +199,30 @@ The real harness launch commands were:
 claude -p "$PROMPT" --dangerously-skip-permissions --output-format text
 codex exec --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "$PROMPT"
 OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' opencode run --print-logs --log-level INFO "$PROMPT"
-pi -p -e .pi/extensions/fm-primary-turnend-guard.ts --no-context-files --no-session "$PROMPT"
 ```
 
 Observed output for the four allowed calls was `UNRELATED_EXECUTED`, a successful read-only `pgrep`, `CHECKPOINT_EXECUTED`, and two `TMUX_ARGS:` lines that preserved the watcher text as data.
 Each harness blocked the final command with exit 2 mapped through its native adapter behavior.
 The stable reason was `[watcher-background] a protected watcher command cannot run in an asynchronous shell list or through nohup/disown`.
 The dummy arm body would have created `<harness>.sentinel` if the denied command executed.
-All four sentinel files remained absent.
+Every harness's sentinel file remained absent.
 
 The Codex transcript showed `PreToolUse Completed` for all three originally reported false-positive shapes and `PreToolUse Blocked` only for the backgrounded arm.
 OpenCode displayed the four allowed command outputs and then `bin/fm-watch-arm.sh & failed` with the stderr deny object.
-Claude and Pi both reported that calls one through four ran and the final call was blocked.
+Claude reported that calls one through four ran and the final call was blocked.
 
 Native supervision paths were also validated in the same scratch project:
 
 - Claude ran `bin/fm-watch-arm.sh --restart` with its native tracked background option and produced `watcher: started pid=<scratch> (scratch)`.
 - Codex ran the foreground checkpoint above and produced `CHECKPOINT_EXECUTED`.
 - OpenCode ran in an interactive TUI on `tmux -L fm-pretool-smoke`, reached `session.idle`, and its unchanged watch-arm plugin created the scratch automatic-arm marker.
-- Pi loaded both primary extensions, called `fm_watch_arm_pi`, and created the scratch automatic-arm marker.
 
 Every native-path automatic marker was present and every deny sentinel remained absent.
 
 ## Automated validation
 
 `tests/fm-arm-pretool-check.test.sh` owns the adversarial acceptance matrix.
-Every row runs through Codex-shaped stdin, Claude-shaped stdin, OpenCode-shaped CLI, and Pi-shaped CLI entry forms.
+Every row runs through Codex-shaped stdin, Claude-shaped stdin, and OpenCode-shaped CLI entry forms.
 The suite also verifies real newline bytes, direct classifier reason codes, comments, heredoc data, malformed and unsupported protected syntax, constructed dynamic payloads, malformed transport fail-open behavior, missing runtime fail-open behavior, output shapes, and exact adapter field forwarding plus exit-2 mapping.
 
 Run:

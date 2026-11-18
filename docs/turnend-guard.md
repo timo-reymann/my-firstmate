@@ -135,34 +135,6 @@ That proof requires both of these:
 The tolerance holds because that session's turn-end will re-arm.
 Without that proof a stale or absent beacon is a genuine lapse and alarms.
 
-#### Extension model
-
-Under the extension model (Pi, pi-signed, and omp) a live identity-matched watcher is the ordinary healthy state.
-A genuinely unheld lock with a beacon fresh within grace is also healthy while a live Pi or omp session provably owns continuity.
-That hand-off is benign because `.pi/extensions/fm-primary-pi-watch.ts` and `.omp/extensions/fm-primary-omp-watch.ts` tear the watcher down on every actionable wake and spawn the replacement themselves.
-
-A lock is genuinely unheld only in one of these cases:
-
-- The lock directory or its symlinked owner directory is absent.
-- The existing lock records no pid at all.
-
-Any lock with a recorded pid remains down when its pid, home, watcher path, or process identity fails the strict watcher health check.
-
-That ownership proof is `fm_extension_owns_supervision` in `bin/fm-wake-lib.sh`.
-It accepts either the Pi pair (`fm_pi_extension_owns_supervision`) or the omp pair (`fm_omp_extension_owns_supervision`).
-The proof requires all of these:
-
-- Both primary extensions of one family must be recorded in their state markers at their current on-disk builds by the process named in `state/.lock`.
-- That process must still be alive.
-- Pi's watcher marker must additionally name an active generation rather than a retiring handoff.
-
-omp never inherits the Pi tolerance because its proof is keyed on its own two files and markers.
-Requiring the turn-end guard extension as well as the watch extension is deliberate, because a home without that structural backstop has no benign hand-off to tolerate.
-
-Without that proof an unheld lock alarms exactly as it did before.
-An unloaded, version-drifted, or exited Pi or omp session is therefore loud immediately.
-A cycle the extension never restores is loud once the beacon passes grace.
-
 #### Persistent-watcher harnesses
 
 Under every persistent-watcher harness a live identity-matched watcher with a fresh beacon is still required, so the pull guard keeps the same strict semantics there.
@@ -259,8 +231,6 @@ Each enabled primary harness adapts its own turn-end mechanism to the shared gua
 | Claude | Two `Stop` hooks in `.claude/settings.json` | Blocks with exit status 2, cooperating with the Stop auto-arm |
 | Codex | `Stop` hook in `.codex/hooks.json` | Blocks with exit status 2 |
 | OpenCode | `session.execution.succeeded`/`failed`/`interrupted` (OpenCode 2) or `session.idle` (OpenCode 1) in `.opencode/plugins/fm-primary-turnend-guard.js` | Passive callback that schedules one follow-up |
-| Pi | `agent_settled` in `.pi/extensions/fm-primary-turnend-guard.ts` | Passive callback that schedules one follow-up |
-| omp | `session_stop` in `.omp/extensions/fm-primary-turnend-guard.ts` | Blocking hook that compels one continuation |
 | Cursor | `stop` hook in `.cursor/hooks.json` | Cannot block, so it parks and returns at most one follow-up |
 | Antigravity | `Stop` hook in `.agents/hooks.json` | Synchronous Stop-hook park running `bin/fm-watch-arm.sh` (or the supervision host) with bounded repair nag via `bin/fm-turnend-guard.sh --agy` |
 
@@ -277,11 +247,6 @@ The registrations in detail:
   Allowed stops return one literal `{}` object; nonzero exits and stderr retain the shared guard's error or bounded-continuation behavior.
   [Runtime backend verification](verification/runtime-backends.md#stop-response-parsing) owns the parser evidence and its portable and token-free live regression entry points.
 - OpenCode subscribes to the terminal `session.execution.succeeded`, `session.execution.failed`, and `session.execution.interrupted` events through `ctx.event.subscribe` in `.opencode/plugins/fm-primary-turnend-guard.js`, latched to the root worker session so child-session turns do not trip it, lets the watcher coordinator act first, and calls `ctx.session.prompt` once when the guard returns 2. The legacy OpenCode 1 `session.idle` + `client.session.promptAsync` path is retained in the plugin's `server` export.
-- Pi listens for `agent_settled` in `.pi/extensions/fm-primary-turnend-guard.ts`, runs once per logical agent run, and calls `pi.sendUserMessage(..., { deliverAs: "followUp" })` once when the guard returns 2.
-- omp answers its blocking `session_stop` hook in `.omp/extensions/fm-primary-turnend-guard.ts`, passing the payload's own `stop_hook_active` to the shared guard.
-  When the guard returns 2, it returns `{ continue: true, additionalContext }`, so the continuation is compelled rather than requested.
-  The continuation's stop carries `stop_hook_active: true`, which bounds it to one per turn, and omp's own cap of eight consecutive continuations is the second backstop.
-  `session_stop` never fires for an interrupted turn or a task session, so those boundaries are deliberately unguarded.
 - Cursor registers a `stop` hook in `.cursor/hooks.json` and delegates the whole turn boundary to `bin/fm-turnend-guard-cursor.sh`, the park described below.
   Cursor also loads `<project>/.claude/settings.json`, so every tracked Claude-shaped entrypoint whose event Cursor covers stands down on a Cursor-delivered payload through `bin/fm-hook-host-lib.sh`.
   That predicate reads the delivered payload's own `cursor_version`, never the environment.
@@ -289,13 +254,6 @@ The registrations in detail:
   The guarded set is the `SessionStart` entry, the two `PreToolUse` Bash entries, both `Stop` entries, and the `StopFailure` auto-arm entry.
   Cursor 2026.08.11-e8db854 does not fire the Claude-shaped `Stop` entry at all, but it is guarded anyway because Cursor has no `asyncRewake`.
   If a later build did fire it, `bin/fm-claude-stop-autoarm.sh` would run synchronously inside Cursor's stop step and hold that turn open for its declared multi-hour timeout.
-- pi-code, Pi's Claude-hook compatibility extension, also loads `<project>/.claude/settings.json` and has no `asyncRewake`, so it awaits every Stop hook it delivers.
-  `bin/fm-claude-stop-autoarm.sh` therefore stands down on a pi-code-delivered payload.
-  Otherwise its foreground arm would run synchronously and hold Pi's turn open for the declared multi-hour timeout, exactly the wedge Cursor would produce (issue #3343).
-  Pi's own native extensions own its supervision.
-  The discriminator is the payload's own `transcript_path`, not the environment and not the shared foreign-host predicate above.
-  pi-code stamps it with Pi's session file under `/.pi/`, a path component a Claude transcript never carries.
-  The stand-down fails toward running, matching the guards above, so no payload, no `jq`, or no `transcript_path` still arms, and every other Claude-shaped hook pi-code delivers keeps running.
 - Antigravity registers a `Stop` hook in `.agents/hooks.json` with a 28800s timeout, anchoring commands safely to the project root and delegating the turn boundary to `bin/fm-turnend-guard-agy.sh`.
   In linked crewmate worktrees or foreign checkouts, the wrapper stands down immediately with `{}`.
   In primary or persistent secondmate homes, the hook parks synchronously on `bin/fm-watch-arm.sh` (or `bin/fm-supervision-host.sh park` on a home that runs the host), keeping supervision continuity alive until an incoming wake event arrives or a bounded repair nag is returned via `bin/fm-turnend-guard.sh --agy`.
@@ -449,15 +407,13 @@ A Claude failure notice describes the automatic mechanism as broken and does not
 
 ### Passive adapters
 
-OpenCode, Pi, and pi-signed expose passive callbacks for this purpose.
-Their adapters fail open at the hook boundary to protect the user session.
-When the predicate blocks, they schedule one bounded follow-up.
-omp is the exception among the Pi-derived harnesses: its `session_stop` hook blocks like Codex's `Stop` hook, so no passive latch is needed and the `stop_hook_active` loop guard applies unchanged.
+OpenCode exposes passive callbacks for this purpose.
+Its adapter fails open at the hook boundary to protect the user session.
+When the predicate blocks, it schedules one bounded follow-up.
 
 The generated prompts use the canonical `turn-end-guard` kind after the U+2063 `FIRSTMATE_OP: ` prefix, so Ahoy does not treat them as captain messages.
 Each passive adapter owns a loop latch:
 
-- Pi keeps the latch across internal tool turns and clears it only when the generated follow-up settles or delivery fails.
 - OpenCode's forced follow-up is supported for persistent TUI sessions and remains fail-open in headless `opencode run`.
 
 ### Cursor park
@@ -476,15 +432,6 @@ While supervision is needed it PARKS:
 
 It spends no model tokens while parked.
 This is the same between-turns shape as Claude's Stop auto-arm, so `fm_supervision_model` classifies Cursor as `autoarm` and the mid-turn pull guard accepts a fresh beacon without a live watcher.
-
-#### Cursor park under a Pi host
-
-The park stands down without arming when `PI_CODING_AGENT=true` and neither `CURSOR_AGENT` nor `CURSOR_INVOKED_AS` is set.
-Pi-with-Cursor-provider sessions (pi-cursor-sdk) load project `.cursor/hooks.json` into the Pi process.
-A Cursor park there would race Pi's extension-owned `fm_watch_arm_pi` continuity, resurface rearm wakes, and abort in-flight asks.
-`fm-spawn`'s cursor launch clears `PI_CODING_AGENT`.
-A hand-started cursor-agent may still inherit it.
-When either Cursor identity marker is present, the park still runs despite a leaked `PI_CODING_AGENT`.
 
 #### Cursor repair nag and loop bounds
 
@@ -588,7 +535,6 @@ That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it alwa
 - Generation and legacy claim cases that must block or clear instead of allowing a blind stop.
 - Away-mode daemon ownership between watcher cycles and over a watcher lock left behind by an exited watcher, plus its dead, pid-reused, absent, stale-beacon, and away-mode-off negatives.
 - The away-mode beacon's poll-derived grace widening for a live daemon still mid-cycle and its bound against a dead daemon, a beacon older than that wider grace, and FM_POLL's inapplicability with away mode off.
-- Pi logical-run latching.
 - Missing-`jq` behavior.
 - The primary registrations.
 
@@ -599,7 +545,6 @@ It proves that a live foreign owner still prevents arming while repeated non-own
 
 - The persistent model's fresh-leftover-beacon negative control.
 - The auto-arm model's healthy fresh-beacon-without-a-watcher case, session-and-recovery-bound long-turn rewake tolerance, independently broken tolerance signals, open-claim negative control, stale-beacon alarm, and isolation from other models.
-- The extension model's live-watcher path, ownership-qualified fresh hand-off, held-lock failures, independently broken ownership signals, stale-beacon alarm, queued-wake warning, and Pi and pi-signed harness routing.
 
 It also covers true-reason banner wording and reason-keyed episode dedup surviving a beacon mtime change.
 
@@ -611,18 +556,14 @@ It also covers true-reason banner wording and reason-keyed episode dedup survivi
 - The nested loop bounds.
 - Supersession.
 - Away-mode and lock-ownership inertness.
-- Pi-host stand-down without Cursor identity and continued parking when `PI_CODING_AGENT` leaks alongside `CURSOR_AGENT` or `CURSOR_INVOKED_AS`.
 - Child-worktree exclusion.
 - That the adapter never exits 2.
 
 `tests/fm-kimi-harness.test.sh` covers the separate Kimi crew hook's format preservation, idempotence, refusal cases, token guard, spawn registration, and teardown cleanup.
-`tests/fm-supervision-instructions.test.sh` covers recovery-line ownership and pi-signed's identity-preserving reuse of Pi's protocol.
-`tests/fm-omp-harness.test.sh` covers the omp extension pair over a fake omp API (forced continuation on exit 2, the `stop_hook_active` bound, the seatbelt block, the ownership proof).
+`tests/fm-supervision-instructions.test.sh` covers recovery-line ownership.
 
 The opt-in live tests are:
 
 - `FM_CURSOR_PRIMARY_LIVE_E2E=1 tests/fm-cursor-primary-live-e2e.test.sh` is the opt-in guard that proves the Cursor park behavior covered by `tests/fm-cursor-primary.test.sh` against the installed cursor-agent and fails naming the harness and version.
-- `FM_PI_LIVE_E2E=1 tests/fm-pi-primary-live-e2e.test.sh` is the opt-in isolated Pi path.
-- `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` is the opt-in isolated omp path.
 
 [`verification/supervision.md`](verification/supervision.md#turn-end-guard) records the active cross-harness empirical evidence, including the current Claude `asyncRewake` revalidation.
