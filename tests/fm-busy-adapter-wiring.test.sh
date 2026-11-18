@@ -3,8 +3,8 @@
 # bin/fm-spawn.sh installs under the contract owned by bin/fm-busy-lib.sh.
 #
 # These tests run the REAL fm-spawn against a fake tmux pane and an isolated
-# git worktree, then drive the generated adapter artifact (the Pi extension,
-# the OpenCode plugin) in a plain Node host, so the artifact, the real
+# git worktree, then drive the generated adapter artifact (the OpenCode
+# plugin) in a plain Node host, so the artifact, the real
 # bin/fm-busy-event.sh writer, and the real classifier are exercised together
 # with no live harness session.
 set -u
@@ -23,7 +23,7 @@ make_spawn_case() {  # <name> <harness> <id>
   home="$case_dir/home"
   proj="$case_dir/project"
   wt="$case_dir/wt"
-  fakebin=$(make_spawn_fakebin "$case_dir/fake" pi opencode claude codex gemini kiro-cli)
+  fakebin=$(make_spawn_fakebin "$case_dir/fake" opencode claude codex gemini kiro-cli)
   fm_test_spawn_home "$home" "$harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
   fm_test_spawn_brief "$home" "$id"
@@ -48,210 +48,6 @@ EOF
 
 classify() {  # <harness> <id> <state-dir>
   fm_busy_classify tmux fake:w "$1" "$2" "$3"
-}
-
-# drive_pi_ext <ext-path> <mode>: load the generated Pi extension in a plain
-# Node host and fire one lifecycle handler. Modes: agent-start, settle-idle,
-# settle-continuing, turn-end.
-drive_pi_ext() {
-  EXT_PATH="$1" MODE="$2" node --input-type=module 2>&1 <<'EOF'
-import { pathToFileURL } from "node:url";
-const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
-const handlers = {};
-mod.default({ on: (name, fn) => { handlers[name] = fn; }, events: { on: (name, fn) => { handlers[name] = fn; } } });
-const ctx = { isIdle: () => process.env.MODE !== "settle-continuing" };
-switch (process.env.MODE) {
-  case "agent-start": await handlers["agent_start"]({}, ctx); break;
-  case "settle-idle": await handlers["agent_settled"]({}, ctx); break;
-  case "settle-continuing": await handlers["agent_settled"]({}, ctx); break;
-  case "settle-then-start":
-    await handlers["agent_settled"]({}, ctx);
-    await handlers["agent_start"]({}, ctx);
-    break;
-  case "turn-end": await handlers["turn_end"]({}, ctx); break;
-  case "progress": await handlers["codex-native:progress"]({ type: "commandExecution", phase: "completed" }); break;
-  default: throw new Error("unknown mode " + process.env.MODE);
-}
-if (["turn-end", "progress"].includes(process.env.MODE)) {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-}
-EOF
-}
-
-test_pi_stream_extension_activation_and_lifecycle() {
-  local rec id=stream-pi state ext out version option enabled label
-  for label in disabled zero negative malformed leading maximum overflow verified newer malformed-version older; do
-    version=1.2.0 option=300 enabled=1
-    case "$label" in
-      disabled) option='' enabled=0 ;;
-      zero) option=0 enabled=0 ;;
-      negative) option=-1 enabled=0 ;;
-      malformed) option=invalid enabled=0 ;;
-      leading) option=00300 ;;
-      maximum) option=999999999 ;;
-      overflow) option=1000000000 enabled=0 ;;
-      newer) version=1.3.0 enabled=0 ;;
-      malformed-version) version=not-a-version enabled=0 ;;
-      older) version=0.82.0 enabled=0 ;;
-    esac
-    rec=$(make_spawn_case "stream-$label" pi "$id")
-    read_case_record "$rec"
-    cat > "$FAKEBIN_DIR/pi" <<SH
-#!/usr/bin/env bash
-if [ "\${1:-}" = --version ]; then printf '%s\\n' '$version'; fi
-exit 0
-SH
-    chmod +x "$FAKEBIN_DIR/pi"
-    out=$(FM_STREAM_SILENT_MAX_SECS="$option" run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
-    expect_code 0 $? "stream spawn should succeed: $out"
-    case "$label" in
-      newer|older|malformed-version)
-        printf '%s\n' "$out" | grep -Fx "warning: pi model-stream observation unavailable for version $version; verified version: 1.2.0; existing busy bound remains active" >/dev/null || fail "missing exact version warning"
-        ;;
-    esac
-    state="$HOME_DIR/state"
-    ext="$state/$id.pi-ext.ts"
-    STREAM_STATE="$state" STREAM_ID="$id" STREAM_ENABLED="$enabled" EXT_PATH="$ext" node --input-type=module <<'JS' || fail "generated stream lifecycle failed for $label"
-import { pathToFileURL } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
-const { default: extension } = await import(pathToFileURL(process.env.EXT_PATH).href);
-const handlers = {};
-extension({on: (name, fn) => { handlers[name] = fn; }, events: { on() {} }});
-const state = process.env.STREAM_STATE, id = process.env.STREAM_ID;
-const marker = state + "/" + id + ".model-stream";
-let idle = true;
-const ctx = {isIdle: () => idle};
-let clock = 10000;
-Date.now = () => clock;
-const fire = async (name, event = {}) => { await handlers[name]?.(event, ctx); };
-const assert = (ok, message) => { if (!ok) throw new Error(message); };
-await fire("agent_start");
-await fire("context", {messages: []});
-if (process.env.STREAM_ENABLED !== "1") {
-  assert(!existsSync(marker), "disabled/unverified worker produced stream evidence");
-  for (const name of ["context", "message_update", "message_end", "tool_execution_start"]) {
-    assert(!handlers[name], "unverified worker installed stream handler " + name);
-  }
-} else {
-  assert(existsSync(marker), "foreground context did not open stream evidence");
-  const initial = readFileSync(marker, "utf8");
-  await fire("message_update", {message: {role: "assistant", content: [{type:"text",text:""}]}});
-  assert(readFileSync(marker,"utf8") === initial, "empty event refreshed stream");
-  await fire("message_update", {message: {role: "assistant", content: [{type:"thinking",thinking:"reason"}]}});
-  const progressed = readFileSync(marker,"utf8");
-  assert(progressed !== initial, "thinking did not advance progress");
-  await fire("message_update", {message: {role: "assistant", content: [{type:"text",text:"token"}]}});
-  assert(readFileSync(marker,"utf8") === progressed, "unthrottled content event");
-  clock += 1001;
-  await fire("message_update", {message: {role: "assistant", content: [{type:"toolCall",name:"bash",arguments:{command:"true"}}]}});
-  assert(readFileSync(marker,"utf8") !== progressed, "tool arguments did not advance progress");
-  const last = readFileSync(marker,"utf8");
-  clock += 1001;
-  await fire("message_update", {message: {role: "assistant", content: [{type:"toolCall",name:"bash",arguments:{command:"true"}}]}});
-  assert(readFileSync(marker,"utf8") === last, "unchanged content refreshed progress after throttle");
-  idle = false;
-  await fire("agent_settled");
-  assert(readFileSync(marker,"utf8") === last, "continuing settlement closed active request");
-  idle = true;
-  await fire("message_end", {message: {role:"user"}});
-  assert(existsSync(marker), "user message end closed assistant stream");
-  await fire("message_end", {message: {role:"assistant"}});
-  assert(!existsSync(marker), "assistant end left stream open");
-  clock += 1001;
-  await fire("message_update", {message: {role:"assistant", content:[{type:"text",text:"late"}]}});
-  assert(!existsSync(marker), "late event resurrected closed stream");
-  await fire("context", {messages: []});
-  assert(existsSync(marker), "retry did not open new stream");
-  const retry = readFileSync(marker,"utf8");
-  const closing = fire("message_end", {message: {role:"assistant"}});
-  const opening = fire("context", {messages: []});
-  await Promise.all([closing, opening]);
-  assert(existsSync(marker) && readFileSync(marker,"utf8") !== retry, "overlapping close/open lost new request");
-  await fire("tool_execution_start");
-  assert(!existsSync(marker), "tool phase retained stream");
-  await fire("context", {messages: []});
-  await fire("agent_settled");
-  assert(!existsSync(marker), "settlement retained stream");
-}
-JS
-  done
-  pass "generated Pi wiring gates stream observation and clears model phases without accepting late updates"
-}
-
-test_pi_extension_semantic_lifecycle() {
-  local rec id=busy-pi-1 out state ext
-  rec=$(make_spawn_case pi-lifecycle pi "$id")
-  read_case_record "$rec"
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
-  expect_code 0 $? "pi spawn should succeed: $out"
-  state="$HOME_DIR/state"
-  ext="$state/$id.pi-ext.ts"
-  assert_present "$ext" "pi spawn did not write the per-task extension"
-
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "seed after spawn must be 'busy fm-spawn', got '$out'"
-
-  rm -f "$state/$id.turn-ended"
-  out=$(drive_pi_ext "$ext" progress) || fail "native progress drive failed: $out"
-  [ -f "$state/$id.progress" ] || fail "native progress did not write its separate marker"
-  [ ! -e "$state/$id.turn-ended" ] || fail "native progress fabricated a completed turn"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "native progress changed semantic state: $out"
-  out=$(drive_pi_ext "$ext" turn-end) || fail "turn_end drive failed: $out"
-  [ -f "$state/$id.turn-ended" ] || fail "turn_end no longer touches the notification marker"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "turn_end must stay a notification, not a state edge, got '$out'"
-
-  out=$(drive_pi_ext "$ext" settle-idle) || fail "agent_settled drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "idle pi-ext" ] || fail "agent_settled with isIdle must classify 'idle pi-ext', got '$out'"
-
-  out=$(drive_pi_ext "$ext" agent-start) || fail "agent_start drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy pi-ext" ] || fail "agent_start must classify 'busy pi-ext', got '$out'"
-
-  out=$(drive_pi_ext "$ext" settle-continuing) || fail "continuing settle drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy pi-ext" ] || fail "a settle while another run continues must stay busy, got '$out'"
-
-  out=$(drive_pi_ext "$ext" settle-idle) || fail "final settle drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "idle pi-ext" ] || fail "the final settle must classify idle, got '$out'"
-  pass "pi extension reports agent_start busy, settles idle only via ctx.isIdle(), and keeps turn_end a notification"
-}
-
-test_pi_extension_serializes_settle_before_next_start() {
-  local rec id=busy-pi-order out state ext
-  rec=$(make_spawn_case pi-order pi "$id")
-  read_case_record "$rec"
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
-  expect_code 0 $? "pi spawn should succeed: $out"
-  state="$HOME_DIR/state"
-  ext="$state/$id.pi-ext.ts"
-
-  out=$(drive_pi_ext "$ext" settle-then-start) || fail "settle/start drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy pi-ext" ] || fail "a fresh agent_start after agent_settled must win, got '$out'"
-  pass "pi extension awaits agent_settled before the next agent_start without a test delay"
-}
-
-test_pi_extension_stale_incarnation_rejected() {
-  local rec id=busy-pi-2 out state ext
-  rec=$(make_spawn_case pi-stale pi "$id")
-  read_case_record "$rec"
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
-  expect_code 0 $? "pi spawn should succeed: $out"
-  state="$HOME_DIR/state"
-  ext="$state/$id.pi-ext.ts"
-  # A re-arm (a rewired incarnation) supersedes the gen embedded in the old
-  # extension file: its late events must be rejected and never change state.
-  "$ROOT/bin/fm-busy-event.sh" arm "$state" "$id" >/dev/null
-  out=$(drive_pi_ext "$ext" settle-idle) || fail "stale settle drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "a stale extension event must not change state, got '$out'"
-  out=$(drive_pi_ext "$ext" progress) || fail "stale progress drive failed: $out"
-  [ ! -e "$state/$id.progress" ] || fail "stale native progress refreshed the new incarnation"
-  pass "pi extension events from a superseded incarnation are rejected as stale"
 }
 
 # drive_oc_plugin <plugin-path> <events-json-lines...>: load the generated
@@ -1160,62 +956,6 @@ test_secondmate_claude_spawn_leaves_local_settings_untouched() {
   pass "a claude secondmate spawn leaves an existing settings.local.json untouched"
 }
 
-test_secondmate_pi_extension_reports_busy_without_a_parent_turnend() {
-  local case_dir id=sm-pi primary state ext launch out
-  case_dir="$TMP_ROOT/sm-pi"
-  primary="$case_dir/primary"
-  out=$(spawn_secondmate_harness "$case_dir" "$id" pi) \
-    || fail "pi secondmate spawn failed: $out"
-  state="$primary/state"
-  ext="$state/$id.pi-ext.ts"
-  launch=$(cat "$case_dir/launch.log")
-  assert_present "$ext" "pi secondmate spawn did not write the busy extension"
-  assert_contains "$launch" "$ext" "pi secondmate launch did not load the busy extension"
-  assert_contains "$launch" "fm-primary-turnend-guard.ts" "pi secondmate launch dropped its turn-end extension"
-  assert_contains "$launch" "fm-primary-pi-watch.ts" "pi secondmate launch dropped its watch extension"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "pi secondmate seed must be busy fm-spawn, got '$out'"
-  rm -f "$state/$id.turn-ended"
-  out=$(drive_pi_ext "$ext" turn-end) || fail "pi secondmate turn_end drive failed: $out"
-  [ ! -e "$state/$id.turn-ended" ] || fail "pi secondmate turn_end touched the parent's turn-ended marker"
-  out=$(drive_pi_ext "$ext" settle-idle) || fail "pi secondmate settle drive failed: $out"
-  out=$(classify pi "$id" "$state")
-  [ "$out" = "idle pi-ext" ] || fail "pi secondmate settle must classify idle pi-ext, got '$out'"
-  pass "a pi secondmate loads the busy extension beside its primary extensions and does not emit a parent turn-end"
-}
-
-test_secondmate_omp_extension_reports_busy_without_a_parent_turnend() {
-  local case_dir id=sm-omp primary state ext launch out
-  case_dir="$TMP_ROOT/sm-omp"
-  primary="$case_dir/primary"
-  out=$(spawn_secondmate_harness "$case_dir" "$id" omp) \
-    || fail "omp secondmate spawn failed: $out"
-  state="$primary/state"
-  ext="$state/$id.omp-ext.ts"
-  launch=$(cat "$case_dir/launch.log")
-  assert_present "$ext" "omp secondmate spawn did not write the busy extension"
-  assert_contains "$launch" "$ext" "omp secondmate launch did not name the busy extension"
-  assert_contains "$launch" "--cwd" "omp secondmate launch dropped its cwd pin"
-  out=$(classify omp "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "omp secondmate seed must be busy fm-spawn, got '$out'"
-  rm -f "$state/$id.turn-ended"
-  out=$(drive_pi_ext "$ext" turn-end) || fail "omp secondmate turn_end drive failed: $out"
-  [ ! -e "$state/$id.turn-ended" ] || fail "omp secondmate turn_end touched the parent's turn-ended marker"
-  out=$(classify omp "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "omp secondmate turn_end must stay a notification, got '$out'"
-  # drive_pi_ext has no agent_end mode. Fire the omp handler through node.
-  EXT_PATH="$ext" node --input-type=module <<'EOF'
-import { pathToFileURL } from "node:url";
-const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
-const handlers = {};
-mod.default({ on: (name, fn) => { handlers[name] = fn; } });
-await handlers["agent_end"]({ willContinue: false }, {});
-EOF
-  out=$(classify omp "$id" "$state")
-  [ "$out" = "idle omp-ext" ] || fail "omp secondmate agent_end must classify idle omp-ext, got '$out'"
-  pass "an omp secondmate names only the out-of-home busy extension and does not emit a parent turn-end"
-}
-
 test_secondmate_opencode_plugin_closes_without_a_parent_turnend() {
   local case_dir id=sm-oc primary sm state plugin out
   case_dir="$TMP_ROOT/sm-oc"
@@ -1242,26 +982,23 @@ test_secondmate_opencode_plugin_closes_without_a_parent_turnend() {
 # updated by the launched command.
 test_raw_secondmate_launch_writes_no_busy_wiring() {
   local harness raw case_dir id state sm out launch
-  for harness in claude pi pi-signed omp; do
-    case_dir="$TMP_ROOT/sm-raw-$harness"
-    id="sm-raw-$harness"
-    raw="$harness --fm-raw-flag"
-    out=$(spawn_secondmate_harness "$case_dir" "$id" "$raw" "$harness") \
-      || fail "raw $harness secondmate spawn must still succeed: $out"
-    state="$case_dir/primary/state"
-    sm="$case_dir/sm"
-    launch=$(cat "$case_dir/launch.log")
-    assert_contains "$launch" "$raw" "raw $harness secondmate did not launch the raw command"
-    assert_absent "$state/$id.busy-gen" "raw $harness secondmate armed a busy generation"
-    assert_absent "$state/$id.busy-state" "raw $harness secondmate seeded a busy record"
-    assert_absent "$state/$id.claude-settings.json" "raw $harness secondmate wrote Claude hook settings"
-    assert_absent "$sm/.fm-busy-stop" "raw $harness secondmate wrote the Stop pointer"
-    assert_absent "$sm/.claude/settings.local.json" "raw $harness secondmate wrote the home's settings.local.json"
-    assert_absent "$state/$id.pi-ext.ts" "raw $harness secondmate wrote the Pi busy extension"
-    assert_absent "$state/$id.omp-ext.ts" "raw $harness secondmate wrote the omp busy extension"
-    out=$(classify "$harness" "$id" "$state")
-    [ "$out" = "unknown missing" ] || fail "raw $harness secondmate must classify unknown missing, got '$out'"
-  done
+  harness=claude
+  case_dir="$TMP_ROOT/sm-raw-$harness"
+  id="sm-raw-$harness"
+  raw="$harness --fm-raw-flag"
+  out=$(spawn_secondmate_harness "$case_dir" "$id" "$raw" "$harness") \
+    || fail "raw $harness secondmate spawn must still succeed: $out"
+  state="$case_dir/primary/state"
+  sm="$case_dir/sm"
+  launch=$(cat "$case_dir/launch.log")
+  assert_contains "$launch" "$raw" "raw $harness secondmate did not launch the raw command"
+  assert_absent "$state/$id.busy-gen" "raw $harness secondmate armed a busy generation"
+  assert_absent "$state/$id.busy-state" "raw $harness secondmate seeded a busy record"
+  assert_absent "$state/$id.claude-settings.json" "raw $harness secondmate wrote Claude hook settings"
+  assert_absent "$sm/.fm-busy-stop" "raw $harness secondmate wrote the Stop pointer"
+  assert_absent "$sm/.claude/settings.local.json" "raw $harness secondmate wrote the home's settings.local.json"
+  out=$(classify "$harness" "$id" "$state")
+  [ "$out" = "unknown missing" ] || fail "raw $harness secondmate must classify unknown missing, got '$out'"
 
   case_dir="$TMP_ROOT/sm-raw-over-armed"
   id='sm-raw-over-armed'
@@ -1283,7 +1020,7 @@ test_raw_secondmate_launch_writes_no_busy_wiring() {
   assert_absent "$sm/.fm-busy-stop" "raw respawn kept the earlier Stop pointer"
   out=$(classify claude "$id" "$state")
   [ "$out" = "unknown missing" ] || fail "raw respawn over an armed secondmate must classify unknown missing, got '$out'"
-  pass "a raw claude, pi, pi-signed, or omp secondmate launch writes no busy wiring and classifies unknown"
+  pass "a raw claude secondmate launch writes no busy wiring and classifies unknown"
 }
 
 test_secondmate_codex_does_not_arm_a_parent_turnend() {
@@ -1307,14 +1044,8 @@ test_raw_secondmate_launch_writes_no_busy_wiring
 test_secondmate_claude_stop_guard_owns_the_stop_verdict
 test_secondmate_claude_older_home_guard_keeps_the_stop_idle_hook
 test_secondmate_claude_spawn_leaves_local_settings_untouched
-test_pi_stream_extension_activation_and_lifecycle
-test_secondmate_pi_extension_reports_busy_without_a_parent_turnend
-test_secondmate_omp_extension_reports_busy_without_a_parent_turnend
 test_secondmate_opencode_plugin_closes_without_a_parent_turnend
 test_secondmate_codex_does_not_arm_a_parent_turnend
-test_pi_extension_semantic_lifecycle
-test_pi_extension_serializes_settle_before_next_start
-test_pi_extension_stale_incarnation_rejected
 test_kimi_installs_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
 test_opencode_plugin_v2_execution_lifecycle

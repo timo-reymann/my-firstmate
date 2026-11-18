@@ -173,7 +173,7 @@ test_helper_lab_home_admits() {
   expect_code 3 "$rc" "helper: gate + unmarked home must still refuse"
   assert_contains "$out" "$ENV_MSG" "helper: unmarked-home refusal message"
 
-  # Production Pi supplies the tracked root and the stock state/config paths.
+  # A production primary supplies the tracked root and the stock state/config paths.
   out=$(run_guard_lib_home "$GATE_WT" "$lab" NO_MISTAKES_GATE=1 \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$lab/state" FM_CONFIG_OVERRIDE="$lab/config"); rc=$?
   expect_code 0 "$rc" "helper: production branch paths in a marked lab must be permitted"

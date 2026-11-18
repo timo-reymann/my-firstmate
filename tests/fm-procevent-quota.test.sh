@@ -86,7 +86,7 @@ case "${QUOTA_AXI_MALFORMED:-}" in
     exit 0
     ;;
 esac
-# Schema 6: an expanded provider (codex, two Pi lanes) puts one provider id on
+# Schema 6: an expanded provider (codex, two accounts) puts one provider id on
 # two rows keyed by accountKey; the schema 5 pair is the same state from an
 # older quota-axi that only knows one codex account.
 if [ "${QUOTA_AXI_SCHEMA6:-0}" = 1 ]; then

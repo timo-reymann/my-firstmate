@@ -35,7 +35,7 @@ mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd)
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
-VERIFIED_HARNESSES="claude codex opencode pi pi-signed kimi cursor muse omp devin commandcode cortex"
+VERIFIED_HARNESSES="claude codex opencode kimi cursor muse devin commandcode cortex"
 
 # The expectation table, written out independently of the implementation so a
 # silent change to either side shows up here. The fourth field is the composer
@@ -46,9 +46,6 @@ verified_adapter_contract() {  # <harness> -> exit command, interrupt key, repea
     claude) printf '/exit\tEscape\t1\t\n' ;;
     codex) printf '/quit\tEscape\t1\t\n' ;;
     opencode) printf '/exit\tEscape\t2\t\n' ;;
-    pi) printf '/quit\tEscape\t1\t\n' ;;
-    pi-signed) printf '/quit\tEscape\t1\t\n' ;;
-    omp) printf '/quit\tEscape\t1\t\n' ;;
     devin) printf '/quit\tEscape\t2\t\n' ;;
     commandcode|cortex) printf '/quit\tEscape\t1\t\n' ;;
     kimi) printf '/exit\tEscape\t1\t\n' ;;
@@ -491,11 +488,10 @@ test_devin_stuck_picker_refuses_and_exit_types_nothing() {
 # A recorded harness can carry a raw launch command's basename, so the tables
 # are reached through one prefix rule rather than an exact string match.
 test_harness_family_resolution() {
-  local pair recorded want got
+  local pair recorded want got removed
   for pair in claude:claude claude-latest:claude codex:codex codex-cli:codex \
       opencode:opencode kimi:kimi kimi-2:kimi cursor:cursor \
-      cursor-agent:cursor muse:muse muse-bin-0.1.0:muse pi:pi \
-      pi-signed:pi-signed omp:omp devin:devin; do
+      cursor-agent:cursor muse:muse muse-bin-0.1.0:muse devin:devin; do
     recorded=${pair%%:*}
     want=${pair#*:}
     got=$(fm_control_harness_family "$recorded") \
@@ -506,16 +502,10 @@ test_harness_family_resolution() {
     && fail "an unrecognized launch command must not be guessed into an adapter family"
   fm_control_harness_family '' \
     && fail "an empty harness must not resolve to an adapter family"
-  fm_control_harness_family grok \
-    && fail "grok is not a verified adapter and must not resolve to an adapter family"
-  # The signed adapter is a distinct launch profile, not a pi variant.
-  [ "$(fm_control_harness_family pi-signed)" != "$(fm_control_harness_family pi)" ] \
-    || fail "pi-signed must not collapse into pi"
-  # omp is exact: an omp* prefix would claim unrelated commands such as ompd.
-  fm_control_harness_family ompd \
-    && fail "ompd must not be guessed into the omp adapter"
-  fm_control_harness_family comp \
-    && fail "comp must not be guessed into the omp adapter"
+  for removed in grok pi pi-signed omp; do
+    fm_control_harness_family "$removed" \
+      && fail "$removed is not a verified adapter and must not resolve to an adapter family"
+  done
   pass "fm-control-lib: a recorded harness resolves to its verified adapter without guessing"
 }
 
@@ -612,7 +602,7 @@ test_harness_kind_capability() {
     && fail "muse has no primary supervision protocol and must not claim a secondmate"
   fm_control_harness_supports_kind commandcode secondmate \
     && fail "commandcode has no primary supervision protocol and must not claim a secondmate"
-  for harness in claude codex opencode pi pi-signed kimi omp; do
+  for harness in claude codex opencode kimi; do
     fm_control_harness_supports_kind "$harness" secondmate \
       || fail "$harness should be able to run a secondmate"
   done
@@ -1260,42 +1250,6 @@ test_fm_send_still_marks_the_same_secondmate_task() {
   pass "fm-control's arrival leaves fm-send's from-firstmate marking untouched"
 }
 
-# Only an adapter whose runtime records an exact per-pane agent session has a
-# relaunch resume form, and only a reference its OWN agent reported may be
-# handed to it: resuming another adapter's reference would inject that agent's
-# conversation into this launch. Every other pair must print nothing so the
-# relaunch stays a fresh session exactly as it does today.
-test_relaunch_resume_flag_is_per_adapter_and_reference_owner() {
-  local got harness label want
-  # (harness | registered agent label | expected flag) lines, written out
-  # independently of the implementation.
-  local cases='pi|pi|--session
-pi-signed|pi|--session
-pi||
-pi-signed||
-pi|codex|
-pi-signed|claude|
-claude|claude|
-codex|codex|
-opencode|opencode|
-omp|omp|
-kimi|kimi|
-cursor|cursor|
-muse|muse|
-rovo|rovo|
-agy|agy|'
-  while IFS='|' read -r harness label want; do
-    [ -n "$harness" ] || continue
-    got=$(fm_control_relaunch_resume_flag "$harness" "$label") \
-      || fail "the resume-flag lookup must never fail; it did for '$harness'/'$label'"
-    [ "$got" = "$want" ] \
-      || fail "$harness with a '$label' registration should print '$want', got '$got'"
-  done <<EOF
-$cases
-EOF
-  pass "fm-control-lib: only a runtime's own recorded session has a relaunch resume form"
-}
-
 test_exit_types_each_harness_verified_command
 test_opencode_exit_matches_recorded_major
 test_opencode2_exit_retries_ctrl_c_once
@@ -1308,7 +1262,6 @@ test_devin_stuck_picker_refuses_and_exit_types_nothing
 test_opencode_interrupts_twice_and_others_once
 test_unverified_harness_is_refused
 test_harness_family_resolution
-test_relaunch_resume_flag_is_per_adapter_and_reference_owner
 test_prefixed_recorded_harness_reaches_each_control_verb
 test_backend_key_capability_matrix
 test_harness_kind_capability

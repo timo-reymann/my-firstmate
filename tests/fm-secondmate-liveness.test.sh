@@ -97,7 +97,7 @@ SH
 test_tmux_agent_state_classifies() {
   local fb out
 
-  for harness in claude codex opencode kimi pi pi-signed pi-launcher Pi; do
+  for harness in claude codex opencode kimi; do
     fb=$(make_probe_tmux "$TMP_ROOT/tmux-$harness" "$harness")
     out=$(PATH="$fb:$BASE_PATH" bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' "$ROOT")
     [ "$out" = alive ] || fail "a live $harness foreground process should classify as alive, got '$out'"
@@ -208,7 +208,7 @@ test_agent_state_dispatcher_and_compatibility() {
 make_toolchain() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
-  fm_fake_exit0 "$fakebin" node chrome-devtools-axi pi-signed
+  fm_fake_exit0 "$fakebin" node chrome-devtools-axi
   fm_fake_version_tool "$fakebin" lavish-axi FM_FAKE_LAVISH_AXI_VERSION 0.1.80
   cat > "$fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
@@ -609,59 +609,59 @@ test_sweep_leaves_alive_secondmate_untouched() {
   pass "sweep: an already-live secondmate is untouched and distinguishable in verbose diagnostics"
 }
 
-test_sweep_respawns_authoritatively_missing_pi_secondmate() {
+test_sweep_respawns_authoritatively_missing_secondmate() {
   local w fb tmuxfb log out
-  w=$(new_world sweep-missing-pi)
-  add_sm_home "$w" sm1 firstmate:fm-sm1 pi
+  w=$(new_world sweep-missing)
+  add_sm_home "$w" sm1 firstmate:fm-sm1
   fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
   log="$w/calls.log"; : > "$log"
 
   out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" missing "$log")
 
   assert_not_contains "$out" "SECONDMATE_LIVENESS:" "a successful missing-window recovery should stay silent by default"
-  assert_contains "$(cat "$log")" "new-window" "an authoritatively missing Pi secondmate should be relaunched"
+  assert_contains "$(cat "$log")" "new-window" "an authoritatively missing secondmate should be relaunched"
   assert_not_contains "$(cat "$log")" "kill-window" "an absent window should not need a destructive pre-kill"
-  pass "sweep: an authoritatively missing Pi secondmate window is relaunched"
+  pass "sweep: an authoritatively missing secondmate window is relaunched"
 }
 
-test_sweep_respawns_authoritatively_missing_pi_signed_secondmate() {
-  local w fb tmuxfb log out
-  w=$(new_world sweep-missing-pi-signed)
-  printf '%s\n' pi-signed > "$w/home/config/secondmate-harness"
-  add_sm_home "$w" sm1 firstmate:fm-sm1 pi-signed
-  fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
-  log="$w/calls.log"; : > "$log"
+# pi, pi-signed, and omp are no longer verified adapters, so a secondmate
+# recorded with one is unverified for recovery like any other unknown name.
+test_sweep_never_relaunches_a_removed_harness_secondmate() {
+  local w fb tmuxfb log out harness
+  for harness in pi pi-signed omp; do
+    w=$(new_world "sweep-removed-$harness")
+    add_sm_home "$w" sm1 firstmate:fm-sm1 "$harness"
+    fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+    log="$w/calls.log"; : > "$log"
 
-  out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" missing "$log")
+    out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" missing "$log")
 
-  assert_not_contains "$out" "unverified for recovery" \
-    "a recorded pi-signed secondmate should be verified for recovery"
-  assert_contains "$(cat "$log")" "new-window" \
-    "an authoritatively missing pi-signed secondmate should be relaunched"
-  assert_not_contains "$(cat "$log")" "kill-window" \
-    "an absent pi-signed window should not need a destructive pre-kill"
-  pass "sweep: an authoritatively missing pi-signed secondmate window is relaunched"
+    assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: recorded harness '$harness' is unverified for recovery" \
+      "a recorded $harness secondmate should be unverified for recovery"
+    [ ! -s "$log" ] || fail "a recorded $harness secondmate must never be relaunched: $(cat "$log")"
+  done
+  pass "sweep: a secondmate recorded with a removed harness is never relaunched"
 }
 
 test_sweep_never_acts_on_ambiguous_existing_process() {
   local w fb tmuxfb log out
   w=$(new_world sweep-ambiguous)
-  add_sm_home "$w" sm1 firstmate:fm-sm1 pi
+  add_sm_home "$w" sm1 firstmate:fm-sm1
   fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
   log="$w/calls.log"; : > "$log"
 
   out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" node "$log")
 
   assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: existing endpoint has ambiguous agent process" \
-    "an existing Pi-shaped node process should be reported as ambiguous"
+    "an existing node process should be reported as ambiguous"
   [ ! -s "$log" ] || fail "an ambiguous existing process must never trigger kill or relaunch: $(cat "$log")"
-  pass "sweep: an existing ambiguous Pi process prevents duplicate recovery"
+  pass "sweep: an existing ambiguous process prevents duplicate recovery"
 }
 
 test_sweep_never_acts_on_transient_unreadability() {
   local w fb tmuxfb log out
   w=$(new_world sweep-unreadable)
-  add_sm_home "$w" sm1 firstmate:fm-sm1 pi
+  add_sm_home "$w" sm1 firstmate:fm-sm1
   fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
   log="$w/calls.log"; : > "$log"
 
@@ -676,7 +676,7 @@ test_sweep_never_acts_on_transient_unreadability() {
 test_sweep_reports_missing_endpoint_relaunch_failure() {
   local w fb tmuxfb log out
   w=$(new_world sweep-missing-failure)
-  add_sm_home "$w" sm1 firstmate:fm-sm1 pi
+  add_sm_home "$w" sm1 firstmate:fm-sm1
   fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
   log="$w/calls.log"; : > "$log"
 
@@ -1000,8 +1000,8 @@ test_sweep_recovers_the_durable_secondmate_account
 test_sweep_serializes_distinct_secondmate_relaunches
 test_sweep_keeps_tmux_best_effort_kill_when_close_fails
 test_sweep_leaves_alive_secondmate_untouched
-test_sweep_respawns_authoritatively_missing_pi_secondmate
-test_sweep_respawns_authoritatively_missing_pi_signed_secondmate
+test_sweep_respawns_authoritatively_missing_secondmate
+test_sweep_never_relaunches_a_removed_harness_secondmate
 test_sweep_never_acts_on_ambiguous_existing_process
 test_sweep_never_acts_on_transient_unreadability
 test_sweep_reports_missing_endpoint_relaunch_failure

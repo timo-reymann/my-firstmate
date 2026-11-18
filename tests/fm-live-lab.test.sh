@@ -44,8 +44,7 @@ command -v tmux >/dev/null 2>&1 || { echo "ok - skipped: tmux is not installed";
 fm_tmux_isolation_gate
 
 FAKE_HOME="$TMP_ROOT/fakehome"
-mkdir -p "$FAKE_HOME/.pi/agent" "$FAKE_HOME/.treehouse/existing-pool"
-printf '{}\n' > "$FAKE_HOME/.pi/agent/trust.json"
+mkdir -p "$FAKE_HOME/.treehouse/existing-pool"
 export HOME="$FAKE_HOME"
 unset CLAUDE_CONFIG_DIR TMUX
 
@@ -65,10 +64,9 @@ make_lab() {
   "$ROOT/bin/fm-lab-home.sh" create "$home" >/dev/null || fail "lab home create"
   cp -R "$ROOT/bin" "$home/bin"
   cp "$ROOT/AGENTS.md" "$home/AGENTS.md"
-  mkdir -p "$home/.pi" "$home/data/$WORKER_ID" "$root/mate/state" "$root/treehouse"
-  cp -R "$ROOT/.pi/extensions" "$home/.pi/extensions"
+  mkdir -p "$home/data/$WORKER_ID" "$root/mate/state" "$root/treehouse"
   git -C "$home" init -q -b main
-  git -C "$home" add -A bin AGENTS.md .pi
+  git -C "$home" add -A bin AGENTS.md
   git -C "$home" -c user.name=t -c user.email=t@example.invalid commit -qm lab
   tmux_dir=$("$ROOT/bin/fm-lab-home.sh" tmux-dir "$home") || fail "lab tmux dir"
   printf '%s\n' "$tmux_dir" >> "$TMP_ROOT/tmux-dirs"
@@ -86,10 +84,8 @@ make_lab() {
     echo "mate_id=$MATE_ID"
     echo "worker_id=$WORKER_ID"
     echo "gate=$home/data/$WORKER_ID/gate"
-    echo "pi_trust=$(digest "$HOME/.pi/agent/trust.json")"
     echo "claude_config_dir=$claude_dir"
     echo "claude_store=${claude_dir:-$HOME}/.claude.json"
-    echo "pi_trust_store=$HOME/.pi/agent/trust.json"
     echo "treehouse_dir=$HOME/.treehouse"
     echo "tmux_dir=$tmux_dir"
   } > "$root/.fm-live-lab"
@@ -112,7 +108,6 @@ make_lab() {
   printf '%s\n' \
     '{"seq":1,"epoch":1,"key":"k","id":"a","tag":"captain","text":"probe"}' \
     '{"seq":2,"epoch":2,"key":"k","id":"b","tag":"main","text":"LABREADY"}' > "$home/state/.host-mirror.jsonl"
-  write_pi_markers "$home" "$lock_pid"
   [ "$harness" = claude ] && node -e 'const fs=require("node:fs");const [s,h,r]=process.argv.slice(1);fs.writeFileSync(s,JSON.stringify({keep:1,projects:{[h]:{hasTrustDialogAccepted:true},[r+"/mate"]:{hasTrustDialogAccepted:true},"/elsewhere/project":{hasTrustDialogAccepted:true}}},null,2)+"\n")' \
     "${claude_dir:-$HOME}/.claude.json" "$home" "$root"
   printf '%s\n' "$root"
@@ -148,14 +143,6 @@ start_watcher() {  # <home>: a live process holding a matching watcher lock
   printf '%s\n' "$home/bin/fm-watch.sh" > "$lock/watcher-path"
   fm_test_pid_identity "$pid" > "$lock/pid-identity"
   touch "$home/state/.last-watcher-beat"
-}
-
-write_pi_markers() {  # <home> <lock-pid>
-  local home=$1 pid=$2
-  v() { FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_pi_extension_version "$1/.pi/extensions/$2"' _ "$home" "$1"; }
-  printf '%s\n%s\ngeneration=1 phase=active\n' "$(v fm-primary-pi-watch.ts)" "$pid" > "$home/state/.pi-watch-extension-loaded"
-  printf '%s\n%s\n' "$(v fm-primary-turnend-guard.ts)" "$pid" > "$home/state/.pi-turnend-extension-loaded"
-  printf '%s\n' "$pid" > "$home/state/.pi-branch-extension-loaded"
 }
 
 run_check() {  # <root>: sets CHECK_OUT and CHECK_RC
@@ -314,24 +301,6 @@ mkdir -p "$LATER_HOME"
 CHECK_OUT=$(HOME="$LATER_HOME" "$LIVE_LAB" check "$C" 2>&1)
 expect_code 0 "$?" "the Claude lab is ready again after every restore, even from a shell with another HOME: $CHECK_OUT"
 pass "treehouse fails when a pool lands in ~/.treehouse"
-
-# ---- Pi lab: extensions and the session-only trust store -------------------
-
-P=$(make_lab p pi)
-PH="$P/home"
-run_check "$P"
-expect_code 0 "$CHECK_RC" "a Pi lab in up's shape is ready: $CHECK_OUT"
-assert_contains "$CHECK_OUT" "ok extensions: fm-primary-pi-watch fm-primary-turnend-guard fm-branch-supervision" "all three extensions load"
-assert_contains "$CHECK_OUT" "ok trust: Pi trust store unchanged" "the Pi trust store is untouched"
-assert_not_contains "$CHECK_OUT" "mirror" "a Pi lab has no host mirror check"
-rm -f "$PH/state/.pi-branch-extension-loaded"
-run_check "$P"
-assert_contains "$CHECK_OUT" "fail extensions: fm-branch-supervision.ts is not loaded by the lock holder" "the missing branch extension is named"
-printf '%s\n' "$(sed -n 1p "$PH/state/.lock")" > "$PH/state/.pi-branch-extension-loaded"
-printf 'stale\n' > "$PH/state/.pi-turnend-extension-loaded"
-run_check "$P"
-assert_contains "$CHECK_OUT" "fail extensions: fm-primary-turnend-guard.ts is not loaded at its current build" "a stale turn-end build is named"
-pass "extensions fail when the Pi lab lacks the branch extension or loads a stale build"
 
 # ---- down -------------------------------------------------------------------
 
@@ -575,18 +544,6 @@ kill -0 "$REPLACED" 2>/dev/null || fail "down killed a PID after its recorded id
 kill "$REPLACED" 2>/dev/null || true
 pass "down revalidates process identity during its bounded wait"
 
-printf '{"trusted":["/somewhere"]}\n' > "$HOME/.pi/agent/trust.json"
-run_check "$P"
-assert_contains "$CHECK_OUT" "fail trust: the Pi trust store changed since up began" "a written Pi trust store is caught"
-pass "trust fails on Pi when the lab wrote the persistent Pi trust store"
-
-out=$("$LIVE_LAB" down "$P" 2>&1)
-expect_code 1 "$?" "down reports a changed Pi trust store"
-assert_contains "$out" "the Pi trust store changed since up began; left as is" "the Pi trust change is named"
-assert_absent "$P" "the lab is still removed"
-assert_equals '{"trusted":["/somewhere"]}' "$(cat "$HOME/.pi/agent/trust.json")" "down never rewrites the Pi trust store"
-pass "down removes the lab but reports, without reverting, a written Pi trust store"
-
 # ---- up argument safety -----------------------------------------------------
 
 EXISTING="$TMP_ROOT/existing"
@@ -595,9 +552,11 @@ out=$("$LIVE_LAB" up --harness claude "$EXISTING" 2>&1)
 expect_code 1 "$?" "up refuses an existing lab root"
 assert_contains "$out" "a lab root must not exist yet" "the refusal names the existing root"
 assert_present "$EXISTING/keep" "a refused up touches nothing"
-out=$("$LIVE_LAB" up --harness codex "$TMP_ROOT/new" 2>&1)
-expect_code 1 "$?" "up refuses an unsupported harness"
-assert_absent "$TMP_ROOT/new" "a refused harness creates nothing"
+for harness in codex pi; do
+  out=$("$LIVE_LAB" up --harness "$harness" "$TMP_ROOT/new" 2>&1)
+  expect_code 1 "$?" "up refuses the unsupported $harness harness"
+  assert_absent "$TMP_ROOT/new" "a refused $harness harness creates nothing"
+done
 pass "up refuses an existing root and an unsupported harness"
 
 # up persists full-width, distinct task IDs even when checkout fails before

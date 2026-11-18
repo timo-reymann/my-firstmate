@@ -884,7 +884,7 @@ pass "mixed local and remote routes validate without migration"
 
 # Launch on the remote home's own configured backend. Parent metadata records
 # host placement separately from that backend and arms the reply source.
-printf 'pi\n' > "$PARENT/config/crew-harness"
+printf 'opencode\n' > "$PARENT/config/crew-harness"
 launches_before_inherit=0
 [ ! -f "$HERDR_LOG" ] || launches_before_inherit=$(grep -c '^tab create' "$HERDR_LOG" || true)
 if FM_FAKE_SSH_MODE=inherit-partial remote_env "$ROOT/bin/fm-spawn.sh" ios --secondmate \

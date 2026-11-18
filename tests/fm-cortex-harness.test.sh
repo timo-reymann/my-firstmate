@@ -14,7 +14,7 @@ set -u
 . "$ROOT/bin/fm-agent-process-lib.sh"
 TMP_ROOT=$(fm_test_tmproot fm-cortex-harness)
 HARNESS="$ROOT/bin/fm-harness.sh"
-unset CLAUDECODE PI_CODING_AGENT CURSOR_AGENT CURSOR_INVOKED_AS GEMINI_CLI FM_OMP_HARNESS ATLASSIAN_AGENT_TYPE ROVODEV_CLI HERDR_ENV HERDR_PANE_ID HERDR_BIN_PATH
+unset CLAUDECODE CURSOR_AGENT CURSOR_INVOKED_AS GEMINI_CLI ATLASSIAN_AGENT_TYPE ROVODEV_CLI HERDR_ENV HERDR_PANE_ID HERDR_BIN_PATH
 
 mkdir -p "$TMP_ROOT/names"
 for name in cortex cortex-helper; do ln -s /bin/bash "$TMP_ROOT/names/$name"; done

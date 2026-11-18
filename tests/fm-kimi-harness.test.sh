@@ -6,11 +6,11 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # bin/fm-harness.sh answers from environment markers and process ancestry. A
-# suite run from inside Cursor, Claude, or Pi inherits those markers and
+# suite run from inside Cursor or Claude inherits those markers and
 # its own real ancestry, either of which can decide a case the detection cases
 # meant to control. Drop the ambient markers so the asserted verdict does not
 # depend on which harness launched the suite.
-unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS CURSOR_AGENT CURSOR_INVOKED_AS
+unset CLAUDECODE CURSOR_AGENT CURSOR_INVOKED_AS
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
@@ -1033,7 +1033,7 @@ esac
 SH
   chmod +x "$fakebin/ps"
 
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  out=$(env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI \
     PATH="$fakebin:$BASE_PATH" FM_CONFIG_OVERRIDE="$cfg" "$ROOT/bin/fm-harness.sh")
   [ "$out" = kimi ] || fail "kimi ancestry detection returned '$out'"

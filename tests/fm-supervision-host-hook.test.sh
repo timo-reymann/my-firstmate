@@ -168,8 +168,8 @@ case "${1:-}" in
     if [ -e "$FM_HOME/server-down" ]; then printf '{"server":{"running":false}}\n'; else printf '{"server":{"running":true}}\n'; fi ;;
   agent)
     [ "${2:-}" = get ] || exit 1
-    if [ -e "$FM_HOME/foreign-agent" ]; then label=pi; else label=claude; fi
-    if [ -e "$FM_HOME/foreign-binding" ]; then binding=pi; else binding=claude; fi
+    if [ -e "$FM_HOME/foreign-agent" ]; then label=codex; else label=claude; fi
+    if [ -e "$FM_HOME/foreign-binding" ]; then binding=codex; else binding=claude; fi
     printf '{"result":{"agent":{"agent":"%s","agent_status":"%s","agent_session":{"agent":"%s"}}}}\n' "$label" "$(agent_status)" "$binding" ;;
   pane)
     case "${2:-}" in

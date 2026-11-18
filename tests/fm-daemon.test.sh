@@ -1303,10 +1303,10 @@ test_housekeeping_paused_resumed_cleared() {
   printf 'paused: holding for the upstream tool release\nworking: upstream landed, resuming\n' \
     > "$state/held-w12.status"
   printf 'Working...\n' > "$pane"
-  fm_write_meta "$state/held-w12.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/held-w12.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   local gen; gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" held-w12)
   "$ROOT/bin/fm-busy-event.sh" apply "$state" held-w12 busy --gen "$gen" \
-    --source pi-ext --event agent-start
+    --source opencode-plugin --event agent-start
   key=$(printf '%s' "held-w12" | tr ':/.' '___')
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
@@ -1342,10 +1342,10 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
               digest="awaiting the captain" ;;
     esac
     printf 'Working...\n' > "$pane"
-    fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+    fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
     gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" "$task")
     "$ROOT/bin/fm-busy-event.sh" apply "$state" "$task" busy --gen "$gen" \
-      --source pi-ext --event agent-start
+      --source opencode-plugin --event agent-start
     key=$(printf '%s' "$task" | tr ':/.' '___')
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
       FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
@@ -1415,7 +1415,7 @@ test_housekeeping_overdue_pause_opens_one_decision_in_away_mode() {
   printf 'paused: waiting for dependency\n' > "$statusf"
   pause_size=$(log_size "$statusf")
   printf 'idle prompt $\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   printf '%s\n' "$(( $(date +%s) - 5000 ))" > "$state/.subsuper-paused-$key"
   sleep 2
   FM_STATE_OVERRIDE="$state" . "$ROOT/bin/fm-wake-lib.sh"
@@ -1480,7 +1480,7 @@ test_housekeeping_pause_ceiling_absent_keeps_the_pause_recheck() {
   key=$(printf '%s' "$task" | tr ':/.' '___')
   printf 'paused: waiting for dependency\n' > "$statusf"
   printf 'idle prompt $\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words 'fixture words' >/dev/null 2>&1 \
     || fail "fixture: could not record the away posture"
   printf '%s\n' "$(( $(date +%s) - 5000 ))" > "$state/.subsuper-paused-$key"
@@ -1506,7 +1506,7 @@ test_housekeeping_overdue_queue_failure_leaves_decision_open() {
   task=overdue-retry; win="sess:fm-$task"; pane="$dir/pane.txt"; statusf="$state/$task.status"
   printf 'paused: waiting for dependency\n' > "$statusf"
   printf 'idle prompt $\\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words 'fixture words' >/dev/null 2>&1 || fail "fixture: could not record away posture"
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$task"
   sleep 2
@@ -1535,7 +1535,7 @@ test_watcher_overdue_marker_does_not_hide_blocker_from_daemon() {
   printf 'paused: waiting for dependency\n' > "$statusf"
   size=$(wc -c < "$statusf" | tr -d ' ')
   printf 'blocked [key=paused-overdue-%s]: paused 90s, wait overdue - decide or release\n' "$task" >> "$statusf"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   (
     FM_HOME="$dir" FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999999 . "$ROOT/bin/fm-wake-lib.sh"
     if [ "$(uname)" = Darwin ]; then identity=$(/usr/bin/stat -f '%d %i' "$statusf"); else identity=$(stat -c '%d %i' "$statusf"); fi
@@ -1554,7 +1554,7 @@ test_overdue_open_decision_without_marker_is_not_repeated() {
   arm_pause_ceiling "$dir"
   state="$dir/state"; task=overdue-crash; statusf="$state/$task.status"
   printf 'paused: waiting for dependency\nblocked [key=paused-overdue-%s]: paused 9s, wait overdue - decide or release\n' "$task" > "$statusf"
-  fm_write_meta "$state/$task.meta" "window=sess:fm-$task" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=sess:fm-$task" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words fixture >/dev/null 2>&1 || fail "fixture: away"
   printf '%s\n' "$(( $(date +%s) - 5000 ))" > "$state/.subsuper-paused-$task"
   sleep 2
@@ -1578,7 +1578,7 @@ test_housekeeping_overdue_queue_failure_resume_discards() {
         task=overdue-resume; win="sess:fm-$task"; pane="$dir/pane.txt"; statusf="$state/$task.status"
         printf 'paused: waiting for dependency\n' > "$statusf"
         printf 'idle prompt $\n' > "$pane"
-        fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+        fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
         FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words fixture >/dev/null 2>&1 || fail "fixture: away posture"
         printf '%s\n' "$(( $(date +%s) - 5000 ))" > "$state/.subsuper-paused-$task"
         sleep 2
@@ -1674,7 +1674,7 @@ test_housekeeping_overdue_initial_publication_reconciles_resume() {
       arm_pause_ceiling "$dir"
       task=overdue-initial; statusf="$state/$task.status"
       printf 'paused: waiting for dependency\n' > "$statusf"
-      fm_write_meta "$state/$task.meta" "window=sess:fm-$task" "worktree=$dir/wt" "kind=ship" "harness=pi"
+      fm_write_meta "$state/$task.meta" "window=sess:fm-$task" "worktree=$dir/wt" "kind=ship" "harness=opencode"
       FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words fixture >/dev/null 2>&1 || fail "fixture: away posture"
       printf '%s\n' "$(( $(date +%s) - 5000 ))" > "$state/.subsuper-paused-$task"
       sleep 2
@@ -1708,7 +1708,7 @@ test_housekeeping_quiet_overdue_pause_opens_decision() {
   task=overdue-quiet; win="sess:fm-$task"; pane="$dir/pane.txt"; statusf="$state/$task.status"
   printf 'paused: waiting for dependency\n' > "$statusf"
   printf 'idle prompt $\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$task"
   FM_HOME="$dir" FM_STATE_OVERRIDE="$state" FM_AFK_MODE=quiet "$ROOT/bin/fm-afk-contract.sh" enter --words 'fixture words' >/dev/null 2>&1 \
     || fail "fixture: could not record the quiet posture"
@@ -1732,7 +1732,7 @@ test_housekeeping_overdue_pause_preserves_prior_actionable_event() {
   task=overdue-unread; win="sess:fm-$task"; pane="$dir/pane.txt"; statusf="$state/$task.status"
   printf 'done: prior actionable event\npaused: waiting for dependency\n' > "$statusf"
   printf 'idle prompt $\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-afk-contract.sh" enter --words 'fixture words' >/dev/null 2>&1 \
     || fail "fixture: could not record the away posture"
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$task"
@@ -1769,7 +1769,7 @@ test_housekeeping_declared_time_controls_pause_recheck() {
   state="$dir/state"; fakebin="$dir/fakebin"
   task='held-until'; win="sess:fm-$task"; pane="$dir/pane.txt"
   printf 'idle prompt $\n' > "$pane"
-  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   key=$(printf '%s' "$task" | tr ':/.' '___')
   now=$(date +%s)
   if [ "$(uname)" = Darwin ]; then
@@ -1930,10 +1930,10 @@ test_housekeeping_resumed_stale_cleared() {
   printf 'Working...\n' > "$pane"
   # A resumed crew proves it is working through its own semantic busy-state
   # record (bin/fm-busy-lib.sh), not through the pane's rendered footer.
-  fm_write_meta "$state/res-w6.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  fm_write_meta "$state/res-w6.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=opencode"
   local gen; gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" res-w6)
   "$ROOT/bin/fm-busy-event.sh" apply "$state" res-w6 busy --gen "$gen" \
-    --source pi-ext --event agent-start
+    --source opencode-plugin --event agent-start
   key=$(printf '%s' "res-w6" | tr ':/.' '___')
   echo $(( $(date +%s) - 500 )) > "$state/.subsuper-stale-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \

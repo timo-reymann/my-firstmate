@@ -831,13 +831,13 @@ fm_eval_launch() {
 #
 # fm_agent_standin <dir> echoes the path of a long-running native executable
 # that a liveness case symlinks under a harness name (`ln -s "$standin"
-# "$bin/pi"`), so the kernel records the harness name as the process identity
+# "$bin/codex"`), so the kernel records the harness name as the process identity
 # while a real process runs. Symlink it, never copy it: a copied platform binary
 # fails code-signing validation and is killed on macOS arm64.
 #
 # The target must not dispatch on its own invoked name. A multicall coreutils
 # (uutils, the Ubuntu 26.04 default, or busybox) resolves the applet from that
-# name: a host `sleep` invoked through a symlink named `pi` refuses or runs the
+# name: a host `sleep` invoked through a symlink named `codex` refuses or runs the
 # wrong applet and exits at once, so the agent-named process never exists. The
 # helper compiles a dedicated spinner when a C compiler exists, falls back to the
 # host `sleep` only when it demonstrably survives a foreign name, and otherwise

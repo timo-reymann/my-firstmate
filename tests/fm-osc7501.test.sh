@@ -341,22 +341,22 @@ t_inplace_upgrade_reprobes_native() {
   local d=$TMP_ROOT/upgrade
   mkhome "$d"
   mkdir -p "$d/bin" "$d/install"
-  printf '#!/usr/bin/env bash\necho "pi 1.0.9"\n' >"$d/install/pi"
-  chmod +x "$d/install/pi"
-  ln -s "$d/install/pi" "$d/bin/pi"
+  printf '#!/usr/bin/env bash\necho "codex-cli 0.162.1"\n' >"$d/install/codex"
+  chmod +x "$d/install/codex"
+  ln -s "$d/install/codex" "$d/bin/codex"
   start_term "$d"
   env "${CLEAN_UNSET[@]}" FM_OSC7501_TTY="$TERM_SLAVE" HC_TERMINAL_ID=x PATH="$d/bin:$PATH" \
-    bash "$SCRIPT" arm --task t22 --harness pi --backend tmux --kind ship \
-    --state "$d/state" --config "$d/config" --agent-bin pi
+    bash "$SCRIPT" arm --task t22 --harness codex --backend tmux --kind ship \
+    --state "$d/state" --config "$d/config" --agent-bin codex
   local first
-  first=$(watcher_pid "$d/state") || fail "upgrade: pi below the floor armed no generic watcher"
-  printf '#!/usr/bin/env bash\necho "pi 1.1.0"\n' >"$d/install/pi"
+  first=$(watcher_pid "$d/state") || fail "upgrade: codex below the floor armed no generic watcher"
+  printf '#!/usr/bin/env bash\necho "codex-cli 0.163.0"\n' >"$d/install/codex"
   env "${CLEAN_UNSET[@]}" FM_OSC7501_TTY="$TERM_SLAVE" HC_TERMINAL_ID=x PATH="$d/bin:$PATH" \
-    bash "$SCRIPT" arm --task t22 --harness pi --backend tmux --kind ship \
-    --state "$d/state" --config "$d/config" --agent-bin pi
+    bash "$SCRIPT" arm --task t22 --harness codex --backend tmux --kind ship \
+    --state "$d/state" --config "$d/config" --agent-bin codex
   wait_gone "$first" || fail "upgrade: the old generic reporter survived the relaunch"
   [ -z "$(ls "$d/state"/.osc7501watch-* 2>/dev/null)" ] \
-    || fail "upgrade: a native pi after an in-place upgrade still got a generic reporter"
+    || fail "upgrade: a native codex after an in-place upgrade still got a generic reporter"
   stop_term
   pass "native gate: an in-place harness upgrade is re-probed at the next launch"
 }

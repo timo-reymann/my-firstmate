@@ -363,7 +363,7 @@ test_model_selection_table() {
   assert_contains "$out" "runs the codex driver, not claudeAgent" "the refusal names the driver T3's catalog reports"
   rm -f "$CONFIG/t3code-instances"
   t3_world_set 'w.projects[0].defaultModelSelection = { instanceId: "claudeAgent", model: "claude-sonnet-5" }'
-  out=$(t3_run 'fm_backend_t3code_model_selection pi x high proj-1' 2>&1) && fail "a non-T3 harness must be refused"
+  out=$(t3_run 'fm_backend_t3code_model_selection opencode x high proj-1' 2>&1) && fail "a non-T3 harness must be refused"
   assert_contains "$out" "only the claude and codex harnesses" "the harness refusal must name the supported set"
   t3_world_set 'w.projects[0].defaultModelSelection = null'
   out=$(t3_run 'fm_backend_t3code_model_selection claude default default proj-1' 2>&1) && fail "model default with no project default must be refused"
@@ -846,7 +846,7 @@ test_harness_admission_and_typing_refusals() {
   [ ! -s "$LOG" ] || fail 'refused typing must not dispatch or read a thread'
   t3_run 'fm_backend_send_key t3code thread-live Enter' || fail 'runtime Enter remains a no-op'
   t3_run 'fm_backend_validate_harness t3code claude; fm_backend_validate_harness t3code codex' || fail 'T3 supported harnesses changed'
-  for op in opencode pi pi-signed kimi cursor gemini muse rovo omp agy devin; do
+  for op in opencode kimi cursor gemini muse rovo agy devin; do
     if out=$(t3_run 'fm_backend_validate_harness t3code "$1"' "$op" 2>&1); then fail "T3 must refuse harness $op"; fi
     assert_contains "$out" "not '$op'" 'harness refusal must name the unsupported adapter'
   done

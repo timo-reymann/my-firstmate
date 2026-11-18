@@ -496,7 +496,7 @@ test_capture_passes_surfaces_and_scrollback_and_trims_locally() {
   out=$( run_tern "$dir" 'fm_backend_tern_capture "$1" 2' "$TARGET" )
   [ "$out" = $'line three\nline four' ] || fail "capture should trim to the last N lines locally, got '$out'"
   assert_contains "$(cat "$dir/log")" "tern${US}capture${US}$SEL${US}--scrollback${US}--surfaces" \
-    "history capture must pass --scrollback and --surfaces (a natively drawn omp block prints only its shell prompt without --surfaces)"
+    "history capture must pass --scrollback and --surfaces (a natively drawn agent block prints only its shell prompt without --surfaces)"
   assert_not_contains "$(cat "$dir/log")" "--ansi" "tern capture must stay plain text (styled=0)"
   assert_not_contains "$(cat "$dir/log")" "--html" "tern capture must stay plain text"
   assert_call_order "$dir/log" "${US}ls${US}--json" "${US}capture${US}" "capture must verify the block before reading it"
@@ -689,7 +689,7 @@ test_busy_state_maps_native_agent_state() {
     ls_with_block "$dir" 1
     ctl_ok "$dir" 2
     state_agents "$dir" 3 "$(agent_json "$BLK_NEIGHBOR" idle)" "$(agent_json "$BLK" "$state")"
-    process_response "$dir" 4 omp
+    process_response "$dir" 4 codex
     out=$( run_tern "$dir" 'fm_backend_tern_busy_state "$1"' "$TARGET" )
     [ "$out" = "$want" ] || fail "native state '$state' should map to '$want', got '$out'"
   done
@@ -907,9 +907,9 @@ test_agent_state_classifies_the_foreground_process() {
   local dir out
   dir=$(new_case agent-alive)
   ls_with_block "$dir" 1
-  process_response "$dir" 2 omp
+  process_response "$dir" 2 codex
   out=$( run_tern "$dir" 'fm_backend_tern_agent_state "$1"' "$TARGET" )
-  [ "$out" = alive ] || fail "an omp foreground should read alive, got '$out'"
+  [ "$out" = alive ] || fail "a codex foreground should read alive, got '$out'"
 
   dir=$(new_case agent-dead-shell)
   ls_with_block "$dir" 1
@@ -983,7 +983,7 @@ test_dispatch_agent_state_routes_tern() {
   local dir out
   dir=$(new_case dispatch-agent-state)
   ls_with_block "$dir" 1
-  process_response "$dir" 2 omp
+  process_response "$dir" 2 codex
   out=$( PATH="$dir/fakebin:$PATH" FM_TERN_LOG="$dir/log" FM_TERN_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tern "$1"' "$ROOT" "$TARGET" )
   [ "$out" = alive ] || fail "fm_backend_agent_state should route tern to its process classifier, got '$out'"

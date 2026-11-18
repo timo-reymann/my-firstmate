@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for the Pi supervision branch's fleet-record layer
-# (docs/pi-supervision-branch.md): the byte-stable branch prompt generator
+# Tests for the supervision branch's fleet-record layer
+# (docs/supervision-branch.md): the byte-stable branch prompt generator
 # (bin/fm-branch-prompt.sh), the append-only outcome store
 # (bin/fm-branch-outcome.sh), the per-task lease contract (bin/fm-lease.sh,
 # bin/fm-lease-lib.sh), the lease and role-partition guards wired into the
@@ -24,7 +24,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
   # Give the two homes deliberately different fleet state and clock context:
   # a byte-stable prompt must not absorb any of it.
   printf 'signal: task-1 done\n' > "$home_a/state/task-1.status"
-  printf 'window=x\nharness=pi\n' > "$home_a/state/task-1.meta"
+  printf 'window=x\nharness=codex\n' > "$home_a/state/task-1.meta"
 
   out_a=$(cd "$TMP_ROOT" && FM_HOME="$home_a" TZ=UTC "$ROOT/bin/fm-branch-prompt.sh") \
     || fail "branch prompt generator failed for home A"
@@ -190,16 +190,17 @@ PY
   esac
   [ "$(cat "$store")" = "$snapshot" ] || fail "mark-read rewrote the append-only store"
 
-  # startup-replay must stop before an unread captain row. Only Pi's durable
-  # visible entry may acknowledge it, so the cursor cannot skip past it.
+  # startup-replay must stop before an unread captain row. Only the
+  # supervision-host drain's presentation may acknowledge it, so the cursor
+  # cannot skip past it.
   replay=$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" startup-replay) || fail "startup-replay failed"
-  [ -z "$replay" ] || fail "startup-replay printed a captain row before Pi persisted its visible entry"
+  [ -z "$replay" ] || fail "startup-replay printed a captain row before the drain presented it"
   assert_contains "$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" unread)" \
     "https://example.com/pr/2" "startup-replay advanced past an unrendered captain row"
   [ "$(cat "$home/state/.branch-outcomes-cursor")" = 1 ] \
     || fail "startup-replay moved the cursor across the captain row"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-read --through 2 \
-    || fail "synthetic Pi acknowledgement failed"
+    || fail "synthetic drain acknowledgement failed"
 
   # Later appends land strictly after the earlier bytes (append-only merge).
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
@@ -398,13 +399,13 @@ test_outcome_startup_replay_stops_at_captain_barrier() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
     --task task-1 --verdict routine --summary 'leading routine' >/dev/null || fail "leading append failed"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
-    --task task-2 --verdict captain --summary 'captain must render in Pi' >/dev/null || fail "captain append failed"
+    --task task-2 --verdict captain --summary 'captain must reach the drain' >/dev/null || fail "captain append failed"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
     --task task-3 --verdict routine --summary 'routine behind captain' >/dev/null || fail "trailing append failed"
 
   replay=$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" startup-replay) || fail "barrier replay failed"
   assert_contains "$replay" "leading routine" "startup replay lost the leading routine row"
-  assert_not_contains "$replay" "captain must render in Pi" "startup replay rendered the captain row"
+  assert_not_contains "$replay" "captain must reach the drain" "startup replay rendered the captain row"
   assert_not_contains "$replay" "routine behind captain" "startup replay crossed the captain barrier"
   [ "$(cat "$home/state/.branch-outcomes-cursor")" = 1 ] || fail "cursor crossed the captain barrier"
   unread=$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" unread) || fail "barrier unread failed"
@@ -590,7 +591,7 @@ test_outcome_non_jsonl_layout_fails_closed() {
   pass "outcome stores require terminated single-line JSON records"
 }
 
-# A supervision-host drain presents off Pi: every unread row and every
+# A supervision-host drain presents every unread row and every
 # unprocessed captain row, moving nothing, so the drain marks them read only
 # once it has shown them; a routine row is presented once and a captain row
 # until it is acknowledged.
@@ -747,7 +748,7 @@ test_outcome_processed_marker_is_sequence_bound() {
 
 test_lease_exclusivity_release_stale_and_sweep() {
   local home out status
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/lease-home"
   mkdir -p "$home/state"
   printf '%s\n' "$$" > "$home/state/.lock"
@@ -796,7 +797,7 @@ test_lease_exclusivity_release_stale_and_sweep() {
 
 test_mutating_scripts_refuse_the_other_actors_lease() {
   local home root out status
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/guard-home"
   root="$TMP_ROOT/guard-root"
   mkdir -p "$home/state" "$root"
@@ -893,21 +894,20 @@ test_home_without_branch_is_untouched() {
   # branch byte-for-byte unchanged.
   # The positional parameter belongs to the nested shell.
   # shellcheck disable=SC2016
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR FM_TEST_HARNESS=codex STATE="$home/state" bash -c '
+  out=$(env -u FM_SUPERVISION_ACTOR FM_TEST_HARNESS=codex STATE="$home/state" bash -c '
     . "$1"
     fm_lease_guard task-none "probe"
     if [ -e "$STATE/.fm-lease-command.lock" ]; then echo lock-taken; else echo no-lock; fi
   ' _ "$ROOT/bin/fm-lease-lib.sh" 2>&1)
   [ "$out" = no-lock ] || fail "an unmarked guard with no lease file engaged the lease-command lock: $out"
 
-  # A stale Pi marker and a leftover lease cannot bind a no-lock Claude home;
-  # the guard removes the leftover and passes silently.
+  # A leftover lease cannot bind a no-lock Claude home; the guard removes the
+  # leftover and passes silently.
   printf 'harness=claude\n' > "$home/state/fake.meta"
-  printf '%s\n' "$PPID" > "$home/state/.pi-branch-extension-loaded"
   printf 'branch\t%s\t123\n' "$PPID" > "$home/state/.lease-task-reused"
   out=$(STATE="$home/state" bash -c '. "$1"; fm_lease_guard task-reused "probe"; fm_lease_forbid_branch "probe"; echo silent-pass' _ "$ROOT/bin/fm-lease-lib.sh" 2>&1)
-  [ "$out" = "silent-pass" ] || fail "guard helpers honored a leftover Pi lease in a no-lock Claude home: $out"
-  [ ! -e "$home/state/.lease-task-reused" ] || fail "guard kept a leftover Pi lease without a session lock"
+  [ "$out" = "silent-pass" ] || fail "guard helpers honored a leftover lease in a no-lock Claude home: $out"
+  [ ! -e "$home/state/.lease-task-reused" ] || fail "guard kept a leftover lease without a session lock"
 
   # A leftover lease whose pid is alive but is not the current lock holder - a
   # session that exited while its pid lives on - is stale for a Claude main.
@@ -915,17 +915,17 @@ test_home_without_branch_is_untouched() {
   printf 'branch\t%s\t123\n' "$PPID" > "$home/state/.lease-task-reused"
   # The positional parameter belongs to the nested shell.
   # shellcheck disable=SC2016
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 STATE="$home/state" bash -c '. "$1"; fm_lease_guard task-reused "probe"; echo silent-pass' _ "$ROOT/bin/fm-lease-lib.sh" 2>&1)
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 STATE="$home/state" bash -c '. "$1"; fm_lease_guard task-reused "probe"; echo silent-pass' _ "$ROOT/bin/fm-lease-lib.sh" 2>&1)
   [ "$out" = "silent-pass" ] || fail "guard helpers honored a lease whose pid no longer holds the lock: $out"
   [ ! -e "$home/state/.lease-task-reused" ] || fail "Claude context kept a lease whose pid is not the current lock holder"
   pass "a home without a live branch lease takes no lock and clears leftover leases in any calling context"
 }
 
-# --- the partition across two processes, off Pi -------------------------------
+# --- the partition across two processes -------------------------------------
 
-# A branch that runs as its own process beside an unmarked main (no Pi marker,
-# no actor variable - how every non-Pi primary's own shell looks) must bind that
-# main exactly as it binds a Pi main: liveness is the lease record alone.
+# A branch that runs as its own process beside an unmarked main (no actor
+# variable - how every primary's own shell looks) must bind that main exactly
+# as it binds a marked main: liveness is the lease record alone.
 test_unmarked_main_honors_a_live_branch_lease() {
   local home fakebin out status lease_before
   home="$TMP_ROOT/unmarked-main-home"
@@ -937,27 +937,27 @@ test_unmarked_main_honors_a_live_branch_lease() {
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexit 1\n' "$home/tmux-calls" > "$fakebin/tmux"
   chmod +x "$fakebin/tmux"
 
-  env -u PI_CODING_AGENT FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
+  env FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-held --actor branch || fail "the branch process could not claim its lease"
   lease_before=$(cat "$home/state/.lease-task-held")
 
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
     "$ROOT/bin/fm-lease.sh" check task-held) || fail "an unmarked main could not see the branch lease"
   case "$out" in
     "branch $$ "*" live") ;;
     *) fail "an unmarked main read the live branch lease as: $out" ;;
   esac
 
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" FM_LEASE_HOLDER_PID=$$ \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-held 2>&1)
   status=$?
   [ "$status" -eq 6 ] || fail "an unmarked main claim over the live branch lease exited $status, not 6: $out"
-  env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
+  env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
     "$ROOT/bin/fm-lease.sh" sweep || fail "sweep from an unmarked main failed"
   [ "$(cat "$home/state/.lease-task-held")" = "$lease_before" ] \
     || fail "an unmarked main overwrote or swept the live branch lease"
 
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
     "$ROOT/bin/fm-send.sh" fm-task-held "steer while leased" 2>&1)
   status=$?
   [ "$status" -eq 6 ] || fail "an unmarked main steer through the live branch lease exited $status, not 6: $out"
@@ -966,29 +966,29 @@ test_unmarked_main_honors_a_live_branch_lease() {
   [ -z "$(find "$home/state" -path '*.inbox*' -name '*.msg' 2>/dev/null)" ] \
     || fail "the refused steer still wrote an inbox record"
 
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
     "$ROOT/bin/fm-control.sh" task-held interrupt 2>&1)
   status=$?
   [ "$status" -eq 6 ] || fail "an unmarked main fm-control exited $status, not 6: $out"
   assert_contains "$out" "leased to the branch supervision actor" "the fm-control refusal lost the holder"
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" PATH="$fakebin:$PATH" \
     "$ROOT/bin/fm-teardown.sh" task-held 2>&1)
   status=$?
   [ "$status" -eq 6 ] || fail "an unmarked main fm-teardown exited $status, not 6: $out"
   [ -e "$home/state/task-held.meta" ] || fail "the refused teardown still removed the task record"
 
   # Once the branch releases, the same unmarked main proceeds.
-  env -u PI_CODING_AGENT FM_HOME="$home" FM_SUPERVISION_ACTOR=branch \
+  env FM_HOME="$home" FM_SUPERVISION_ACTOR=branch \
     "$ROOT/bin/fm-lease.sh" release task-held --actor branch || fail "branch release failed"
-  env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" FM_LEASE_HOLDER_PID=$$ \
+  env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-held || fail "an unmarked main could not claim after the branch released"
 
   # A new session owning the lock makes the old session's lease stale for the
   # unmarked main too, and its guard clears it.
-  env -u PI_CODING_AGENT FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
+  env FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-old --actor branch || fail "branch claim for the old session failed"
   printf '%s\n' "$PPID" > "$home/state/.lock"
-  out=$(env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
+  out=$(env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" \
     "$ROOT/bin/fm-lease.sh" check task-old) || fail "check missed the old session's lease"
   case "$out" in
     *" stale") ;;
@@ -1010,7 +1010,7 @@ test_unmarked_guard_with_a_lease_file_holds_exclusivity_through_mutation() {
   # shellcheck disable=SC2016
   # The mutation stand-in waits for release under a bound, so a failed
   # assertion below cannot leave it holding the suite open.
-  env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 STATE="$home/state" \
+  env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 STATE="$home/state" \
     FM_TEST_READY="$home/operation-ready" FM_TEST_RELEASE="$home/operation-release" bash -c '
       . "$1"
       fm_lease_guard task-race "probe"
@@ -1023,7 +1023,7 @@ test_unmarked_guard_with_a_lease_file_holds_exclusivity_through_mutation() {
   while [ ! -e "$home/operation-ready" ]; do sleep 0.01; done
   [ ! -e "$home/state/.lease-task-race" ] || fail "the unmarked guard kept the dead session's lease"
 
-  env -u PI_CODING_AGENT FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
+  env FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-race --actor branch >/dev/null 2>&1 &
   claim_pid=$!
   sleep 0.2
@@ -1055,7 +1055,7 @@ test_host_home_unmarked_guard_excludes_the_first_claim() {
   # for an unleased task. The positional parameter belongs to the nested shell.
   probe_lock() {  # <harness>
     # shellcheck disable=SC2016
-    env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_TEST_HARNESS="$1" FM_HOME="$home" STATE="$home/state" bash -c '
+    env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_TEST_HARNESS="$1" FM_HOME="$home" STATE="$home/state" bash -c '
       . "$1"
       fm_lease_guard task-first "probe"
       if [ -e "$STATE/.fm-lease-command.lock" ]; then echo lock-taken; else echo no-lock; fi
@@ -1078,7 +1078,7 @@ test_host_home_unmarked_guard_excludes_the_first_claim() {
   : > "$home/config/supervision-host"
   # The positional parameter belongs to the nested shell.
   # shellcheck disable=SC2016
-  env -u PI_CODING_AGENT -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" STATE="$home/state" \
+  env -u FM_SUPERVISION_ACTOR CLAUDECODE=1 FM_HOME="$home" STATE="$home/state" \
     FM_TEST_READY="$home/operation-ready" FM_TEST_RELEASE="$home/operation-release" bash -c '
       . "$1"
       fm_lease_guard task-first "probe"
@@ -1091,7 +1091,7 @@ test_host_home_unmarked_guard_excludes_the_first_claim() {
   while [ ! -e "$home/operation-ready" ]; do sleep 0.01; done
   [ ! -e "$home/state/.lease-task-first" ] || fail "the guard created a lease for an unleased task"
 
-  env -u PI_CODING_AGENT FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
+  env FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-first --actor branch >/dev/null 2>&1 &
   claim_pid=$!
   sleep 0.2
@@ -1116,12 +1116,12 @@ test_host_home_unmarked_guard_excludes_the_first_claim() {
 
 test_lease_liveness_binds_to_the_session_lock() {
   local home out
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/lock-bound-home"
   mkdir -p "$home/state"
 
   # A lease recorded by a pid that is alive but is NOT the current session-lock
-  # holder is stale: a Pi session exited and its pid was recycled, or a non-Pi
+  # holder is stale: a session exited and its pid was recycled, or another
   # harness now owns this home. Either way the leftover lease must not bind.
   printf '%s\n' "$$" > "$home/state/.lock.other"
   printf 'branch\t%s\t123\n' "$PPID" > "$home/state/.lease-task-reused"
@@ -1156,7 +1156,7 @@ test_lease_liveness_binds_to_the_session_lock() {
 
 test_claim_with_a_holder_pinned_before_a_reanchor_records_the_lock_holder() {
   local home out status
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/pinned-reanchor-home"
   mkdir -p "$home/state"
 
@@ -1190,7 +1190,7 @@ test_claim_with_a_holder_pinned_before_a_reanchor_records_the_lock_holder() {
 
 test_concurrent_stale_lease_claims_have_one_winner() {
   local home fakebin real_mv branch_pid main_pid branch_status main_status
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/concurrent-lease-home"
   fakebin="$TMP_ROOT/concurrent-lease-bin"
   mkdir -p "$home/state" "$fakebin"
@@ -1228,7 +1228,7 @@ SH
 
 test_guard_stale_clear_cannot_delete_a_new_claim() {
   local home fakebin real_rm guard_pid claim_pid guard_status claim_status out
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/guard-claim-race-home"
   fakebin="$TMP_ROOT/guard-claim-race-bin"
   mkdir -p "$home/state" "$fakebin"
@@ -1275,7 +1275,7 @@ test_guard_holds_exclusivity_through_mutation() {
   mkdir -p "$home/state"
   printf '%s\n' "$$" > "$home/state/.lock"
 
-  PI_CODING_AGENT=true STATE="$home/state" FM_TEST_READY="$home/operation-ready" \
+  FM_SUPERVISION_ACTOR=main STATE="$home/state" FM_TEST_READY="$home/operation-ready" \
     FM_TEST_RELEASE="$home/operation-release" bash -c '
       . "$1"
       fm_lease_guard task-race "probe"
@@ -1286,7 +1286,7 @@ test_guard_holds_exclusivity_through_mutation() {
   operation_pid=$!
   while [ ! -e "$home/operation-ready" ]; do sleep 0.01; done
 
-  PI_CODING_AGENT=true FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
+  FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ \
     "$ROOT/bin/fm-lease.sh" claim task-race --actor branch >/dev/null 2>&1 &
   claim_pid=$!
   sleep 0.2
@@ -1317,7 +1317,7 @@ test_claim_refuses_the_other_actors_name_loudly() {
 
 test_release_actor_drops_only_that_actors_leases() {
   local home out status
-  local -x PI_CODING_AGENT=true
+  local -x FM_SUPERVISION_ACTOR=main
   home="$TMP_ROOT/release-actor-home"
   mkdir -p "$home/state"
   printf '%s\n' "$$" > "$home/state/.lock"
@@ -1391,7 +1391,7 @@ test_away_record_relocates_main_owned_actions_to_the_branch() {
   git init -q -b main "$root"
   git -C "$root" commit -q --allow-empty -m init
   ln -s "$ROOT/bin" "$root/bin"
-  refusal="error: PR merge (fm-pr-merge) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)"
+  refusal="error: PR merge (fm-pr-merge) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/supervision-branch.md)"
 
   # Attended: the refusal wording every caller already pins.
   out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch "$ROOT/bin/fm-pr-merge.sh" task-x https://github.com/o/r/pull/1 2>&1)
@@ -1655,6 +1655,546 @@ WRAPPER
   pass "the away spend cap is rechecked under the task-set lock so concurrent spawns cannot both publish"
 }
 
+# --- branch row eligibility (bin/lib/fm-host-dispatch.ts) --------------------
+
+test_branch_dispatch_classifies_main_only_rows() {
+  local home out status
+  home="$TMP_ROOT/dispatch-classify-home"
+  mkdir -p "$home/state" "$home/projects/approved"
+  printf 'project=%s/projects/approved\nwindow=fm-window\n' "$home" > "$home/state/task-a.meta"
+  LIB="$ROOT/bin/lib/fm-host-dispatch.ts" FM_HOME="$home" \
+    node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { syncBuiltinESMExports } from "node:module";
+import fs, { symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+
+const originalReadFileSync = fs.readFileSync;
+let countedStatusPath = "";
+let countedStatusReads = 0;
+fs.readFileSync = function(path, ...args) {
+  if (String(path) === countedStatusPath) countedStatusReads += 1;
+  return originalReadFileSync.call(this, path, ...args);
+};
+syncBuiltinESMExports();
+
+const { scopeForUnreadWake } = await import(pathToFileURL(process.env.LIB).href);
+const state = `${process.env.FM_HOME}/state`;
+const project = `${process.env.FM_HOME}/projects/approved`;
+
+// Every legitimately main-only class is a check-kind row under a different
+// key; classification never looks at the key, only the kind, so one
+// representative per named class is sufficient coverage.
+const mainOnlyRows = [
+  "1\t1\tcheck\tx-inbox\tcheck: pending x mention",
+  "1\t1\tcheck\tsome-poll.check.sh\tcheck: some-poll.check.sh: merged",
+  "1\t1\tcheck\tunauthenticated-state-checks\tcheck: rejected unauthenticated state checks",
+];
+for (const row of mainOnlyRows) {
+  writeFileSync(`${state}/.wake-queue`, row);
+  const scope = scopeForUnreadWake(state, false);
+  if (scope.eligible || scope.eligibleSeqs.length !== 0) {
+    throw new Error(`a main-only class was offered to the branch: ${row} -> ${JSON.stringify(scope)}`);
+  }
+  if (scope.corrupted) throw new Error(`an ordinary main-only row must not read as corrupted: ${row}`);
+}
+
+// A needs-decision signal row is a main-only class too, marked by payload
+// rather than kind (docs/supervision-branch.md "Autonomy"): it is excluded
+// from eligibleSeqs and named in needsDecisionKeys. A later stale row under the
+// task's window alias remains individually claimable, while task-identity
+// precedence keeps its complete wake on main until the decision row is read.
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tsignal\ttask-a.status\tneeds-decision: task-a.status",
+    "1\t2\tstale\tfm-window\tstale: later routine reminder",
+  ].join("\n"),
+);
+const needsDecisionMixed = scopeForUnreadWake(state, false);
+if (!needsDecisionMixed.eligible) {
+  throw new Error(`an unread needs-decision row must not erase a later stale row: ${JSON.stringify(needsDecisionMixed)}`);
+}
+if (needsDecisionMixed.eligibleSeqs.join(",") !== "2") {
+  throw new Error(`a needs-decision row must be excluded from eligibleSeqs: ${JSON.stringify(needsDecisionMixed)}`);
+}
+if (needsDecisionMixed.needsDecisionKeys.join(",") !== "task-a.status") {
+  throw new Error(`needsDecisionKeys must name the excluded row: ${JSON.stringify(needsDecisionMixed)}`);
+}
+if (needsDecisionMixed.taskByWakeKey["task-a.status"] !== "task-a" ||
+  needsDecisionMixed.taskByWakeKey["fm-window"] !== "task-a") {
+  throw new Error(`status and stale aliases did not resolve to one task: ${JSON.stringify(needsDecisionMixed)}`);
+}
+if (needsDecisionMixed.corrupted) {
+  throw new Error(`a needs-decision row must not read as corrupted: ${JSON.stringify(needsDecisionMixed)}`);
+}
+
+// A queue holding only a needs-decision row is ordinary main-only absence,
+// exactly like a queue holding only a check row.
+writeFileSync(`${state}/.wake-queue`, "1\t1\tsignal\ttask-a.status\tneeds-decision: task-a.status");
+const needsDecisionOnly = scopeForUnreadWake(state, false);
+if (needsDecisionOnly.eligible || needsDecisionOnly.eligibleSeqs.length !== 0 || needsDecisionOnly.corrupted) {
+  throw new Error(`a needs-decision-only queue must be ordinary main-only absence: ${JSON.stringify(needsDecisionOnly)}`);
+}
+
+// A captain-held task's bounded stale recheck is itself a decision wake. It is
+// excluded while an unrelated routine row remains independently branch-owned.
+writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting the captain\n \t \n");
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tstale\tfm-window\tstale: fm-window (awaiting the captain)",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const captainHeldMixed = scopeForUnreadWake(state, false);
+if (!captainHeldMixed.eligible || captainHeldMixed.eligibleSeqs.join(",") !== "2") {
+  throw new Error(`a captain-held stale row was offered to the branch: ${JSON.stringify(captainHeldMixed)}`);
+}
+if (captainHeldMixed.needsDecisionKeys.join(",") !== "fm-window") {
+  throw new Error(`the captain-held stale key was not marked main-owned: ${JSON.stringify(captainHeldMixed)}`);
+}
+
+writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting a second captain reminder\n \n");
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tstale\tfm-window\tstale: fm-window (first reminder)",
+    "1\t2\tstale\tfm-window\tstale: fm-window (second reminder)",
+    "1\t3\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+countedStatusPath = `${state}/task-a.status`;
+countedStatusReads = 0;
+const repeatedCaptainHeld = scopeForUnreadWake(state, false);
+if (countedStatusReads !== 1) {
+  throw new Error(`one status was read ${countedStatusReads} times for repeated stale rows`);
+}
+if (!repeatedCaptainHeld.eligible || repeatedCaptainHeld.eligibleSeqs.join(",") !== "3" ||
+  repeatedCaptainHeld.needsDecisionKeys.join(",") !== "fm-window,fm-window") {
+  throw new Error(`repeated stale reminders changed classification: ${JSON.stringify(repeatedCaptainHeld)}`);
+}
+const repeatedCaptainHeldNextScan = scopeForUnreadWake(state, false);
+if (countedStatusReads !== 1 || repeatedCaptainHeldNextScan.needsDecisionKeys.join(",") !== "fm-window,fm-window") {
+  throw new Error(`an unchanged status was not reused across scans: reads=${countedStatusReads} scope=${JSON.stringify(repeatedCaptainHeldNextScan)}`);
+}
+writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting the captain\nworking: resumed after answer\n");
+const changedCaptainHeld = scopeForUnreadWake(state, false);
+if (countedStatusReads !== 2 || changedCaptainHeld.eligibleSeqs.join(",") !== "1,2,3" ||
+  changedCaptainHeld.needsDecisionKeys.length !== 0) {
+  throw new Error(`a changed status did not invalidate its cached decision: reads=${countedStatusReads} scope=${JSON.stringify(changedCaptainHeld)}`);
+}
+countedStatusPath = "";
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tstale\tfm-window\tstale: fm-window (awaiting the captain)",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+
+// A later unrelated status does not mask a still-open durable decision. The
+// stale row remains main-owned while the routine signal stays branch-owned.
+writeFileSync(
+  `${state}/task-a.status`,
+  "needs-decision [key=cleanup]: choose destructive cleanup\nworking: routine follow-up\n",
+);
+const openDecisionMixed = scopeForUnreadWake(state, false);
+if (!openDecisionMixed.eligible || openDecisionMixed.eligibleSeqs.join(",") !== "2") {
+  throw new Error(`an open-decision stale row was offered to the branch: ${JSON.stringify(openDecisionMixed)}`);
+}
+if (openDecisionMixed.needsDecisionKeys.join(",") !== "fm-window") {
+  throw new Error(`the open-decision stale key was not marked main-owned: ${JSON.stringify(openDecisionMixed)}`);
+}
+
+process.env.FM_CLASSIFY_RESOLVE_VERB = "answered";
+writeFileSync(
+  `${state}/task-a.status`,
+  "needs-decision [key=cleanup]: choose destructive cleanup\nanswered [key=cleanup]: remove generated files\n",
+);
+const customResolved = scopeForUnreadWake(state, false);
+if (!customResolved.eligible || customResolved.eligibleSeqs.slice().sort().join(",") !== "1,2" ||
+  customResolved.needsDecisionKeys.length !== 0) {
+  throw new Error(`a custom resolution verb left the stale decision open: ${JSON.stringify(customResolved)}`);
+}
+
+process.env.FM_CLASSIFY_CAPTAIN_HELD_VERB = "awaiting-captain";
+writeFileSync(`${state}/task-a.status`, "awaiting-captain [key=cleanup]: awaiting the captain\n");
+const customHeld = scopeForUnreadWake(state, false);
+if (!customHeld.eligible || customHeld.eligibleSeqs.join(",") !== "2" ||
+  customHeld.needsDecisionKeys.join(",") !== "fm-window") {
+  throw new Error(`a custom captain-held verb was offered to the branch: ${JSON.stringify(customHeld)}`);
+}
+delete process.env.FM_CLASSIFY_RESOLVE_VERB;
+delete process.env.FM_CLASSIFY_CAPTAIN_HELD_VERB;
+
+process.env.FM_CLASSIFY_RESERVED_KEY_PREFIXES = "secret-";
+writeFileSync(
+  `${state}/task-a.status`,
+  "needs-decision [key=pending-reply-x]: choose destructive cleanup\nworking: routine follow-up\n",
+);
+const customReservedPrefixes = scopeForUnreadWake(state, false);
+if (!customReservedPrefixes.eligible || customReservedPrefixes.eligibleSeqs.join(",") !== "2" ||
+  customReservedPrefixes.needsDecisionKeys.join(",") !== "fm-window") {
+  throw new Error(`configured reserved prefixes lost an open stale decision: ${JSON.stringify(customReservedPrefixes)}`);
+}
+delete process.env.FM_CLASSIFY_RESERVED_KEY_PREFIXES;
+
+writeFileSync(`${state}/symlink-target.status`, "needs-decision: external choice\n");
+unlinkSync(`${state}/task-a.status`);
+symlinkSync(`${state}/symlink-target.status`, `${state}/task-a.status`);
+const symlinkedStatus = scopeForUnreadWake(state, false);
+if (!symlinkedStatus.corrupted || symlinkedStatus.eligible || symlinkedStatus.needsDecisionKeys.length !== 0) {
+  throw new Error(`a symlinked status file influenced stale routing: ${JSON.stringify(symlinkedStatus)}`);
+}
+unlinkSync(`${state}/task-a.status`);
+writeFileSync(`${state}/task-a.status`, "working: routine work\n");
+
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tcheck\tx-inbox",
+    "1\t2\tsignal\ttask-a.status\tsignal: task-a.status",
+  ].join("\n"),
+);
+const truncated = scopeForUnreadWake(state, false);
+if (!truncated.corrupted || truncated.eligible || truncated.eligibleSeqs.length !== 0) {
+  throw new Error(`a four-field queue row was not classified as corruption: ${JSON.stringify(truncated)}`);
+}
+
+// A mixed queue: the main-only row (seq 1) never vetoes the task-local rows
+// (seq 2, 3) - the reproduction from the task.
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tcheck\tx-inbox\tcheck: pending x mention",
+    "1\t2\tsignal\ttask-a.status\tsignal: task-a.status",
+    "1\t3\tstale\tfm-window\tstale: fm-window",
+  ].join("\n"),
+);
+const mixed = scopeForUnreadWake(state, false);
+if (!mixed.eligible) throw new Error(`mixed queue with eligible task-local rows must stay eligible: ${JSON.stringify(mixed)}`);
+if (mixed.eligibleSeqs.slice().sort().join(",") !== "2,3") {
+  throw new Error(`eligibleSeqs must name exactly the task-local rows: ${JSON.stringify(mixed)}`);
+}
+if (!mixed.projects.includes(project)) {
+  throw new Error(`eligible project context lost: ${JSON.stringify(mixed.projects)}`);
+}
+
+// A heartbeat is not vetoed or ridden into main by a co-present check row.
+// The check row is permanently main-owned in every mode, so it is excluded
+// from the claim rather than deferring a fleet review that has nothing to do
+// with it - the captain's reproduction.
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tcheck\tx-inbox\tcheck: pending x mention",
+    "1\t2\theartbeat\theartbeat\theartbeat",
+    "1\t3\tsignal\ttask-a.status\tsignal: task-a.status",
+  ].join("\n"),
+);
+const heartbeatMixed = scopeForUnreadWake(state, true);
+if (!heartbeatMixed.eligible || heartbeatMixed.corrupted) {
+  throw new Error(`a co-present check row rode a heartbeat into main: ${JSON.stringify(heartbeatMixed)}`);
+}
+if (heartbeatMixed.eligibleSeqs.slice().sort().join(",") !== "2,3") {
+  throw new Error(`a heartbeat claim must cover every branch-ownable row and no check row: ${JSON.stringify(heartbeatMixed)}`);
+}
+
+// All-or-nothing is unchanged in what it actually guarantees: a heartbeat
+// review takes every branch-ownable row or none of them, so a row this scan
+// cannot resolve still defers the whole review to main.
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\theartbeat\theartbeat\theartbeat",
+    "1\t2\tsignal\tno-such-task.status\tsignal: no-such-task.status",
+  ].join("\n"),
+);
+const heartbeatUnresolvable = scopeForUnreadWake(state, true);
+if (heartbeatUnresolvable.eligible || !heartbeatUnresolvable.corrupted) {
+  throw new Error(`an unresolvable row must still defer a heartbeat review: ${JSON.stringify(heartbeatUnresolvable)}`);
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\theartbeat\theartbeat\theartbeat",
+    "1\t2\tinvented\tsomething\tinvented: not a kind fm_wake_append emits",
+  ].join("\n"),
+);
+const heartbeatUnknownKind = scopeForUnreadWake(state, true);
+if (heartbeatUnknownKind.eligible || !heartbeatUnknownKind.corrupted) {
+  throw new Error(`an unknown row kind must still defer a heartbeat review: ${JSON.stringify(heartbeatUnknownKind)}`);
+}
+
+// A queue holding nothing but main-only rows leaves a heartbeat with nothing
+// to hand over, so it is not offered rather than granted an empty claim.
+writeFileSync(`${state}/.wake-queue`, "1\t1\tcheck\tx-inbox\tcheck: pending x mention");
+const heartbeatNothingOwnable = scopeForUnreadWake(state, true);
+if (heartbeatNothingOwnable.eligible || heartbeatNothingOwnable.eligibleSeqs.length !== 0) {
+  throw new Error(`a heartbeat was offered with no branch-ownable row: ${JSON.stringify(heartbeatNothingOwnable)}`);
+}
+if (heartbeatNothingOwnable.corrupted) {
+  throw new Error(`a purely main-only queue is ordinary absence, not a fault: ${JSON.stringify(heartbeatNothingOwnable)}`);
+}
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "main-only classification must hold: $out"
+  pass "scopeForUnreadWake excludes every main-only class without vetoing eligible task-local rows"
+}
+
+# An Orca task's stale rows are keyed by its terminal handle, not a window
+# (bin/fm-watch.sh keys Orca endpoints by terminal=). The dispatcher must
+# resolve that terminal key to its task, so a terminal-keyed stale row queued
+# alongside another eligible row stays branch-owned instead of sending the
+# whole wake to main.
+test_branch_dispatch_resolves_terminal_keyed_orca_stale_row() {
+  local home out status
+  home="$TMP_ROOT/dispatch-terminal-home"
+  mkdir -p "$home/state" "$home/projects/approved"
+  printf 'project=%s/projects/approved\nterminal=orca-term-1\n' "$home" > "$home/state/orca-task.meta"
+  LIB="$ROOT/bin/lib/fm-host-dispatch.ts" FM_HOME="$home" \
+    node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { writeFileSync } from "node:fs";
+
+const { scopeForUnreadWake } = await import(pathToFileURL(process.env.LIB).href);
+const state = `${process.env.FM_HOME}/state`;
+const project = `${process.env.FM_HOME}/projects/approved`;
+
+for (const heartbeat of [false, true]) {
+  const queue = heartbeat
+    ? ["1\t1\theartbeat\theartbeat\theartbeat", "1\t2\tstale\torca-term-1\tstale: orca-term-1"]
+    : ["1\t1\tsignal\torca-task.status\tsignal: orca-task.status", "1\t2\tstale\torca-term-1\tstale: orca-term-1"];
+  writeFileSync(`${state}/.wake-queue`, queue.join("\n"));
+  const scope = scopeForUnreadWake(state, heartbeat);
+  if (!scope.eligible || scope.corrupted || scope.eligibleSeqs.slice().sort().join(",") !== "1,2") {
+    throw new Error(`a terminal-keyed stale row was not branch-owned (heartbeat=${heartbeat}): ${JSON.stringify(scope)}`);
+  }
+  if (scope.taskByWakeKey["orca-term-1"] !== "orca-task") {
+    throw new Error(`the terminal key did not resolve to its task: ${JSON.stringify(scope)}`);
+  }
+  if (!scope.projects.includes(project)) {
+    throw new Error(`the terminal-keyed task lost its project context: ${JSON.stringify(scope.projects)}`);
+  }
+}
+// A terminal must never silently change owners, including collisions with
+// another task's window or canonical task key. Exercise both record orders.
+for (const owner of ["a-owner", "z-owner"]) {
+  for (const field of ["terminal", "window", "task"]) {
+    for (const ownerProject of [`project=${project}\n`, "", "project=\n"]) {
+      const terminal = field === "task" ? owner : "orca-term-1";
+      writeFileSync(`${state}/orca-task.meta`, `project=${project}\nterminal=${terminal}\n`);
+      writeFileSync(`${state}/${owner}.meta`, `${ownerProject}${field === "task" ? "" : `${field}=${terminal}\n`}`);
+      writeFileSync(`${state}/${owner}.status`, "needs-decision: choose owner\n");
+      writeFileSync(`${state}/.wake-queue`, `1\t1\tsignal\torca-task.status\tsignal: orca-task.status\n1\t2\tstale\t${terminal}\tstale: ${terminal}`);
+      const scope = scopeForUnreadWake(state, false);
+      if (scope.eligible || !scope.corrupted || scope.eligibleSeqs.length !== 0) {
+        throw new Error(`conflicting ${field} ownership must leave the whole wake to MAIN (${owner}, project=${JSON.stringify(ownerProject)}): ${JSON.stringify(scope)}`);
+      }
+      // The empty record retains its task key but no endpoint claim.
+      writeFileSync(`${state}/${owner}.meta`, "");
+    }
+  }
+}
+for (const projectField of ["", "project=\n"]) {
+  writeFileSync(`${state}/orca-task.meta`, `${projectField}terminal=orca-term-1\n`);
+  writeFileSync(`${state}/orca-task.status`, "needs-decision: choose owner\n");
+  writeFileSync(`${state}/.wake-queue`, "1\t1\tstale\torca-term-1\tstale: orca-term-1");
+  const scope = scopeForUnreadWake(state, false);
+  if (scope.eligible || !scope.corrupted) {
+    throw new Error(`a unique projectless owner must remain unmappable: ${JSON.stringify(scope)}`);
+  }
+}
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "a terminal-keyed Orca stale row must resolve to its task: $out"
+  pass "scopeForUnreadWake resolves unique Orca terminal owners and refuses conflicting aliases alongside another eligible row"
+}
+
+
+test_branch_dispatch_keeps_project_with_canonical_owner() {
+  local out status
+  ROOT="$ROOT" CASE_ROOT="$TMP_ROOT/canonical-owner" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+
+const { scopeForUnreadWake, branchOfferForWake } = await import(pathToFileURL(`${process.env.ROOT}/bin/lib/fm-host-dispatch.ts`).href);
+const originalReaddir = fs.readdirSync;
+let fixture = 0;
+for (const reverse of [false, true]) {
+  const preload = `import fs from "node:fs"; import { syncBuiltinESMExports } from "node:module";
+    const original = fs.readdirSync;
+    fs.readdirSync = (...args) => { const names = original(...args).sort(); return ${reverse} ? names.reverse() : names; };
+    syncBuiltinESMExports();`;
+  fs.readdirSync = (...args) => {
+    const names = originalReaddir(...args).sort();
+    return reverse ? names.reverse() : names;
+  };
+  syncBuiltinESMExports();
+  for (const field of ["window", "terminal"]) {
+    for (const project of ["", "project=\n", "project=/owner\n"]) {
+      for (const key of ["fm-window", "fm-fm-window"]) {
+        const state = `${process.env.CASE_ROOT}/${fixture++}`;
+        fs.mkdirSync(state, { recursive: true });
+        fs.writeFileSync(`${state}/a.meta`, `${project}${field}=fm-window\n`);
+        fs.writeFileSync(`${state}/window.meta`, "project=/approved\n");
+        fs.writeFileSync(`${state}/window.status`, "needs-decision: choose owner\n");
+        fs.writeFileSync(`${state}/.wake-queue`, `1\t1\tstale\t${key}\tstale: ${key}\n`);
+        const check = (eligible, corrupted) => {
+          for (const afk of [false, true]) {
+            const scope = scopeForUnreadWake(state, false, afk);
+            assert.equal(scope.eligible, eligible, JSON.stringify({ reverse, field, project, key, scope }));
+            assert.equal(scope.corrupted, corrupted);
+            if (eligible) {
+              assert.deepEqual(scope.eligibleTasks, ["a"]);
+              assert.deepEqual(scope.projects, ["/owner"]);
+            }
+            assert.equal(branchOfferForWake(state, `stale: ${key}`, afk).eligible, eligible);
+            const cli = spawnSync(process.execPath, ["--import", `data:text/javascript,${encodeURIComponent(preload)}`,
+              `${process.env.ROOT}/bin/fm-host-dispatch.mjs`, "offer", ...(afk ? ["--afk"] : [])], {
+              env: { ...process.env, FM_STATE_OVERRIDE: state }, input: `stale: ${key}\n`, encoding: "utf8",
+            });
+            assert.equal(cli.status, 0, cli.stderr);
+            const result = Object.fromEntries(cli.stdout.trim().split("\n").map((line) => line.split("=")));
+            assert.equal(result.eligible, eligible ? "1" : "0", cli.stdout);
+            assert.equal(result.corrupted, corrupted ? "1" : "0", cli.stdout);
+          }
+        };
+        check(Boolean(project.includes("/owner")), !project.includes("/owner"));
+        fs.writeFileSync(`${state}/window.meta`, `project=/approved\n${field}=fm-window\n`);
+        check(false, true);
+      }
+    }
+  }
+}
+fs.readdirSync = originalReaddir;
+syncBuiltinESMExports();
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "canonical ownership must govern scope and CLI offers: $out"
+  pass "scope and CLI keep projects with canonical owners in both discovery orders"
+}
+
+# A second mate's status log is one shared channel for many independently keyed
+# decisions, so its signal rows are judged by the span presented since the last
+# drain (bounded by bin/fm-classify-lib.sh's own presentation-cursor writer),
+# not by every decision still open anywhere in that log. Single-task crewmate
+# logs keep their previous rule on both the plain and the attended-host scan.
+test_branch_dispatch_routes_secondmate_signal_by_new_span() {
+  local home out status
+  home="$TMP_ROOT/dispatch-span-home"
+  mkdir -p "$home/state" "$home/projects/approved"
+  printf 'project=%s/projects/approved\nwindow=mate-window\nkind=secondmate\n' "$home" > "$home/state/mate.meta"
+  printf 'project=%s/projects/approved\nwindow=crew-window\nkind=ship\n' "$home" > "$home/state/crew.meta"
+  LIB="$ROOT/bin/lib/fm-host-dispatch.ts" FM_HOME="$home" CLASSIFY_LIB="$ROOT/bin/fm-classify-lib.sh" \
+    node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, rmSync, writeFileSync } from "node:fs";
+
+const { branchOfferForWake, scopeForUnreadWake } = await import(pathToFileURL(process.env.LIB).href);
+const state = `${process.env.FM_HOME}/state`;
+const signalRow = (task) => `1\t1\tsignal\t${task}.status\tsignal: ${task}.status`;
+
+// Write the already-presented history, commit the presentation cursor at its
+// end through the real writer, then append the unread span a new wake covers.
+function stage(task, presented, span) {
+  const path = `${state}/${task}.status`;
+  writeFileSync(path, presented);
+  execFileSync("bash", ["-c",
+    'set -e; . "$1"; ident=$(_fm_open_decisions_file_ident "$2/$3.status"); ' +
+    'status_commit_presentation_snapshot "$2" "$(printf "%s\\t%s\\t%s" "$3" "$4" "$ident")"',
+    "_", process.env.CLASSIFY_LIB, state, task, String(Buffer.byteLength(presented))]);
+  appendFileSync(path, span);
+  writeFileSync(`${state}/.wake-queue`, signalRow(task));
+}
+
+// Both scans: the plain scan (the scope subcommand and the away recheck) and
+// the attended supervision host's.
+function verdicts() {
+  return [false, true].map((attendedHost) => scopeForUnreadWake(state, false, false, attendedHost).eligibleSeqs.includes("1"));
+}
+
+function expectRoute(label, presented, span, toBranch) {
+  stage("mate", presented, span);
+  const [plain, host] = verdicts();
+  if (plain !== toBranch || host !== toBranch) {
+    throw new Error(`${label}: expected ${toBranch ? "branch" : "main"}, got plain=${plain} host=${host}`);
+  }
+}
+
+const hold = "needs-decision [at=1790000000] [key=old-hold]: deferred captain call\n";
+expectRoute("unrelated open hold plus a routine merged line", hold,
+  "done [at=1790000100]: sample-a PR merged\n", true);
+expectRoute("unrelated open hold stamped with a readable time", "needs-decision [at=10:00] [key=old-hold]: waiting\n",
+  "done: sample-a PR merged\n", true);
+expectRoute("routine note that only mentions an open key in prose", hold,
+  "done: sample-a merged, unrelated to [key=old-hold]\n", true);
+expectRoute("mixed routine and decision span", hold,
+  "done: sample-b PR merged\nneeds-decision [key=new-call]: pick an option\n", false);
+expectRoute("same-key update to an open decision", hold,
+  "working [key=old-hold]: still gathering evidence\n", false);
+expectRoute("same-key update behind a readable time stamp", hold,
+  "working [at=10:30] [key=old-hold]: still gathering evidence\n", false);
+expectRoute("key-less blocked line", hold, "blocked: cannot reach the forge\n", false);
+expectRoute("resolution of an open decision", hold, "resolved [key=old-hold]: answered\n", false);
+expectRoute("key-less resolution beside an unrelated open hold", hold, "resolved: routine follow-up\n", true);
+expectRoute("key-less resolution of an open unkeyed decision", "needs-decision: pick an option\n",
+  "resolved: answered\n", false);
+expectRoute("keyed resolution of a never-open key", hold, "resolved [key=never-open]: nothing to close\n", true);
+expectRoute("resolution after a bare resolved word left the unkeyed decision open",
+  "needs-decision: choose\nresolved\n", "resolved: answered\n", false);
+expectRoute("captain-held declaration", "working: history\n", "captain-held [key=parked]: deferred to Monday\n", false);
+
+// The host decides the whole close through the offer rule, which must agree.
+stage("mate", hold, "done: sample-c PR merged\n");
+if (!branchOfferForWake(state, `signal: ${state}/mate.status`, false, true).eligible) {
+  throw new Error("the attended-host offer kept a routine second-mate close on main behind an unrelated hold");
+}
+
+// Without a readable cursor the whole log is the span, so routing falls back
+// toward main rather than guessing.
+stage("mate", hold, "done: sample-d PR merged\n");
+rmSync(`${state}/.status-presentation-cursor`);
+if (verdicts().some(Boolean)) throw new Error("a missing presentation cursor did not fall back to the whole log");
+
+// A stale row stays a whole-log liveness check, and a co-queued signal row for
+// the same second mate keeps its own verdict in either order.
+for (const [order, queue, signalSeq, staleSeq] of [
+  ["stale first", "1\t1\tstale\tmate\tstale: mate\n1\t2\tsignal\tmate.status\tsignal: mate.status", "2", "1"],
+  ["signal first", "1\t1\tsignal\tmate.status\tsignal: mate.status\n1\t2\tstale\tmate\tstale: mate", "1", "2"],
+]) {
+  stage("mate", hold, "done: sample-e PR merged\n");
+  writeFileSync(`${state}/.wake-queue`, queue);
+  for (const attendedHost of [false, true]) {
+    const scope = scopeForUnreadWake(state, false, false, attendedHost);
+    if (!scope.eligibleSeqs.includes(signalSeq) || scope.eligibleSeqs.includes(staleSeq)) {
+      throw new Error(`${order}: signal and stale rows for one second mate shared a verdict: ${JSON.stringify(scope)}`);
+    }
+  }
+}
+
+// Single-task crewmate logs are unchanged: the plain scan judges only the row
+// payload, and the attended host keeps its whole-log rule.
+stage("crew", hold, "done: routine follow-up\n");
+const [crewPlain, crewHost] = verdicts();
+if (!crewPlain || crewHost) throw new Error(`crewmate signal routing changed: plain=${crewPlain} host=${crewHost}`);
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "second-mate signal rows must be routed by their new span: $out"
+  pass "second-mate signal rows route by their new span while crewmate and stale routing stay unchanged"
+}
+
 test_branch_prompt_is_byte_stable_and_above_cache_floor
 test_branch_prompt_home_include_is_appended_last
 test_branch_prompt_routes_completed_scouts_through_guarded_cleanup
@@ -1692,3 +2232,7 @@ test_away_record_relocates_main_owned_actions_to_the_branch
 test_away_branch_spawn_requires_queued_dispatchable_work
 test_away_spend_cap_is_rechecked_under_the_task_set_lock
 test_quiet_record_never_caps_a_present_captains_spawn
+test_branch_dispatch_classifies_main_only_rows
+test_branch_dispatch_resolves_terminal_keyed_orca_stale_row
+test_branch_dispatch_keeps_project_with_canonical_owner
+test_branch_dispatch_routes_secondmate_signal_by_new_span

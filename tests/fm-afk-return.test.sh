@@ -474,17 +474,16 @@ test_return_brief_composes_from_record_store_and_held_set() {
   pass "the return brief renders health, the words with the session account, waiting, could-not-fix, handled, and cost from durable records, and the gate shrinks to what the away session could not fix"
 }
 
-# On a supervision-host home off Pi the drain's BRANCH OUTCOMES section is the
-# one presenter of branch outcomes and the one owner of their read cursor, so
-# the return brief counts the window's outcomes and points there instead of
-# listing them, and leaves the cursor alone. On Pi the brief lists them as
-# before.
+# On a supervision-host home the drain's BRANCH OUTCOMES section is the one
+# presenter of branch outcomes and the one owner of their read cursor, so the
+# return brief counts the window's outcomes and points there instead of
+# listing them, and leaves the cursor alone, whichever primary runs the host.
 test_return_brief_points_at_the_drain_on_a_host_home_only() {
   local dir harness fakebin out n
-  for harness in claude pi; do
+  for harness in claude codex; do
     dir="$TMP_ROOT/window-pointer-$harness"
     install_runner "$dir"
-    for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-omp-process-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
+    for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
       cp "$ROOT/bin/$f" "$dir/bin/"
     done
     : > "$dir/home/config/supervision-host"
@@ -502,26 +501,21 @@ test_return_brief_points_at_the_drain_on_a_host_home_only() {
     out=$(FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" FM_CONFIG_OVERRIDE="$dir/home/config" \
       "$fakebin/$harness" -c '"$0" begin 2>&1' "$dir/bin/fm-afk-return.sh") || fail "$harness: the return did not clear: $out"
     assert_contains "$out" '7 outcome(s) handled by the away session (6 routine, 1 escalated above)' "$harness: the brief must count the window's outcomes"
-    if [ "$harness" = claude ]; then
-      assert_contains "$out" "  1 captain outcome(s) escalated by the away session, presented in the drain's BRANCH OUTCOMES section" \
-        "a host home's brief must point at the drain for its captain outcomes"
-      assert_contains "$out" "the drain's BRANCH OUTCOMES section presents the visible outcomes" "a host home's brief must point at the visible outcomes in the drain"
-      assert_not_contains "$out" 'PR ready for review' "a host home's brief must leave the captain outcome to the drain"
-      assert_not_contains "$out" 'routine 6' "a host home's brief must leave the routine outcomes to the drain"
-    else
-      assert_contains "$out" '    - demo: PR ready for review' "a Pi home's brief must still list the captain outcome"
-      assert_contains "$out" '    - demo: routine 6' "a Pi home's brief must still list the latest routine outcomes"
-    fi
+    assert_contains "$out" "  1 captain outcome(s) escalated by the away session, presented in the drain's BRANCH OUTCOMES section" \
+      "$harness: a host home's brief must point at the drain for its captain outcomes"
+    assert_contains "$out" "the drain's BRANCH OUTCOMES section presents the visible outcomes" "$harness: a host home's brief must point at the visible outcomes in the drain"
+    assert_not_contains "$out" 'PR ready for review' "$harness: a host home's brief must leave the captain outcome to the drain"
+    assert_not_contains "$out" 'routine 6' "$harness: a host home's brief must leave the routine outcomes to the drain"
     [ ! -e "$dir/home/state/.branch-outcomes-cursor" ] || fail "$harness: the return moved the outcome store's read cursor"
   done
-  pass "the return brief points at the drain for branch outcomes on a host home and leaves the read cursor to it, and a Pi home's brief is unchanged"
+  pass "the return brief points at the drain for branch outcomes on a host home and leaves the read cursor to it, whichever primary runs the host"
 }
 
 test_return_brief_all_silent_window_does_not_point_at_drain() {
   local dir fakebin out f
   dir="$TMP_ROOT/window-pointer-silent"
   install_runner "$dir"
-  for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-omp-process-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
+  for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
     cp "$ROOT/bin/$f" "$dir/bin/"
   done
   : > "$dir/home/config/supervision-host"
@@ -961,7 +955,7 @@ test_return_brief_reports_only_an_open_downtime_episode_as_a_gap() {
 # main-session lock so the latch record's key is the current one.
 seed_host_latch() {  # <case-dir> <errors> <cooldown> <retry-after> <log-lines>
   local dir=$1 key f
-  for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-omp-process-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
+  for f in fm-supervision-engine-lib.sh fm-session-lock-lib.sh fm-harness.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh; do
     cp "$ROOT/bin/$f" "$dir/bin/"
   done
   printf 'claude sonnet\n' > "$dir/home/config/supervision-host"

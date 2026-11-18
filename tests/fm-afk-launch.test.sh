@@ -23,13 +23,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAUNCH="$ROOT/bin/fm-afk-launch.sh"
 START="$ROOT/bin/fm-afk-start.sh"
 CONTRACT="$ROOT/bin/fm-afk-contract.sh"
-# The daemon paths refuse on a Pi primary, so pin a daemon-running harness for
-# every unit below; the Pi refusal has its own units (unit_pi_never_launches_the_daemon).
+# Pin a daemon-running harness for every unit below.
 # FM_TEST_HARNESS is the launch path's test-only seam (bin/fm-afk-launch.sh
 # fm_afk_launch_primary_harness): the suite calls the entrypoints directly, so a
-# real harness ancestor - a no-mistakes gate agent run under Pi - would outrank
-# the CLAUDECODE=1 marker below and refuse the daemon paths under test.
-unset PI_CODING_AGENT FM_PI_HARNESS CURSOR_AGENT CURSOR_INVOKED_AS GEMINI_CLI ATLASSIAN_AGENT_TYPE ROVODEV_CLI
+# real harness ancestor - a no-mistakes gate agent run under another harness -
+# would outrank the CLAUDECODE=1 marker below and refuse the daemon paths under
+# test.
+unset CURSOR_AGENT CURSOR_INVOKED_AS GEMINI_CLI ATLASSIAN_AGENT_TYPE ROVODEV_CLI
 export CLAUDECODE=1 FM_TEST_HARNESS=claude FM_TEST_SEAM=1
 # A Claude home runs the supervision host unless config/supervision-host-off
 # opts it out (docs/configuration.md "Supervision host"), and the host is that home's
@@ -65,8 +65,8 @@ enter_posture() {  # <home>
 # ---------------------------------------------------------------------------
 # UNIT 0: /afk is itself the go. `enter` writes the away-posture record in the
 # same call, with no separate confirmation, and prints the announcement and the
-# read-back after the record exists; on Pi the entry ends there, and every
-# daemon path requires that record.
+# read-back after the record exists; where the supervision host runs the away
+# session the entry ends there, and every daemon path requires that record.
 # ---------------------------------------------------------------------------
 unit_enter_records_the_posture_in_one_step_without_a_daemon() {
   local st out rc
@@ -127,33 +127,6 @@ unit_retired_two_step_entry_is_refused() {
   rm -rf "$st"
 }
 
-unit_pi_never_launches_the_daemon() {
-  local st harness out rc
-  for harness in pi pi-signed; do
-    st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-pi.XXXXXX")
-    mkdir -p "$st/state"
-    out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_TEST_HARNESS="$harness" \
-      FM_SUPERVISOR_TARGET=unused FM_SUPERVISOR_BACKEND=tmux FM_AFK_LAUNCH_ENTRY="$SLEEPER" \
-      bash -c '. "$1"; fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }; fm_afk_launch_main start' _ "$LAUNCH" 2>&1)
-    rc=$?
-    if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -F "the away daemon is no longer launched on $harness" >/dev/null \
-      && [ ! -e "$st/state/.afk" ] && [ ! -e "$st/state/.afk-daemon-terminal" ] && [ ! -e "$st/state/.afk-contract" ]; then
-      pass "$harness: start refuses to launch the daemon and writes no state"
-    else
-      fail "$harness: start did not refuse cleanly (rc=$rc): $out"
-    fi
-    out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_TEST_HARNESS="$harness" \
-      bash -c '. "$1"; fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }; fm_afk_launch_main start-native' _ "$LAUNCH" 2>&1)
-    rc=$?
-    if [ "$rc" -ne 0 ] && [ ! -e "$st/state/.afk" ] && [ ! -e "$st/state/.afk-daemon-terminal" ]; then
-      pass "$harness: start-native refuses to prepare a daemon"
-    else
-      fail "$harness: start-native did not refuse (rc=$rc): $out"
-    fi
-    rm -rf "$st"
-  done
-}
-
 # A leaked FM_TEST_HARNESS in a real primary's environment must stay inert: the
 # seam fires only alongside the FM_TEST_SEAM marker that test suites set.
 unit_test_harness_seam_requires_the_marker() {
@@ -162,40 +135,40 @@ unit_test_harness_seam_requires_the_marker() {
   ref=$(env -u FM_TEST_SEAM -u FM_TEST_HARNESS CLAUDECODE=1 \
     bash -c '. "$1"; fm_afk_launch_primary_harness' _ "$LAUNCH")
   # shellcheck disable=SC2016 # positional params expand in the child shell.
-  stray=$(env -u FM_TEST_SEAM CLAUDECODE=1 FM_TEST_HARNESS=omp \
+  stray=$(env -u FM_TEST_SEAM CLAUDECODE=1 FM_TEST_HARNESS=kimi \
     bash -c '. "$1"; fm_afk_launch_primary_harness' _ "$LAUNCH")
   [ "$stray" = "$ref" ] \
     || fail "FM_TEST_HARNESS without FM_TEST_SEAM changed harness detection ($stray != $ref)"
   # shellcheck disable=SC2016 # positional params expand in the child shell.
-  stray=$(env -u FM_TEST_SEAM CLAUDECODE=1 FM_TEST_HARNESS='1 omp' \
+  stray=$(env -u FM_TEST_SEAM CLAUDECODE=1 FM_TEST_HARNESS='1 kimi' \
     bash -c '. "$1"; fm_afk_launch_primary_harness' _ "$LAUNCH")
   [ "$stray" = "$ref" ] \
     || fail "a marker-shaped FM_TEST_HARNESS without FM_TEST_SEAM changed harness detection ($stray != $ref)"
   # shellcheck disable=SC2016 # positional params expand in the child shell.
-  pinned=$(FM_TEST_SEAM=1 CLAUDECODE=1 FM_TEST_HARNESS=omp \
+  pinned=$(FM_TEST_SEAM=1 CLAUDECODE=1 FM_TEST_HARNESS=kimi \
     bash -c '. "$1"; fm_afk_launch_primary_harness' _ "$LAUNCH")
-  [ "$pinned" = omp ] \
+  [ "$pinned" = kimi ] \
     || fail "FM_TEST_SEAM-armed FM_TEST_HARNESS did not pin the harness ($pinned)"
   pass "FM_TEST_HARNESS seam is inert without the test marker"
 }
 
-unit_pi_enter_stop_does_not_claim_a_daemon_terminal() {
+unit_enter_stop_without_a_daemon_does_not_claim_a_terminal() {
   local st out rc
-  st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-pi-stop.XXXXXX")
+  st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-enter-stop.XXXXXX")
   mkdir -p "$st/state"
-  enter_posture "$st" || fail "pi stop: could not enter fixture posture"
-  [ ! -e "$st/state/.afk" ] || fail "pi stop: fixture error: enter wrote the away flag"
-  [ ! -e "$st/state/.afk-daemon-terminal" ] || fail "pi stop: fixture error: enter recorded a daemon terminal"
-  [ ! -e "$st/state/.supervise-daemon.log" ] || fail "pi stop: fixture error: a daemon log already existed"
+  enter_posture "$st" || fail "enter stop: could not enter fixture posture"
+  [ ! -e "$st/state/.afk" ] || fail "enter stop: fixture error: enter wrote the away flag"
+  [ ! -e "$st/state/.afk-daemon-terminal" ] || fail "enter stop: fixture error: enter recorded a daemon terminal"
+  [ ! -e "$st/state/.supervise-daemon.log" ] || fail "enter stop: fixture error: a daemon log already existed"
   out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" stop 2>&1)
   rc=$?
   if [ "$rc" -eq 0 ] \
     && printf '%s' "$out" | grep -F 'no daemon terminal was running' >/dev/null \
     && ! printf '%s' "$out" | grep -F 'daemon terminal torn down' >/dev/null \
     && [ ! -e "$st/state/.afk-contract" ]; then
-    pass "pi enter stop: reports that no daemon terminal was running"
+    pass "enter stop: reports that no daemon terminal was running"
   else
-    fail "pi enter stop: claimed a daemon teardown or failed (rc=$rc): $out"
+    fail "enter stop: claimed a daemon teardown or failed (rc=$rc): $out"
   fi
   rm -rf "$st"
 }
@@ -1090,9 +1063,10 @@ unit_supervision_host_claude_home_runs_no_away_daemon() {
   rm -rf "$st"
 }
 
-# Every non-Pi primary with an arm owner runs the host under the same file, so
+# Every primary with an arm owner runs the host under the same file, so
 # away mode launches no daemon there, quiet mode still does, and a harness with
-# no arm owner (kimi) keeps the daemon. `enter` says so when the file selects
+# no arm owner (kimi, or a removed harness such as pi, pi-signed, or omp)
+# keeps the daemon. `enter` says so when the file selects
 # no engine for that primary.
 unit_supervision_host_other_harnesses_run_no_away_daemon() {
   local st harness out rc
@@ -1102,25 +1076,27 @@ unit_supervision_host_other_harnesses_run_no_away_daemon() {
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_CONFIG_OVERRIDE="$st/config" FM_TEST_HARNESS="$1" FM_AFK_MODE="${2:-}" \
       bash -c '. "$1"; fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }; fm_afk_launch_daemon_allowed' _ "$LAUNCH" 2>&1
   }
-  for harness in cursor opencode omp codex agy; do
+  for harness in cursor opencode codex agy; do
     daemon_allowed "$harness" >/dev/null || fail "$harness: a home without config/supervision-host must keep the away daemon"
   done
   daemon_allowed claude >/dev/null && fail "claude: a home without config/supervision-host runs the host, so it must refuse the away daemon"
   : > "$st/config/supervision-host-off"
-  for harness in claude cursor opencode omp codex agy; do
+  for harness in claude cursor opencode codex agy; do
     daemon_allowed "$harness" >/dev/null || fail "$harness: a home opted out by config/supervision-host-off must keep the away daemon"
   done
   rm -f "$st/config/supervision-host-off"
   : > "$st/config/supervision-host"
-  for harness in cursor opencode omp codex agy; do
+  for harness in cursor opencode codex agy; do
     out=$(daemon_allowed "$harness"); rc=$?
     [ "$rc" -ne 0 ] || fail "$harness: an opted-in home must refuse the away daemon"
     printf '%s' "$out" | grep -F "not launched on this $harness home, which runs the supervision host" >/dev/null \
       || fail "$harness: the refusal must name the host: $out"
     daemon_allowed "$harness" quiet >/dev/null || fail "$harness: quiet mode must still launch the daemon on an opted-in home"
   done
-  daemon_allowed kimi >/dev/null || fail "kimi has no arm owner to run the host, so it must keep the away daemon"
-  pass "supervision host: away mode on an opted-in cursor, opencode, omp, codex, or agy home launches no daemon"
+  for harness in kimi pi pi-signed omp; do
+    daemon_allowed "$harness" >/dev/null || fail "$harness has no arm owner to run the host, so it must keep the away daemon"
+  done
+  pass "supervision host: away mode on an opted-in cursor, opencode, codex, or agy home launches no daemon"
 
   enter_with() {  # <harness> <config line, off for the opt-out, or ->
     rm -f "$st/state/.afk-contract" "$st/config/supervision-host" "$st/config/supervision-host-off"
@@ -1210,7 +1186,7 @@ unit_daemon_quiet_entry_holds_nothing_for_a_return() {
 # /quiet where the attended supervision host runs is a statement: quiet-check
 # says quiet mode needs nothing, or that the session is paused while its
 # broken-session latch holds, and a quiet enter writes nothing. Without the
-# opt-in, or on Pi, quiet-check says nothing and quiet mode is the daemon's.
+# opt-in, or on a harness with no arm owner, quiet-check says nothing and quiet mode is the daemon's.
 unit_supervision_host_quiet_statement() {
   local st out rc key harness
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-quiet.XXXXXX")
@@ -1224,8 +1200,8 @@ unit_supervision_host_quiet_statement() {
   out=$(quiet_in "$st" "$LAUNCH" quiet-check); rc=$?
   quiet_expect 0 'Quiet mode needs nothing on this home' "quiet-check on a claude home without config/supervision-host must say quiet mode needs nothing"
   printf 'claude\n' > "$st/config/supervision-host"
-  out=$(FM_TEST_HARNESS=pi quiet_in "$st" "$LAUNCH" quiet-check); rc=$?
-  [ "$rc" -eq 1 ] && [ -z "$out" ] || fail "quiet-check on a pi home must exit 1 silently (rc=$rc): $out"
+  out=$(FM_TEST_HARNESS=kimi quiet_in "$st" "$LAUNCH" quiet-check); rc=$?
+  [ "$rc" -eq 1 ] && [ -z "$out" ] || fail "quiet-check on a kimi home must exit 1 silently (rc=$rc): $out"
 
   for harness in claude cursor; do
     out=$(FM_TEST_HARNESS=$harness quiet_in "$st" "$LAUNCH" quiet-check); rc=$?
@@ -1279,7 +1255,7 @@ unit_supervision_host_quiet_fallback() {
   : > "$st/config/supervision-host"
   unready "no supervision engine: the primary harness 'cursor' has no verified supervision engine" cursor
   printf 'claude\n' > "$st/config/supervision-host"
-  for bad in opencode omp codex; do
+  for bad in opencode codex; do
     unready "no verified dialog mirror for $bad" "$bad"
   done
   printf '999999999\n' > "$st/state/.lock"
@@ -1900,9 +1876,8 @@ unit_clear_stale
 unit_per_task_markers_session_scoped
 unit_enter_records_the_posture_in_one_step_without_a_daemon
 unit_retired_two_step_entry_is_refused
-unit_pi_never_launches_the_daemon
 unit_test_harness_seam_requires_the_marker
-unit_pi_enter_stop_does_not_claim_a_daemon_terminal
+unit_enter_stop_without_a_daemon_does_not_claim_a_terminal
 unit_daemon_entry_requires_the_record
 unit_failed_daemon_launch_preserves_the_record
 unit_stop_archives_the_record_last

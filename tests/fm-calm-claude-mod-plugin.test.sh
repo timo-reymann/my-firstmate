@@ -43,7 +43,6 @@ test_validate_strict() {
     fi
     # The scan is the engine's own reading of the module: the events it will hook
     # and the environment names it may read. Anything more or less is a drift.
-    expect_in_report "$report" "ui.render{component=Spinner}" "the scan of $path does not hook the working row"
     expect_in_report "$report" "ui.render{component=ToolUse}" "the scan of $path does not hook tool rows"
     expect_in_report "$report" "ui.render{component=ToolResult}" "the scan of $path does not hook tool results"
     expect_in_report "$report" "ui.render{component=ToolGroup}" "the scan of $path does not hook tool groups"
@@ -77,7 +76,7 @@ test_plugin_suites() {
     printf '%s\n' "$report" >&2
     fail "Claude Code $CLAUDE_VERSION reported Calm mod plugin test failures"
   }
-  pass "Claude Code $CLAUDE_VERSION runs the Calm mod's plugin test suites clean: persisted toggle, hidden rows, working notes, the clock-driven working ship, and supervision notes"
+  pass "Claude Code $CLAUDE_VERSION runs the Calm mod's plugin test suites clean: persisted toggle, hidden rows, working notes, and supervision notes"
 }
 
 test_validate_strict

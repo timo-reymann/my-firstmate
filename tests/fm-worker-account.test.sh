@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # Behavior tests for the opt-in per-home worker account pin
-# (config/claude-account, config/pi-account; bin/fm-worker-account-lib.sh).
+# (config/claude-account; bin/fm-worker-account-lib.sh).
 #
 # Each case drives the real fm-spawn.sh through the shared fake tmux, which
 # records the launch command, then runs that command in a synthetic pane whose
-# ambient environment carries a different account. The fake claude and pi
-# answer the sign-in checks the way the real runners do - an environment
-# credential counts as signed in, otherwise the selected root's stored login
-# decides - and record the account environment and arguments a launched worker
-# receives. tests/fm-worker-account-live-e2e.test.sh proves those answers
-# against the real runners.
+# ambient environment carries a different account. The fake claude answers the
+# sign-in check the way the real runner does - an environment credential counts
+# as signed in, otherwise the selected root's stored login decides - and
+# records the account environment a launched worker receives.
+# tests/fm-worker-account-live-e2e.test.sh proves those answers against the
+# real runner.
 set -u
 
 # shellcheck source=tests/fixtures.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-worker-account)
-unset LAVISH_AXI_HOST ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN PI_CODING_AGENT_DIR OPENAI_API_KEY
+unset LAVISH_AXI_HOST ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 
 # make_account_fakes <fakebin> <case-dir>
 # The fakes cannot read test variables during a sign-in check, which runs with
@@ -38,39 +38,7 @@ fi
   printf 'CLAUDE_CODE_USE_BEDROCK=%s\n' "\${CLAUDE_CODE_USE_BEDROCK-unset}"
 } > '$dir/claude-worker'
 SH
-  cat > "$fakebin/pi" <<SH
-#!/usr/bin/env bash
-root=\${PI_CODING_AGENT_DIR:-\$HOME/.pi/agent}
-case "\${1:-}" in
-  --help) printf '%s\n' 'Pi 0.86.1' 'Options: --help --tui-mode <mode>'; exit 0 ;;
-  auth)
-    provider=\$4
-    printf '%s %s\n' "\${PI_CODING_AGENT_DIR-unset}" "\$provider" >> '$dir/pi-checks'
-    if [ -f "\$root/old-pi" ]; then echo "Unknown command: auth" >&2; exit 1; fi
-    if [ -n "\${OPENAI_API_KEY:-}" ] || grep -qx "\$provider" "\$root/signed-in" 2>/dev/null; then
-      printf '{"status":"ready","provider":"%s","authType":"oauth"}\n' "\$provider"
-      exit 0
-    fi
-    if grep -qx "\$provider" "\$root/extension-providers" 2>/dev/null; then
-      printf '{"status":"not_ready","provider":"%s","reason":"provider_not_found"}\n' "\$provider"
-      exit 1
-    fi
-    printf '{"status":"not_ready","provider":"%s","reason":"credentials_not_configured"}\n' "\$provider"
-    exit 1
-    ;;
-  --list-models)
-    printf 'provider  model  context\n'
-    [ ! -f "\$root/listed" ] || cat "\$root/listed"
-    exit 0
-    ;;
-esac
-{
-  printf 'PI_CODING_AGENT_DIR=%s\n' "\${PI_CODING_AGENT_DIR-unset}"
-  printf 'ARGS=%s\n' "\$*"
-} > '$dir/pi-worker'
-SH
-  chmod +x "$fakebin/claude" "$fakebin/pi"
-  cp "$fakebin/pi" "$fakebin/pi-signed"
+  chmod +x "$fakebin/claude"
 }
 
 # new_case <name> <crew-harness> -> sets CASE HOME_DIR PROJ WT FAKEBIN
@@ -112,7 +80,6 @@ run_pane() {
   env -i HOME="$HOME_DIR/user-home" PATH="$FAKEBIN:$PATH" TERM=xterm \
     CLAUDE_CONFIG_DIR="$CASE/ambient-claude" ANTHROPIC_API_KEY=ambient-pane-key \
     CLAUDE_CODE_OAUTH_TOKEN=ambient-pane-token CLAUDE_CODE_USE_BEDROCK=1 \
-    PI_CODING_AGENT_DIR="$CASE/ambient-pi" OPENAI_API_KEY=ambient-pane-openai \
     bash -c "$(cat "$CASE/launch.log")" || fail "the recorded launch failed in the synthetic pane"
 }
 
@@ -137,15 +104,7 @@ test_absent_pin_keeps_the_launch_unchanged() {
     "an unpinned launch must keep forwarding the invoking process's own Claude root"
   assert_grep "ANTHROPIC_API_KEY=ambient-pane-key" "$CASE/claude-worker" \
     "an unpinned launch must leave the pane's environment credentials alone"
-
-  new_case absent-pi pi
-  out=$(spawn_ship acct-absent-pi --model gpt-5.5); rc=$?
-  expect_code 0 "$rc" "an unpinned Pi spawn with an unqualified model should succeed: $out"
-  assert_not_contains "$(cat "$CASE/launch.log")" "--provider" "an unpinned Pi launch must not add a provider"
-  run_pane
-  assert_grep "PI_CODING_AGENT_DIR=$CASE/ambient-pi" "$CASE/pi-worker" \
-    "an unpinned Pi launch must keep the pane's own Pi root"
-  pass "an absent pin leaves Claude and Pi launches exactly as they were"
+  pass "an absent pin leaves the Claude launch exactly as it was"
 }
 
 test_claude_pin_selects_the_root_and_sheds_ambient_credentials() {
@@ -222,84 +181,8 @@ test_malformed_pins_refuse_before_launch() {
   out=$(spawn_ship "$id-dir"); rc=$?
   expect_code 1 "$rc" "a directory in place of the pin must refuse"
   assert_refused_before_launch "$id-dir" "$out" "config/claude-account must be a readable regular file"
-  rmdir "$HOME_DIR/config/claude-account"
-  printf 'ordinary\n' > "$HOME_DIR/config/pi-account"
-  out=$(spawn_ship "$id-pi" --harness pi --model openai-codex/gpt-5.5); rc=$?
-  expect_code 1 "$rc" "a Pi pin without a providers line must refuse"
-  assert_refused_before_launch "$id-pi" "$out" "config/pi-account must hold"
   assert_absent "$CASE/claude-checks" "a malformed pin must refuse before any sign-in check"
   pass "malformed, relative, CR-terminated, empty, extra-line, missing-root, and non-file pins refuse before launch"
-}
-
-test_pi_pin_selects_the_root_and_the_declared_provider() {
-  local out rc id=acct-pi launch
-  new_case pi-pin pi
-  mkdir -p "$CASE/pi-work"
-  printf 'openai-codex\n' > "$CASE/pi-work/signed-in"
-  printf '%s\nopenai-codex anthropic\n' "$CASE/pi-work" > "$HOME_DIR/config/pi-account"
-  out=$(spawn_ship "$id" --model openai-codex/gpt-5.5); rc=$?
-  expect_code 0 "$rc" "a Pi spawn pinned to a signed-in provider should succeed: $out"
-  assert_contains "$out" "account=$CASE/pi-work account_provider=openai-codex" \
-    "the spawn should report the pinned root and provider"
-  assert_grep "account=$CASE/pi-work" "$HOME_DIR/state/$id.meta" "the task record should carry the pinned root"
-  assert_grep "account_provider=openai-codex" "$HOME_DIR/state/$id.meta" "the task record should carry the pinned provider"
-  [ "$(cat "$CASE/pi-checks")" = "$CASE/pi-work openai-codex" ] \
-    || fail "the sign-in check should ask the pinned root about the model's provider: $(cat "$CASE/pi-checks")"
-  launch=$(cat "$CASE/launch.log")
-  assert_contains "$launch" "--provider 'openai-codex' --model 'openai-codex/gpt-5.5'" \
-    "the launch should confine Pi's model lookup to the declared provider"
-  run_pane
-  assert_grep "PI_CODING_AGENT_DIR=$CASE/pi-work" "$CASE/pi-worker" "the worker should run under the pinned Pi root"
-  assert_grep "--provider openai-codex --model openai-codex/gpt-5.5" "$CASE/pi-worker" \
-    "the worker should receive the declared provider"
-  pass "a Pi pin selects its root and passes the declared provider"
-}
-
-test_pi_pin_refusals() {
-  local out rc id=acct-pi-bad
-  new_case pi-refusals pi
-  mkdir -p "$CASE/pi-work"
-  printf 'openai-codex\n' > "$CASE/pi-work/signed-in"
-  printf '%s\nopenai-codex anthropic\n' "$CASE/pi-work" > "$HOME_DIR/config/pi-account"
-  out=$(spawn_ship "$id-bare" --model gpt-5.5); rc=$?
-  expect_code 1 "$rc" "an unqualified Pi model must refuse under a pin"
-  assert_refused_before_launch "$id-bare" "$out" "'gpt-5.5' names no provider"
-  out=$(spawn_ship "$id-none"); rc=$?
-  expect_code 1 "$rc" "a Pi launch with no model must refuse under a pin"
-  assert_refused_before_launch "$id-none" "$out" "'none' names no provider"
-  out=$(spawn_ship "$id-other" --model openrouter/gpt-5.5); rc=$?
-  expect_code 1 "$rc" "an undeclared Pi provider must refuse"
-  assert_refused_before_launch "$id-other" "$out" "names provider 'openrouter'"
-  out=$(OPENAI_API_KEY=ambient-invoker-openai spawn_ship "$id-out" --model anthropic/claude-sonnet); rc=$?
-  expect_code 1 "$rc" "a declared provider the root is not signed in to must refuse"
-  assert_refused_before_launch "$id-out" "$out" "which is not signed in for provider 'anthropic'"
-  out=$(spawn_ship "$id-raw" --harness "pi --provider openai-codex --model openai-codex/gpt-5.5"); rc=$?
-  expect_code 1 "$rc" "a raw Pi launch must refuse under a pin"
-  assert_refused_before_launch "$id-raw" "$out" "a raw Pi launch command runs verbatim"
-  pass "a Pi pin refuses unqualified, missing, undeclared, signed-out, and raw launches"
-}
-
-test_pi_extension_provider_and_old_pi_fall_back_to_the_model_listing() {
-  local out rc id=acct-pi-list
-  new_case pi-listing pi
-  mkdir -p "$CASE/pi-work"
-  printf 'codex-native\n' > "$CASE/pi-work/extension-providers"
-  printf '%s\ncodex-native openai-codex\n' "$CASE/pi-work" > "$HOME_DIR/config/pi-account"
-  out=$(spawn_ship "$id-unlisted" --model codex-native/gpt-6); rc=$?
-  expect_code 1 "$rc" "an extension provider the root lists no model for must refuse"
-  assert_refused_before_launch "$id-unlisted" "$out" "no model listed for provider codex-native"
-  printf 'codex-native  gpt-6  272K\n' > "$CASE/pi-work/listed"
-  out=$(spawn_ship "$id-ext" --model codex-native/gpt-6); rc=$?
-  expect_code 0 "$rc" "an extension provider listed under the root should launch: $out"
-  : > "$CASE/pi-work/old-pi"
-  printf 'openai-codex-mini  gpt-5  128K\n' > "$CASE/pi-work/listed"
-  out=$(spawn_ship "$id-old-near" --model openai-codex/gpt-5); rc=$?
-  expect_code 1 "$rc" "a Pi without auth check must match the provider column exactly"
-  assert_refused_before_launch "$id-old-near" "$out" "no model listed for provider openai-codex"
-  printf 'openai-codex  gpt-5  128K\n' > "$CASE/pi-work/listed"
-  out=$(spawn_ship "$id-old" --model openai-codex/gpt-5); rc=$?
-  expect_code 0 "$rc" "a Pi without auth check should launch when the root lists the provider: $out"
-  pass "extension providers and a Pi without auth check fall back to an exact model-listing match"
 }
 
 test_a_pin_governs_only_its_own_runner() {
@@ -310,10 +193,8 @@ test_a_pin_governs_only_its_own_runner() {
   out=$(spawn_ship "$id-codex"); rc=$?
   expect_code 0 "$rc" "a codex spawn must ignore a Claude pin: $out"
   assert_not_contains "$out" "account=" "a codex spawn must not report a Claude pin"
-  out=$(spawn_ship "$id-pi" --harness pi --model gpt-5.5); rc=$?
-  expect_code 0 "$rc" "a Pi spawn must ignore a Claude pin: $out"
   assert_absent "$CASE/claude-checks" "no Claude sign-in check may run for another runner"
-  pass "a Claude pin leaves codex and Pi launches unchanged"
+  pass "a Claude pin leaves codex launches unchanged"
 }
 
 test_raw_claude_command_receives_the_pin() {
@@ -399,75 +280,53 @@ spawn_account_secondmate() {
 }
 
 test_secondmate_account_override() {
-  local out rc id=acct-sm-override harness file variable worker
-  for harness in claude pi pi-signed; do
-    new_case "secondmate-override-$harness" "$harness"
-    case "$harness" in
-    claude) file=claude-account; variable=CLAUDE_CONFIG_DIR; worker=claude ;;
-    *) file=pi-account; variable=PI_CODING_AGENT_DIR; worker=pi ;;
-    esac
-    signed_in_claude_root "$CASE/primary"
-    signed_in_claude_root "$CASE/mate"
-    printf 'openai-codex\n' > "$CASE/primary/signed-in"
-    printf 'openai-codex\n' > "$CASE/mate/signed-in"
-    printf '%s\n' "$CASE/primary" > "$HOME_DIR/config/$file"
-    mkdir -p "$HOME_DIR/config/secondmate-accounts/$id" "$HOME_DIR/config/secondmate-accounts/acct-ship"
-    printf '%s\n' "$CASE/mate" > "$HOME_DIR/config/secondmate-accounts/$id/$file"
-    if [ "$harness" != claude ]; then
-      printf 'openai-codex\n' >> "$HOME_DIR/config/$file"
-      printf 'openai-codex\n' >> "$HOME_DIR/config/secondmate-accounts/$id/$file"
-    fi
-    cp "$HOME_DIR/config/secondmate-accounts/$id/$file" "$HOME_DIR/config/secondmate-accounts/acct-ship/$file"
-    out=$(spawn_account_secondmate "$id" --model openai-codex/gpt-5.5); rc=$?
-    expect_code 0 "$rc" "a $harness secondmate with its own account should launch: $out"
-    assert_contains "$out" "account=$CASE/mate" "the per-mate pin must override the primary's pin"
-    run_pane
-    assert_grep "$variable=$CASE/mate" "$CASE/$worker-worker" "the mate must receive its own account"
-    if [ "$harness" != claude ]; then
-      assert_grep '--provider openai-codex' "$CASE/$worker-worker" "the mate must receive its pinned provider"
-    fi
-    out=$(spawn_account_secondmate acct-other --model openai-codex/gpt-5.5); rc=$?
-    expect_code 0 "$rc" "an unconfigured secondmate should keep the primary's pin: $out"
-    run_pane
-    assert_grep "$variable=$CASE/primary" "$CASE/$worker-worker" "another mate must not receive the override"
-    out=$(spawn_ship acct-ship --model openai-codex/gpt-5.5); rc=$?
-    expect_code 0 "$rc" "an ordinary worker must keep the primary's pin: $out"
-    run_pane
-    assert_grep "$variable=$CASE/primary" "$CASE/$worker-worker" "per-mate configuration must not pin ordinary workers"
-  done
-  pass "Claude, Pi, and pi-signed secondmates use their own pins without changing other launches"
+  local out rc id=acct-sm-override file=claude-account
+  new_case secondmate-override-claude claude
+  signed_in_claude_root "$CASE/primary"
+  signed_in_claude_root "$CASE/mate"
+  printf '%s\n' "$CASE/primary" > "$HOME_DIR/config/$file"
+  mkdir -p "$HOME_DIR/config/secondmate-accounts/$id" "$HOME_DIR/config/secondmate-accounts/acct-ship"
+  printf '%s\n' "$CASE/mate" > "$HOME_DIR/config/secondmate-accounts/$id/$file"
+  cp "$HOME_DIR/config/secondmate-accounts/$id/$file" "$HOME_DIR/config/secondmate-accounts/acct-ship/$file"
+  out=$(spawn_account_secondmate "$id"); rc=$?
+  expect_code 0 "$rc" "a claude secondmate with its own account should launch: $out"
+  assert_contains "$out" "account=$CASE/mate" "the per-mate pin must override the primary's pin"
+  run_pane
+  assert_grep "CLAUDE_CONFIG_DIR=$CASE/mate" "$CASE/claude-worker" "the mate must receive its own account"
+  out=$(spawn_account_secondmate acct-other); rc=$?
+  expect_code 0 "$rc" "an unconfigured secondmate should keep the primary's pin: $out"
+  run_pane
+  assert_grep "CLAUDE_CONFIG_DIR=$CASE/primary" "$CASE/claude-worker" "another mate must not receive the override"
+  out=$(spawn_ship acct-ship); rc=$?
+  expect_code 0 "$rc" "an ordinary worker must keep the primary's pin: $out"
+  run_pane
+  assert_grep "CLAUDE_CONFIG_DIR=$CASE/primary" "$CASE/claude-worker" "per-mate configuration must not pin ordinary workers"
+  pass "Claude secondmates use their own pins without changing other launches"
 }
 
 test_secondmate_account_refusals() {
-  local out rc id=acct-sm-refuse file harness body pin
-  for harness in claude pi; do
-    new_case "secondmate-refuse-$harness" "$harness"
-    file=claude-account
-    [ "$harness" = claude ] || file=pi-account
-    signed_in_claude_root "$CASE/primary"
-    printf 'openai-codex\n' > "$CASE/primary/signed-in"
-    printf '%s\n' "$CASE/primary" > "$HOME_DIR/config/$file"
-    [ "$harness" = claude ] || printf 'openai-codex\n' >> "$HOME_DIR/config/$file"
-    mkdir -p "$HOME_DIR/config/secondmate-accounts/$id" "$CASE/signed-out"
-    pin="$HOME_DIR/config/secondmate-accounts/$id/$file"
-    for body in '' relative "$CASE/missing" "$CASE/signed-out"; do
-      printf '%s\n' "$body" > "$pin"
-      [ "$harness" = claude ] || printf 'openai-codex\n' >> "$pin"
-      out=$(spawn_account_secondmate "$id" --model openai-codex/gpt-5.5); rc=$?
-      expect_code 1 "$rc" "an unusable per-mate $harness pin must refuse: $out"
-      assert_refused_before_launch "$id" "$out" "$pin"
-    done
-    rm "$pin"
-    ln -s "$CASE/no-file" "$pin"
-    out=$(spawn_account_secondmate "$id" --model openai-codex/gpt-5.5); rc=$?
-    expect_code 1 "$rc" "a broken per-mate pin link must not fall back"
-    assert_refused_before_launch "$id" "$out" "$pin"
-    rm "$pin"
-    mkdir "$pin"
-    out=$(spawn_account_secondmate "$id" --model openai-codex/gpt-5.5); rc=$?
-    expect_code 1 "$rc" "a non-file per-mate pin must not fall back"
+  local out rc id=acct-sm-refuse file=claude-account body pin
+  new_case secondmate-refuse-claude claude
+  signed_in_claude_root "$CASE/primary"
+  printf '%s\n' "$CASE/primary" > "$HOME_DIR/config/$file"
+  mkdir -p "$HOME_DIR/config/secondmate-accounts/$id" "$CASE/signed-out"
+  pin="$HOME_DIR/config/secondmate-accounts/$id/$file"
+  for body in '' relative "$CASE/missing" "$CASE/signed-out"; do
+    printf '%s\n' "$body" > "$pin"
+    out=$(spawn_account_secondmate "$id"); rc=$?
+    expect_code 1 "$rc" "an unusable per-mate claude pin must refuse: $out"
     assert_refused_before_launch "$id" "$out" "$pin"
   done
+  rm "$pin"
+  ln -s "$CASE/no-file" "$pin"
+  out=$(spawn_account_secondmate "$id"); rc=$?
+  expect_code 1 "$rc" "a broken per-mate pin link must not fall back"
+  assert_refused_before_launch "$id" "$out" "$pin"
+  rm "$pin"
+  mkdir "$pin"
+  out=$(spawn_account_secondmate "$id"); rc=$?
+  expect_code 1 "$rc" "a non-file per-mate pin must not fall back"
+  assert_refused_before_launch "$id" "$out" "$pin"
   pass "unusable per-mate pins name the setting and refuse rather than use the primary's usable account"
 }
 
@@ -639,9 +498,6 @@ test_claude_pin_selects_the_root_and_sheds_ambient_credentials
 test_claude_pin_refuses_a_signed_out_root_despite_an_ambient_login
 test_claude_ordinary_pin_unsets_the_config_root
 test_malformed_pins_refuse_before_launch
-test_pi_pin_selects_the_root_and_the_declared_provider
-test_pi_pin_refusals
-test_pi_extension_provider_and_old_pi_fall_back_to_the_model_listing
 test_a_pin_governs_only_its_own_runner
 test_raw_claude_command_receives_the_pin
 test_raw_claude_account_override_refuses_under_a_pin

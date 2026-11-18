@@ -114,7 +114,7 @@ test_attended_latch_keeps_closes_on_main_and_records_recovery_off_main() {
   wait_until_deadline 60 host_exited "$home" || fail "latch: the second engine error did not hand the wake back"
   assert_re '^supervision-host: the supervision session is paused after repeated engine errors; every wake reaches you for the next 5 minutes' "$home/host.out" \
     "the second consecutive engine error must trip the latch with one line"
-  assert_grep 'cooldown=300' "$home/state/.supervision-host-health" "the latch must start with the Pi policy's five-minute cooldown"
+  assert_grep 'cooldown=300' "$home/state/.supervision-host-health" "the latch must start with the five-minute cooldown"
   main_drain_and_ack "$home"
 
   park_again "$home"
@@ -450,7 +450,7 @@ test_park_limit_lets_a_turn_outlive_the_boundary() {
 
 test_first_cycle_status_streams_and_owner_options_reach_it() {
   local home stale fresh generation predecessor
-  home=$(make_home stream attended pi)
+  home=$(make_home stream attended spaceship)
   start_host "$home"
   wait_until 150 grep -qs '^watcher: started pid=' "$home/host.out" \
     || fail "stream: the first cycle's status did not reach the owner before a close: $(cat "$home/host.out")"
@@ -565,6 +565,8 @@ test_unchanged_held_outcome_reaches_the_captain_once_until_a_new_event() {
   pass "host: an unchanged held outcome reaches the captain once across cadences, and a later decision on the task still does"
 }
 
+# pi, a removed harness, is named here so a stale config line pins that it is
+# no longer a verified supervision engine.
 test_unverified_engine_hands_every_away_wake_to_main() {
   local home
   home=$(make_home no-engine away 'pi')

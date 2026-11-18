@@ -154,7 +154,7 @@ case "${1:-}" in
     ;;
   server)
     {
-      for name in FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS FM_SUPERVISION_MODEL FM_HERDR_SENTINEL HERDR_SESSION; do
+      for name in FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE FM_SUPERVISION_MODEL FM_HERDR_SENTINEL HERDR_SESSION; do
         eval 'value=${'"$name"'-<unset>}'
         printf '%s=%s\n' "$name" "$value"
       done
@@ -528,10 +528,10 @@ test_recovery_grade_read_widens_only_at_its_own_boundary() {
 
 # --- stale agent registration over a shell-only pane (issue #4115) -----------
 #
-# Herdr keeps a Pi registration (`agent get` -> agent=pi, agent_status=idle)
-# after the Pi process has exited to a plain shell whenever a nested interactive
-# shell sits under the pane's top shell (the `treehouse get` crew shape;
-# reproduced on Herdr 0.9.0 - docs/verification/runtime-backends.md "Stale agent
+# Herdr keeps an agent registration (`agent get` -> agent=<name>,
+# agent_status=idle) after the agent process has exited to a plain shell
+# whenever a nested interactive shell sits under the pane's top shell (the
+# `treehouse get` crew shape; reproduced on Herdr 0.9.0 - docs/verification/runtime-backends.md "Stale agent
 # registration"). Trusting that registration alone classified the pane `live`,
 # so every relaunch and recovery was refused forever. The classifier must now
 # prove an agent at process level before reporting one, exactly as the tmux
@@ -553,7 +553,7 @@ stale_registration_case() {  # <dir-suffix> <agent_status> <process-info-body|->
     # +1: pane get -> the pane structurally exists
     printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/$((n + 1)).out"
     # +2: agent get -> a registered agent with the given status
-    printf '{"result":{"agent":{"agent":"pi","agent_status":"%s"}}}\n' "$2" > "$resp/$((n + 2)).out"
+    printf '{"result":{"agent":{"agent":"opencode","agent_status":"%s"}}}\n' "$2" > "$resp/$((n + 2)).out"
     # +3: pane process-info -> the pane's actual process view
     [ "$3" = - ] || printf '%s\n' "$3" > "$resp/$((n + 3)).out"
     [ -z "${4:-}" ] || printf '%s\n' "$4" > "$resp/$((n + 3)).exit"
@@ -579,7 +579,7 @@ test_stale_registration_over_a_shell_only_pane_is_agent_free() {
   kill "$shell_pid" 2>/dev/null || true
   [ "$out" = "stale-agent dead refused" ] \
     || fail "a registered idle agent over a shell-only pane must read stale-agent, recover as dead, and still refuse husk closing; got '$out'"
-  pass "herdr stale registration: a shell-only pane with a lingering Pi record is agent-free with an explicit reason"
+  pass "herdr stale registration: a shell-only pane with a lingering agent record is agent-free with an explicit reason"
 }
 
 test_stale_registration_ignores_status_and_reads_the_process() {
@@ -598,13 +598,13 @@ test_stale_registration_ignores_status_and_reads_the_process() {
 
 test_registered_agent_with_a_live_foreground_process_stays_alive() {
   local out
-  # The real Pi shape on Herdr 0.9.0: the kernel name is the interpreter and
-  # only argv0 says pi.
-  out=$(stale_registration_case live-pi idle \
-    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"pi","argv":["pi"],"cmdline":"pi"}]}}}')
+  # A Node-based harness on Herdr 0.9.0: the kernel name is the interpreter and
+  # only argv0 names the harness.
+  out=$(stale_registration_case live-node idle \
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"opencode","argv":["opencode"],"cmdline":"opencode"}]}}}')
   [ "$out" = "live alive refused" ] \
-    || fail "a registered agent whose foreground process is Pi must stay live/alive, got '$out'"
-  pass "herdr stale registration: a registered agent with a live Pi foreground process still reads alive"
+    || fail "a registered agent whose foreground process is a harness must stay live/alive, got '$out'"
+  pass "herdr stale registration: a registered agent with a live harness foreground process still reads alive"
 }
 
 # --- the foreground-occupant session proof ----------------------------------
@@ -656,64 +656,6 @@ test_pane_owns_session_proves_the_foreground_occupant() {
   pass "herdr pane owns session: the foreground-occupant proof accepts only the real ancestry plus foreground group"
 }
 
-# --- the bound agent session reference (relaunch session continuity) --------
-#
-# Herdr applies only reports carrying the session identity it bound to a pane,
-# and that registration survives its agent process in the crew shape above. A
-# worker relaunched with a FRESH session therefore reports into a pane that
-# ignores it and reads idle while it works. bin/fm-spawn.sh hands the
-# replacement the reference this read returns: the exact identity the
-# endpoint's own runtime recorded, never a guess about which session looks
-# recent. It must return that record and nothing else - a reference handed to
-# `pi --session` is a launch input, so an unreadable, foreign-shaped, or
-# non-resumable value degrades to the ordinary fresh launch.
-pane_agent_session_ref_read() {  # <agent-get-body> [exit-status]
-  local dir resp log fb
-  dir=$(mktemp -d "$TMP_ROOT/session-ref.XXXXXX")
-  mkdir -p "$dir/responses"; resp="$dir/responses"; log="$dir/log"; : > "$log"
-  printf '%s\n' "$1" > "$resp/1.out"
-  [ -z "${2:-}" ] || printf '%s\n' "$2" > "$resp/1.exit"
-  fb=$(make_herdr_fakebin "$dir")
-  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_session_ref fmtest w1:p2' "$ROOT"
-}
-
-test_pane_agent_session_ref_reports_a_resumable_reference_with_its_agent() {
-  local out
-  out=$(pane_agent_session_ref_read \
-    '{"result":{"agent":{"agent":"pi","agent_status":"stale","agent_session":{"agent":"pi","kind":"path","source":"herdr:pi","value":"/home/u/.pi/agent/sessions/--wt--/2026-09-20T07-14-40-136Z_01a0bdaa.jsonl"}}}}')
-  [ "$out" = $'pi\t/home/u/.pi/agent/sessions/--wt--/2026-09-20T07-14-40-136Z_01a0bdaa.jsonl' ] \
-    || fail "an absolute path reference must be reported with its agent label, got '$out'"
-
-  out=$(pane_agent_session_ref_read \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"id","source":"herdr:pi","value":"01a0bdaa-c387-749d-966c-0dcd96a4b755"}}}}')
-  [ "$out" = $'pi\t01a0bdaa-c387-749d-966c-0dcd96a4b755' ] \
-    || fail "a bare session id must be reported as-is, got '$out'"
-  pass "herdr pane agent session: a resumable reference is reported with the agent label that reported it"
-}
-
-test_pane_agent_session_ref_degrades_to_nothing_when_not_resumable() {
-  local out body
-  for body in \
-    '{"error":{"code":"agent_not_found","message":"agent target w1:p2 not found"}}' \
-    '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"path","value":"relative/session.jsonl"}}}}' \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"id","value":"not a token"}}}}' \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"id","value":""}}}}' \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"opaque","value":"whatever"}}}}' \
-    'not json at all'; do
-    out=$(pane_agent_session_ref_read "$body") \
-      && fail "an unresumable registration must report nothing resumable, but the read succeeded for: $body"
-    [ -z "$out" ] \
-      || fail "an unresumable registration read must print nothing (got '$out') for: $body"
-  done
-  out=$(pane_agent_session_ref_read \
-    '{"result":{"agent":{"agent":"pi","agent_session":{"agent":"pi","kind":"path","value":"/abs/session.jsonl"}}}}' 1)
-  [ -z "$out" ] \
-    || fail "a failed agent read must print nothing, got '$out'"
-  pass "herdr pane agent session: anything unresumable degrades to a nonzero read with no output"
-}
-
 test_registered_agent_with_a_non_shell_foreground_process_stays_alive() {
   local out
   # A registered agent running a foreground tool in its own process group is
@@ -733,7 +675,7 @@ settle_registration_case() {  # <dir-suffix> <polls> <process-info-body>...
   shift 2
   mkdir -p "$dir/responses"; resp="$dir/responses"; log="$dir/log"; : > "$log"
   printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"opencode","agent_status":"idle"}}}\n' > "$resp/2.out"
   n=3
   for body in "$@"; do
     printf '%s\n' "$body" > "$resp/$n.out"
@@ -783,16 +725,16 @@ test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_aliv
   local lab standin sleep_bin shell_pid out shell_verdict
   sleep_bin=$(command -v sleep) || fail "sleep not found"
   lab="$TMP_ROOT/stale-reg-descendant-bin"; mkdir -p "$lab"
-  # A symlink to a real long-running stand-in so the kernel records `pi` as the
+  # A symlink to a real long-running stand-in so the kernel records `opencode` as the
   # executable identity (tests/lib.sh fm_agent_standin owns why not host sleep).
   standin=$(fm_agent_standin "$TMP_ROOT/standin") || {
     echo "skip: no long-running stand-in survives a rename, so the agent-named descendant case cannot run"
     return 0
   }
-  ln -sf "$standin" "$lab/pi"
+  ln -sf "$standin" "$lab/opencode"
   # A real shell whose child is that agent-named process, while the canned
   # foreground view shows only the shell (a suspended or backgrounded agent).
-  sh -c "'$lab/pi' 300; :" &
+  sh -c "'$lab/opencode' 300; :" &
   shell_pid=$!
   sleep 0.3
   out=$(stale_registration_case descendant idle "$(shell_only_process_info "$shell_pid")")
@@ -822,8 +764,8 @@ test_agent_descendant_under_a_spaced_install_path_stays_alive() {
   # `/Library/Application Support/...` shape), so a field-split read of the
   # process table sees only a fragment of the name.
   lab="$TMP_ROOT/stale-reg-spaced-bin/Application Support/Some Dir"; mkdir -p "$lab"
-  ln -sf "$standin" "$lab/pi"
-  sh -c "'$lab/pi' 300; :" &
+  ln -sf "$standin" "$lab/opencode"
+  sh -c "'$lab/opencode' 300; :" &
   shell_pid=$!
   sleep 0.3
   out=$(stale_registration_case spaced-descendant idle "$(shell_only_process_info "$shell_pid")")
@@ -935,18 +877,18 @@ test_process_state_tolerates_missing_and_malformed_process_fields() {
     '[null, "str", 5, {}, {"pid":"7","name":7,"argv":"notarray","argv0":["a"]}, {"name":"git"}]')")
   [ "${out%% *}" = other ] \
     || fail "missing or malformed fields with no harness must read other, got '$out'"
-  out=$(process_state_read argv-only "$(process_info_body 4242 '[{}, {"argv":["/opt/tools/pi","--continue"]}]')")
+  out=$(process_state_read argv-only "$(process_info_body 4242 '[{}, {"argv":["/opt/tools/opencode","--continue"]}]')")
   [ "${out%% *}" = agent ] \
     || fail "argv[0] must name the harness when name and argv0 are missing, got '$out'"
-  out=$(process_state_read argv0-only "$(process_info_body 4242 '[{"pid":4243,"name":"node","argv0":"pi"}]')")
+  out=$(process_state_read argv0-only "$(process_info_body 4242 '[{"pid":4243,"name":"node","argv0":"opencode"}]')")
   [ "${out%% *}" = agent ] \
     || fail "argv0 must name the harness when argv and cmdline are missing, got '$out'"
   out=$(process_state_read no-shell-pid \
-    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","foreground_processes":[{"name":"node","argv0":"pi"}]}}}')
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","foreground_processes":[{"name":"node","argv0":"opencode"}]}}}')
   [ "${out%% *}" = unreadable ] \
     || fail "a process view with no shell pid must stay unreadable even with a harness in it, got '$out'"
   out=$(process_state_read not-an-array \
-    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_processes":{"name":"pi"}}}}')
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_processes":{"name":"opencode"}}}}')
   [ "${out%% *}" = unreadable ] \
     || fail "a foreground list that is not an array must read unreadable, got '$out'"
   pass "herdr process state: missing fields read empty and malformed views stay unreadable"
@@ -1033,7 +975,7 @@ test_busy_state_never_reports_a_shell_only_pane_busy() {
   shell_pid=$!
   dir="$TMP_ROOT/busy-stale"; mkdir -p "$dir/responses"; resp="$dir/responses"; log="$dir/log"; : > "$log"
   # 1: agent get -> a lingering working record; 2: process-info -> shell only
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"opencode","agent_status":"working"}}}\n' > "$resp/1.out"
   shell_only_process_info "$shell_pid" > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
@@ -1043,18 +985,18 @@ test_busy_state_never_reports_a_shell_only_pane_busy() {
     || fail "a working record over a shell-only pane must not read busy, got '$out'"
   assert_contains "$(cat "$log")" $'pane\x1fprocess-info' "busy_state did not verify the working record at process level"
 
-  # The control: the same working record with a live Pi foreground reads busy.
+  # The control: the same working record with a live harness foreground reads busy.
   dir="$TMP_ROOT/busy-live"; mkdir -p "$dir/responses"; resp="$dir/responses"; log="$dir/log"; : > "$log"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}\n' > "$resp/1.out"
-  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"pi","argv":["pi"],"cmdline":"pi"}]}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"opencode","agent_status":"working"}}}\n' > "$resp/1.out"
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"opencode","argv":["opencode"],"cmdline":"opencode"}]}}}\n' > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_busy_state fmtest:w1:p2' "$ROOT")
-  [ "$out" = busy ] || fail "a working record with a live Pi foreground must read busy, got '$out'"
+  [ "$out" = busy ] || fail "a working record with a live harness foreground must read busy, got '$out'"
 
   # An idle record needs no process read: idle is never trusted as busy anyway.
   dir="$TMP_ROOT/busy-idle"; mkdir -p "$dir/responses"; resp="$dir/responses"; log="$dir/log"; : > "$log"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"opencode","agent_status":"idle"}}}\n' > "$resp/1.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_busy_state fmtest:w1:p2' "$ROOT")
@@ -1485,12 +1427,12 @@ test_server_ensure_scrubs_home_and_harness_identity() {
   PATH="$fb:$PATH" FM_HERDR_SERVER_ENV_LOG="$log" FM_HERDR_SERVER_MARKER="$marker" FM_HERDR_SENTINEL=kept \
     FM_HOME=/tmp/wrong-home FM_ROOT_OVERRIDE=/tmp/wrong-root FM_STATE_OVERRIDE=/tmp/wrong-state \
     FM_DATA_OVERRIDE=/tmp/wrong-data FM_PROJECTS_OVERRIDE=/tmp/wrong-projects FM_CONFIG_OVERRIDE=/tmp/wrong-config \
-    CURSOR_AGENT=1 CURSOR_INVOKED_AS=cursor-agent CLAUDECODE=1 PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed FM_SUPERVISION_MODEL=autoarm \
+    CURSOR_AGENT=1 CURSOR_INVOKED_AS=cursor-agent CLAUDECODE=1 FM_SUPERVISION_MODEL=autoarm \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_server_ensure fmtest' "$ROOT"
   expect_code 0 $? "server_ensure should start under a polluted launcher environment"
   output=$(cat "$log")
   for name in FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE \
-    CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS FM_SUPERVISION_MODEL; do
+    CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE FM_SUPERVISION_MODEL; do
     assert_contains "$output" "$name=<unset>" "server_ensure leaked $name into the long-lived Herdr server"
   done
   assert_contains "$output" "FM_HERDR_SENTINEL=kept" "server_ensure removed an unrelated environment variable"
@@ -1655,8 +1597,8 @@ test_create_task_refuses_duplicate_label_when_agent_live() {
   printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/3.out"
   # 4: agent get -> a genuinely registered, live agent (idle, not just working)
   printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/4.out"
-  # 5: pane process-info -> a live Pi process backs that registration (#4115)
-  printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"pi"}]}}}' > "$resp/5.out"
+  # 5: pane process-info -> a live harness process backs that registration (#4115)
+  printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"opencode"}]}}}' > "$resp/5.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_create_task fmtest:w1 fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -1678,8 +1620,8 @@ test_create_task_refuses_when_any_duplicate_label_is_live() {
   printf '{"result":{"panes":[{"pane_id":"w1:p2","tab_id":"w1:t2"},{"pane_id":"w1:p3","tab_id":"w1:t3"}]}}\n' > "$resp/5.out"
   printf '{"result":{"pane":{"pane_id":"w1:p3"}}}\n' > "$resp/6.out"
   printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/7.out"
-  # 8: pane process-info -> a live Pi process backs that registration (#4115)
-  printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p3","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"pi"}]}}}' > "$resp/8.out"
+  # 8: pane process-info -> a live harness process backs that registration (#4115)
+  printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p3","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"opencode"}]}}}' > "$resp/8.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_create_task fmtest:w1 fm-mixed1 /tmp/proj' "$ROOT" 2>&1 )
@@ -2992,7 +2934,7 @@ test_projection_close_busy_pane_falls_back_to_plain_close() {
   cp "$resp/1.out" "$resp/6.out"
   sleep 300 & bgpid=$!
   # The pane still has a foreground agent, so the idle-shell proof refuses.
-  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w2:p2","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"zsh","argv0":"zsh"},{"pid":99999,"name":"pi","argv0":"pi"}]}}}\n' "$bgpid" "$bgpid" "$bgpid" > "$resp/7.out"
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w2:p2","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"zsh","argv0":"zsh"},{"pid":99999,"name":"opencode","argv0":"opencode"}]}}}\n' "$bgpid" "$bgpid" "$bgpid" > "$resp/7.out"
   printf '%s\n' '{"error":{"code":"pane_not_found"}}' > "$resp/9.out"
   printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","active_tab_id":"w1:t1","focused":true}]}}' > "$resp/10.out"
   printf '%s\n' '{"result":{"tabs":[{"tab_id":"w1:t1","focused":true}]}}' > "$resp/11.out"
@@ -4079,7 +4021,7 @@ test_projection_recovery_is_read_only_and_refuses_live_duplicate_risk() {
   printf '{"result":{"pane":{"pane_id":"w1:p1"}}}\n' > "$resp/3.out"
   printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/4.out"
   # 5: process-info -> a live harness backs the registration (issue #4115)
-  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p1","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"pi"}]}}}\n' > "$resp/5.out"
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p1","shell_pid":4242,"foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"node","argv0":"opencode"}]}}}\n' > "$resp/5.out"
   out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_recovery_allows_flat fmtest "$1" task-p3' "$ROOT" "$journal" 2>&1)
   status=$?
@@ -4464,39 +4406,25 @@ test_composer_state_unknown_when_no_composer_row_found() {
   pass "fm_backend_herdr_composer_state: reports unknown for bare shell prompts with no composer row"
 }
 
-# Real Pi 0.80.7 on Herdr 0.7.3 renders no prompt glyph and no side border.
-# Its content is the row(s) between two blue horizontal separators; the idle row
-# carries only a reverse-video cursor. This exact shape was `unknown` for 4555s
+# A separated composer renders no prompt glyph and no side border. Its content
+# is the row(s) between two horizontal separators; the idle row carries only a
+# reverse-video cursor. polytoken is the shape's verified owner. This exact shape was `unknown` for 4555s
 # during the 2026-07-14 incident, so the safe injector never attempted submit.
-test_composer_state_pi_separator_idle_is_empty() {
+test_composer_state_separated_separator_idle_is_empty() {
   local dir log resp fb out calls
-  dir="$TMP_ROOT/composer-pi-separated-idle"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  dir="$TMP_ROOT/composer-separated-separated-idle"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
   printf '│ stale bordered transcript row │\n\x1b[0m\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\n\x1b[0m\x1b[7m \x1b[0m                                                    \n\x1b[0m\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\n\x1b[0m\x1b[38;2;102;102;102m~/synthetic-primary (main)\x1b[0m\n' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"polytoken","agent_status":"idle"}}}\n' > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
-  [ "$out" = empty ] || fail "an idle native Pi separator composer should read empty, got '$out'"
+  [ "$out" = empty ] || fail "an idle native separated composer should read empty, got '$out'"
   calls=$(grep -c $'\x1f''agent'$'\x1f''get' "$log")
-  [ "$calls" -eq 1 ] || fail "Pi separator recognition must corroborate identity exactly once, made $calls agent calls"
-  pass "fm_backend_herdr_composer_state: a native idle Pi separator composer reads empty"
+  [ "$calls" -eq 1 ] || fail "separated-composer recognition must corroborate identity exactly once, made $calls agent calls"
+  pass "fm_backend_herdr_composer_state: a native idle separated-composer composer reads empty"
 }
 
-test_composer_state_pi_dollar_status_footer_is_empty() {
-  # `$0.000 (sub) 5.4%/272k (auto)` at column 0 made herdr composer_state
-  # unknown, so exit and relaunch refused on an otherwise idle Pi pane.
-  local dir log resp fb out
-  dir="$TMP_ROOT/composer-pi-dollar-status"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
-  printf '%s\n' $'transcript\n─────────────────────────────────────────────────────\n\n─────────────────────────────────────────────────────\n$0.000 (sub) 5.4%/272k (auto)' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
-  [ "$out" = empty ] || fail "an idle Pi composer with a dollar-first status footer should read empty, got '$out'"
-  pass "fm_backend_herdr_composer_state: a dollar-first Pi status footer reads empty, not a dead shell"
-}
-
-# A pi worker parked on an interactive prompt (permission dialog, question
+# A separated-composer worker parked on an interactive prompt (permission dialog, question
 # menu, trust dialog) reports agent_status=blocked: it is waiting on a human
 # keystroke. The menu is drawn ABOVE the separator pair, so the composer region
 # itself is blank and structure alone looks like a free composer. Typing there
@@ -4505,47 +4433,47 @@ test_composer_state_pi_dollar_status_footer_is_empty() {
 # recorded (issue #2797). Every "is it safe to type here?" consumer reads this
 # verdict: the away-mode injection guard (bin/fm-supervise-daemon.sh) and
 # fm-send's pre-type refusal both proceed ONLY on an affirmative `empty`.
-test_composer_state_pi_parked_prompt_is_not_empty() {
+test_composer_state_separated_parked_prompt_is_not_empty() {
   local dir log resp fb out
-  dir="$TMP_ROOT/composer-pi-parked-prompt"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  dir="$TMP_ROOT/composer-separated-parked-prompt"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
   printf 'Should I keep going?\n  1. Yes, continue\n\x1b[7m  2. Stop, do not act\x1b[0m\n\x1b[0m\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\n\x1b[0m\x1b[7m \x1b[0m                                                    \n\x1b[0m\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\n' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"blocked"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"polytoken","agent_status":"blocked"}}}\n' > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
   [ "$out" != empty ] \
-    || fail "a pi pane parked on a prompt must not report an affirmatively empty composer, got '$out'"
-  pass "fm_backend_herdr_composer_state: a blocked pi pane parked on a prompt is not an empty composer"
+    || fail "a separated-composer pane parked on a prompt must not report an affirmatively empty composer, got '$out'"
+  pass "fm_backend_herdr_composer_state: a blocked separated-composer pane parked on a prompt is not an empty composer"
 }
 
-test_composer_state_pi_separator_real_text_is_pending() {
+test_composer_state_separated_separator_real_text_is_pending() {
   local dir log resp fb out
-  dir="$TMP_ROOT/composer-pi-separated-pending"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  dir="$TMP_ROOT/composer-separated-separated-pending"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
   printf '\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\nprivacy safe human draft\x1b[7m \x1b[0m\n\x1b[38;2;129;162;190m─────────────────────────────────────────────────────\x1b[0m\n' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"polytoken","agent_status":"done"}}}\n' > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
-  [ "$out" = pending ] || fail "real text in a native Pi separator composer should read pending, got '$out'"
-  pass "fm_backend_herdr_composer_state: real Pi composer text remains pending"
+  [ "$out" = pending ] || fail "real text in a native separated composer should read pending, got '$out'"
+  pass "fm_backend_herdr_composer_state: real separated composer text remains pending"
 }
 
-test_composer_state_pi_incomplete_separator_below_stale_generic_is_unknown() {
+test_composer_state_separated_incomplete_separator_below_stale_generic_is_unknown() {
   local dir log resp fb out
-  dir="$TMP_ROOT/composer-pi-separated-incomplete"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  dir="$TMP_ROOT/composer-separated-separated-incomplete"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
   printf '│   │\n─────────────────────────────────────────────────────\n\n' > "$resp/1.out"
-  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent":"polytoken","agent_status":"idle"}}}\n' > "$resp/2.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
-  [ "$out" = unknown ] || fail "an incomplete Pi separator below a stale generic row should remain unknown, got '$out'"
-  pass "fm_backend_herdr_composer_state: an incomplete lower Pi separator cannot inherit a stale empty row"
+  [ "$out" = unknown ] || fail "an incomplete separated-composer below a stale generic row should remain unknown, got '$out'"
+  pass "fm_backend_herdr_composer_state: an incomplete lower separated-composer cannot inherit a stale empty row"
 }
 
-test_composer_state_pi_separator_requires_safe_native_identity() {
+test_composer_state_separated_separator_requires_safe_native_identity() {
   local dir log resp fb out status case_id idx=0
-  for case_id in working non-pi unreadable over-tall; do
-    dir="$TMP_ROOT/composer-pi-separated-$case_id"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  for case_id in working non-owner unreadable over-tall; do
+    dir="$TMP_ROOT/composer-separated-separated-$case_id"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
     if [ "$case_id" = over-tall ]; then
       {
         printf '─────────────────────────────────────────────────────\n'
@@ -4556,17 +4484,17 @@ test_composer_state_pi_separator_requires_safe_native_identity() {
       printf '─────────────────────────────────────────────────────\n\n─────────────────────────────────────────────────────\n' > "$resp/1.out"
     fi
     case "$case_id" in
-      working) printf '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}\n' > "$resp/2.out" ;;
-      non-pi) printf '{"result":{"agent":{"agent":"shell","agent_status":"idle"}}}\n' > "$resp/2.out" ;;
+      working) printf '{"result":{"agent":{"agent":"polytoken","agent_status":"working"}}}\n' > "$resp/2.out" ;;
+      non-owner) printf '{"result":{"agent":{"agent":"shell","agent_status":"idle"}}}\n' > "$resp/2.out" ;;
       unreadable) printf '1\n' > "$resp/2.exit" ;;
-      over-tall) printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out" ;;
+      over-tall) printf '{"result":{"agent":{"agent":"polytoken","agent_status":"idle"}}}\n' > "$resp/2.out" ;;
     esac
     fb=$(make_herdr_fakebin "$dir")
     out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
       bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state lab:w1:p2' "$ROOT" )
-    [ "$out" = unknown ] || fail "unsafe Pi separator case '$case_id' must remain unknown, got '$out'"
+    [ "$out" = unknown ] || fail "unsafe separated-composer case '$case_id' must remain unknown, got '$out'"
   done
-  pass "fm_backend_herdr_composer_state: Pi separators never authorize working, non-Pi, unreadable, or over-tall targets"
+  pass "fm_backend_herdr_composer_state: separated-composers never authorize working, non-owner, unreadable, or over-tall targets"
 }
 
 # --- composer_state: unbordered (bare) composer rows -------------------------
@@ -6511,8 +6439,6 @@ test_agent_state_bypasses_a_stale_client_shadowing_a_compatible_one
 test_recovery_grade_read_widens_only_at_its_own_boundary
 test_stale_registration_over_a_shell_only_pane_is_agent_free
 test_stale_registration_ignores_status_and_reads_the_process
-test_pane_agent_session_ref_reports_a_resumable_reference_with_its_agent
-test_pane_agent_session_ref_degrades_to_nothing_when_not_resumable
 test_registered_agent_with_a_live_foreground_process_stays_alive
 test_pane_owns_session_proves_the_foreground_occupant
 test_registered_agent_with_a_non_shell_foreground_process_stays_alive
@@ -6663,12 +6589,11 @@ test_composer_state_unknown_on_capture_failure
 test_composer_state_inactive_session_fails_fast_without_server_autostart
 test_composer_state_piped_reader_does_not_hang
 test_composer_state_unknown_when_no_composer_row_found
-test_composer_state_pi_parked_prompt_is_not_empty
-test_composer_state_pi_separator_idle_is_empty
-test_composer_state_pi_dollar_status_footer_is_empty
-test_composer_state_pi_separator_real_text_is_pending
-test_composer_state_pi_incomplete_separator_below_stale_generic_is_unknown
-test_composer_state_pi_separator_requires_safe_native_identity
+test_composer_state_separated_parked_prompt_is_not_empty
+test_composer_state_separated_separator_idle_is_empty
+test_composer_state_separated_separator_real_text_is_pending
+test_composer_state_separated_incomplete_separator_below_stale_generic_is_unknown
+test_composer_state_separated_separator_requires_safe_native_identity
 test_composer_state_claude_unbordered_prompt_is_empty
 test_composer_state_claude_unbordered_prompt_is_pending
 test_composer_state_bare_prompt_below_stale_bordered_banner_wins

@@ -59,13 +59,12 @@ STANDIN_BIN=$(fm_agent_standin "$LAB/standin") || {
 }
 CC_BIN=$(command -v cc 2>/dev/null || command -v gcc 2>/dev/null || true)
 ln -s "$STANDIN_BIN" "$LAB/bin/claude-link"
-ln -s "$STANDIN_BIN" "$LAB/bin/pi"
+ln -s "$STANDIN_BIN" "$LAB/bin/kimi"
 ln -s "$STANDIN_BIN" "$LAB/bin/notaharness"
-# omp (Oh My Pi) is a single binary whose live process name is the bare word
-# `omp`; the two decoys are the substrings an unanchored glob would misread.
+# pi and omp are no longer supported harnesses, so their bare process names are
+# ordinary commands, not live agent panes.
+ln -s "$STANDIN_BIN" "$LAB/bin/pi"
 ln -s "$STANDIN_BIN" "$LAB/bin/omp"
-ln -s "$STANDIN_BIN" "$LAB/bin/ompd"
-ln -s "$STANDIN_BIN" "$LAB/bin/comp"
 # Command Code sets its process title to the bare word `command-code`; the decoy
 # merely contains it.
 ln -s "$STANDIN_BIN" "$LAB/bin/command-code"
@@ -86,12 +85,12 @@ ln -s "$STANDIN_BIN" "$LAB/bin/muse-binary"
 ln -s "$STANDIN_BIN" "$LAB/bin/muse-bind"
 
 # A launcher whose own process identity is a bare shell, running the harness as
-# a child in the same foreground process group - the shape the real Pi Launcher
-# path takes, and the one where trusting a single name source can produce a
-# false `dead`.
+# a child in the same foreground process group - the shape a wrapper launcher
+# takes, and the one where trusting a single name source can produce a false
+# `dead`.
 cat > "$LAB/bin/agent-launcher" <<SH
 #!/bin/sh
-"$LAB/bin/pi" 900 &
+"$LAB/bin/kimi" 900 &
 wait
 SH
 chmod +x "$LAB/bin/agent-launcher"
@@ -199,22 +198,16 @@ for decoy in musescore amuse muse-binary muse-bind; do
 done
 pass "tmux liveness: unrelated muse-containing command names stay ambiguous"
 
-# --- omp's bare binary name -------------------------------------------------
-# omp (Oh My Pi) runs as a single binary whose live process name is exactly
-# `omp`, with no path component to fall back on, so the anchored name is the
-# only signal and the two decoys prove it never widens into a substring match.
+# --- removed harness names --------------------------------------------------
+# pi and omp were once verified harnesses; their bare process names now carry no
+# agent identity, so a pane running one is never read as a live agent.
 
-new_window omp "$LAB/bin/omp" 900
-wait_for_state "$SESSION:omp" alive \
-  || fail "omp's bare binary name must classify alive"
-pass "tmux liveness: omp's bare binary name classifies alive"
-
-for decoy in ompd comp; do
-  new_window "decoy-$decoy" "$LAB/bin/$decoy" 900
-  wait_for_state "$SESSION:decoy-$decoy" ambiguous \
-    || fail "'$decoy' merely contains 'omp' and must not classify as a live agent pane"
+for removed in pi omp; do
+  new_window "removed-$removed" "$LAB/bin/$removed" 900
+  wait_for_state "$SESSION:removed-$removed" ambiguous \
+    || fail "'$removed' is no longer a supported harness and must not classify as a live agent pane"
 done
-pass "tmux liveness: unrelated omp-containing command names stay ambiguous"
+pass "tmux liveness: the removed pi and omp process names stay ambiguous"
 
 new_window command-code "$LAB/bin/command-code" 900
 wait_for_state "$SESSION:command-code" alive \

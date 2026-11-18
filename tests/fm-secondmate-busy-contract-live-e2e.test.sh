@@ -8,7 +8,7 @@
 #
 # The pane command during spawn is a sleeper, so the launch brief is never
 # delivered to a model and no key is sent. After the record exists, each
-# installed harness that the spawn arms (claude, opencode, pi, omp) is
+# installed harness that the spawn arms (claude, opencode) is
 # started for real, with no prompt, long enough to prove that process stays
 # up beside the wiring the spawn just wrote. Codex is the
 # disconfirming launch: it stays unarmed and gains no parent turn-end.
@@ -55,6 +55,19 @@ resolve_bin() {  # <name>
   return 1
 }
 
+HARNESSES="claude opencode codex"
+
+# A host with none of them installed (portable CI installs none) has nothing
+# to prove: skip there, unless the guard was requested, which still fails below.
+installed=0
+for harness in $HARNESSES; do
+  resolve_bin "$harness" >/dev/null && { installed=1; break; }
+done
+if [ "$installed" -eq 0 ] && [ "${FM_SECONDMATE_BUSY_LIVE:-${FM_LIVE:-}}" != 1 ]; then
+  printf 'skip: live: no verified harness installed\n'
+  exit 0
+fi
+
 install_tmux_shim() {  # <dir>
   local dir=$1
   mkdir -p "$dir"
@@ -88,10 +101,6 @@ seed_home() {  # <home> <id>
   printf '# Firstmate\n' > "$home/AGENTS.md"
   printf '%s\n' "$id" > "$home/.fm-secondmate-home"
   printf 'charter\n' > "$home/data/charter.md"
-  if [ -d "$ROOT/.pi/extensions" ]; then
-    mkdir -p "$home/.pi"
-    cp -a "$ROOT/.pi/extensions" "$home/.pi/extensions"
-  fi
   fm_git_init_commit "$home"
 }
 
@@ -118,20 +127,6 @@ real_harness_stays_up() {  # <harness> <version> <case> <id> <bin>
   local sm="$case_dir/sm" state="$case_dir/primary/state" target="firstmate:live-$harness"
   local pane_dead="" i=0 tail
   case "$harness" in
-    pi|pi-signed)
-      "$REAL_TMUX" -L "$SOCKET" new-window -d -t firstmate: -n "live-$harness" -c "$sm" -- \
-        "$bin" \
-        -e "$sm/.pi/extensions/fm-primary-turnend-guard.ts" \
-        -e "$sm/.pi/extensions/fm-primary-pi-watch.ts" \
-        -e "$state/$id.pi-ext.ts" \
-        || fail "$harness $version: could not start the real binary"
-      ;;
-    omp)
-      "$REAL_TMUX" -L "$SOCKET" new-window -d -t firstmate: -n "live-$harness" -c "$sm" -- \
-        env -u CLAUDECODE -u PI_CODING_AGENT FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 \
-        "$bin" --auto-approve --cwd "$sm" -e "$state/$id.omp-ext.ts" \
-        || fail "$harness $version: could not start the real binary"
-      ;;
     opencode)
       "$REAL_TMUX" -L "$SOCKET" new-window -d -t firstmate: -n "live-$harness" -c "$sm" -- \
         env OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' "$bin" \
@@ -180,7 +175,7 @@ check_harness() {  # <harness>
     || fail "$harness $version: secondmate spawn failed: $out"
   state="$case_dir/primary/state"
   case "$harness" in
-    claude|opencode|pi|pi-signed|omp) armed=1 ;;
+    claude|opencode) armed=1 ;;
   esac
   if [ "$armed" -eq 1 ]; then
     [ -f "$state/$id.busy-state" ] || fail "$harness $version: real tmux secondmate spawn did not arm the busy contract"
@@ -197,7 +192,7 @@ check_harness() {  # <harness>
   CHECKED=$((CHECKED + 1))
 }
 
-for harness in claude opencode pi pi-signed omp codex; do
+for harness in $HARNESSES; do
   check_harness "$harness"
 done
 

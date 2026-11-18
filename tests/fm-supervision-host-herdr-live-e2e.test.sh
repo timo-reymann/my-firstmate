@@ -58,7 +58,7 @@ HERDR_ORIGINAL_PATH=$PATH
 HERDR_LAB_SESSION=$("$HERDR_LAB_HELPER" name fm-sh-herdr-retry) \
   || fail "could not mint a lab session name"
 export HERDR_LAB_SESSION
-unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_CONFIG_OVERRIDE FM_DATA_OVERRIDE TMUX TMUX_PANE PI_CODING_AGENT NO_MISTAKES_GATE
+unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_CONFIG_OVERRIDE FM_DATA_OVERRIDE TMUX TMUX_PANE NO_MISTAKES_GATE
 # Claude Code keeps no transcript for a session that inherits another session's
 # markers, so the lab primary starts without the invoking session's.
 while IFS= read -r name; do

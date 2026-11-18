@@ -58,7 +58,7 @@ cat > "$BASE_RULES" <<'JSON'
     {
       "when": "The task generates images.",
       "use": [
-        { "harness": "pi", "model": "openai-codex/gpt-5.6-sol", "provider": "codex" },
+        { "harness": "opencode", "model": "openai/gpt-5.6-sol", "provider": "codex" },
         { "harness": "codex", "model": "gpt-5.6-sol", "floor": { "scope": "all_models", "min_percent": 50 } }
       ]
     },
@@ -283,27 +283,27 @@ code='' out='' err=''
 
 # --- preferred family: public resolution across accounts of one family -----
 test_preferred_provider() (
-  local scenario=$1 expected="--harness 'pi' --model 'openai-codex/gpt-6-astra'"
+  local scenario=$1 expected="--harness 'codex' --model 'gpt-6-astra'"
   local decision='codex: prefer eligible family candidates' status=clear
   local rules_filter='.' quota_filter='.' override_dir=''
   write_response "$RESPONSE" rule_4 0.9
   jq '.preferred_provider = "codex" | .rules[3].use = [
     {harness:"claude",model:"opus"},
-    {harness:"pi",model:"openai-codex/gpt-6-astra",provider:"codex"},
-    {harness:"pi",model:"openai-codex-work/gpt-6-astra",provider:"codex"}]' "$BASE_RULES" > "$TMP_ROOT/preferred-rules.json"
+    {harness:"codex",model:"gpt-6-astra",provider:"codex"},
+    {harness:"opencode",model:"openai/gpt-6-astra",provider:"codex"}]' "$BASE_RULES" > "$TMP_ROOT/preferred-rules.json"
   jq '.schemaVersion = 6 | .providers |= map(.accountKey = "default") |
     (.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvailability[0]) |=
       (.effectivePercentRemaining = 26 | .selection.spendPriority = 0.8) |
     (.providers[] | select(.provider == "codex")) |=
-      (.accountKey = "openai-codex" | .quotaSemantics.effectiveAvailability[0] |=
+      (.accountKey = "codex-home" | .quotaSemantics.effectiveAvailability[0] |=
         (.effectivePercentRemaining = 82 | .runway.status = "through_reset" | .selection.spendPriority = 0.2)) |
-    .providers += [(.providers[] | select(.provider == "codex") | .accountKey = "openai-codex-work" |
+    .providers += [(.providers[] | select(.provider == "codex") | .accountKey = "default" |
       .quotaSemantics.effectiveAvailability[0].selection.spendPriority = 0.1)]' "$QUOTA" > "$TMP_ROOT/preferred-quota.json"
   case "$scenario" in
     astra-82-claude-26) ;;
     work-account)
-      quota_filter='(.providers[] | select(.accountKey == "openai-codex-work").quotaSemantics.effectiveAvailability[0].selection.spendPriority) = 0.3'
-      expected="--harness 'pi' --model 'openai-codex-work/gpt-6-astra'" ;;
+      quota_filter='(.providers[] | select(.provider == "codex" and .accountKey == "default").quotaSemantics.effectiveAvailability[0].selection.spendPriority) = 0.3'
+      expected="--harness 'opencode' --model 'openai/gpt-6-astra'" ;;
     exhausted)
       quota_filter='(.providers[] | select(.provider == "codex").quotaSemantics.effectiveAvailability[0].runway.status) = "exhausted_now"'
       expected="--harness 'claude' --model 'opus'"
@@ -312,8 +312,8 @@ test_preferred_provider() (
       quota_filter='(.providers[] | select(.provider == "codex").quotaSemantics) = {status:"unknown",effectiveAvailability:[]}'
       status=escalate; expected='' ;;
     unknown-one-known-one)
-      quota_filter='(.providers[] | select(.accountKey == "openai-codex").quotaSemantics) = {status:"unknown",effectiveAvailability:[]}'
-      expected="--harness 'pi' --model 'openai-codex-work/gpt-6-astra'" ;;
+      quota_filter='(.providers[] | select(.accountKey == "codex-home").quotaSemantics) = {status:"unknown",effectiveAvailability:[]}'
+      expected="--harness 'opencode' --model 'openai/gpt-6-astra'" ;;
     claude-only)
       rules_filter='.rules[3].use = [.rules[3].use[0]]'
       expected="--harness 'claude' --model 'opus'"
@@ -1349,7 +1349,7 @@ JSON
 reset_log
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" '  status: clear' "the documented example passes opted-in resolution"
-assert_contains "$out" 'candidate: pi:anthropic/claude-sonnet-5  provider=claude' "the documented Pi default uses its declared Claude provider"
+assert_contains "$out" 'candidate: codex:gpt-5.5  provider=codex' "the documented Codex default uses its Codex provider"
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 cp "$BASE_RULES" "$RULES"
 pass "no-rule fallback, Agy, Gemini, and documented configurations resolve"
@@ -1588,9 +1588,9 @@ pass "rule floor: known shortfall falls through while unavailable evidence escal
 reset_log
 write_response "$RESPONSE" rule_2 0.99
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
-assert_contains "$out" 'candidate: pi:openai-codex/gpt-5.6-sol  provider=codex  scope=all_models  remaining=31%' "declared provider routes a Pi profile to the codex row"
+assert_contains "$out" 'candidate: opencode:openai/gpt-5.6-sol  provider=codex  scope=all_models  remaining=31%' "declared provider routes an OpenCode profile to the codex row"
 assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  scope=all_models  remaining=31%  spendPriority=-  runway=projected_exhaustion  -> not eligible: profile floor all_models below 50%' "profile floor makes a candidate ineligible with its reason"
-assert_contains "$out" "  profile: --harness 'pi' --model 'openai-codex/gpt-5.6-sol'" "the remaining eligible candidate wins"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'openai/gpt-5.6-sol'" "the remaining eligible candidate wins"
 
 FLOOR_BOUNDS="$TMP_ROOT/floor-bounds.json"
 jq '(.providers[] | select(.provider == "codex") | .quotaSemantics.effectiveAvailability) += [
@@ -1612,7 +1612,7 @@ cp "$MISSING_PROFILE_FLOOR_RULES" "$RULES"
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  scope=model:missing  remaining=-%  spendPriority=-  runway=-  -> eligible, unranked: profile floor model:missing is unverifiable: not rankable: disclosed uncertainty' "a missing profile floor remains eligible but unranked"
 assert_not_contains "$out" 'profile floor model:missing below' "missing profile evidence is not described as a shortfall"
-assert_contains "$out" "  profile: --harness 'pi' --model 'openai-codex/gpt-5.6-sol'" "another candidate may clear without misrepresenting missing floor evidence"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'openai/gpt-5.6-sol'" "another candidate may clear without misrepresenting missing floor evidence"
 cp "$BASE_RULES" "$RULES"
 pass "declared provider and profile floor evidence are applied in code"
 
@@ -1720,8 +1720,8 @@ pass "no rankable candidate: the tool escalates instead of guessing"
 # --- schema 6: rows keyed by provider + accountKey bind per account ----------------
 # quota-axi emits schema 6 once a provider expands to several accounts; every
 # row then carries accountKey and one provider id may appear on several rows.
-# Native Codex and Pi lanes bind to their own account rows, with no row
-# chosen by position or summed across accounts.
+# Native Codex binds to its own codex-home row and every other lane to the
+# default row, with no row chosen by position or summed across accounts.
 LANE_RULES="$TMP_ROOT/lane-rules.json"
 SCHEMA6="$TMP_ROOT/schema6.json"
 SCHEMA5_PAIR="$TMP_ROOT/schema5-pair.json"
@@ -1731,8 +1731,7 @@ cat > "$LANE_RULES" <<'JSON'
     {
       "when": "Codex work.",
       "use": [
-        { "harness": "pi", "model": "openai-codex-work/gpt-5.6-terra", "provider": "codex" },
-        { "harness": "pi", "model": "openai-codex/gpt-5.6-sol", "provider": "codex" },
+        { "harness": "opencode", "model": "openai/gpt-5.6-terra", "provider": "codex" },
         { "harness": "codex", "model": "gpt-5.6-sol" }
       ]
     }
@@ -1745,9 +1744,9 @@ cat > "$SCHEMA6" <<'JSON'
   "schemaVersion": 6,
   "providers": [
     { "provider": "claude", "accountKey": "default", "quotaSemantics": { "status": "unknown", "effectiveAvailability": [] } },
-    { "provider": "codex", "accountKey": "openai-codex", "quotaSemantics": { "status": "known", "effectiveAvailability": [
+    { "provider": "codex", "accountKey": "codex-home", "quotaSemantics": { "status": "known", "effectiveAvailability": [
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 0, "runway": { "status": "exhausted_now" }, "selection": { "spendPriority": -1.4788 } } ] } },
-    { "provider": "codex", "accountKey": "openai-codex-work", "quotaSemantics": { "status": "known", "effectiveAvailability": [
+    { "provider": "codex", "accountKey": "default", "quotaSemantics": { "status": "known", "effectiveAvailability": [
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 11, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": -5.6819 } } ] } },
     { "provider": "cursor", "accountKey": "default", "quotaSemantics": { "status": "known", "effectiveAvailability": [
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 24, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": 0.3917 } } ] } }
@@ -1765,27 +1764,25 @@ reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA6" run code out err "$BRIEF"
 expect_code 0 "$code" "schema 6 snapshot exits 0"
 assert_contains "$out" '  status: clear' "schema 6 snapshot resolves"
-assert_contains "$out" 'candidate: pi:openai-codex-work/gpt-5.6-terra  provider=codex  scope=all_models  remaining=11%  spendPriority=-5.6819  runway=projected_exhaustion  -> eligible' "a Pi lane binds to its own account row"
-assert_contains "$out" 'candidate: pi:openai-codex/gpt-5.6-sol  provider=codex  scope=all_models  remaining=0%  spendPriority=-  runway=exhausted_now  -> not eligible: runway exhausted_now at all_models' "the sibling lane reads its own exhausted row"
-assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  -> eligible, unranked: provider codex has no quota row for account codex-home: disclosed uncertainty' "native Codex never infers an account from a Pi lane"
-assert_contains "$out" "  profile: --harness 'pi' --model 'openai-codex-work/gpt-5.6-terra'" "the lane with headroom is chosen"
+assert_contains "$out" 'candidate: opencode:openai/gpt-5.6-terra  provider=codex  scope=all_models  remaining=11%  spendPriority=-5.6819  runway=projected_exhaustion  -> eligible' "a lane without an account of its own binds the default row, not the first row"
+assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  scope=all_models  remaining=0%  spendPriority=-  runway=exhausted_now  -> not eligible: runway exhausted_now at all_models' "native Codex reads its own exhausted codex-home row"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'openai/gpt-5.6-terra'" "the lane with headroom is chosen"
 assert_equals '--json' "$(cat "$LOG/quota-axi.calls")" "schema 6 needs one quota-axi --json read"
 
 SCHEMA6_NATIVE="$TMP_ROOT/schema6-native.json"
 jq '
-  .providers |= map(if .provider == "codex" then
-    .quotaSemantics.effectiveAvailability |= map(.effectivePercentRemaining = 0 | .runway.status = "exhausted_now")
-    else . end) |
-  (.providers[] | select(.accountKey == "openai-codex-work")) as $account |
-  .providers += [($account | .accountKey = "default"),
-    ($account | .accountKey = "codex-home" |
+  .providers |= map(if .provider != "codex" then .
+    elif .accountKey == "codex-home" then
       .quotaSemantics.effectiveAvailability |= map(
-        .effectivePercentRemaining = 80 | .runway.status = "through_reset" | .selection.spendPriority = 0.8))]
+        .effectivePercentRemaining = 80 | .runway.status = "through_reset" | .selection.spendPriority = 0.8)
+    else
+      .quotaSemantics.effectiveAvailability |= map(.effectivePercentRemaining = 0 | .runway.status = "exhausted_now")
+    end)
 ' "$SCHEMA6" > "$SCHEMA6_NATIVE"
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA6_NATIVE" run code out err "$BRIEF"
 expect_code 0 "$code" "native Codex schema 6 snapshot exits 0"
-assert_contains "$out" '  status: clear' "native Codex headroom resolves despite exhausted Pi and default rows"
+assert_contains "$out" '  status: clear' "native Codex headroom resolves despite an exhausted default row"
 assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  scope=all_models  remaining=80%  spendPriority=0.8  runway=through_reset  -> eligible' "native Codex reads codex-home"
 assert_contains "$out" "  profile: --harness 'codex' --model 'gpt-5.6-sol'" "native Codex headroom is chosen"
 
@@ -1796,45 +1793,19 @@ assert_contains "$out" "  profile: --harness 'codex' --model 'gpt-5.6-sol'" "nat
 
 jq '.providers |= map(select(.provider != "codex" or .accountKey != "default") |
   if .accountKey == "codex-home" then .accountKey = "default" else . end)' "$SCHEMA6_NATIVE" > "$TMP_ROOT/schema6-default.json"
+jq '.rules[0].use |= map(select(.harness == "codex"))' "$LANE_RULES" > "$RULES"
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/schema6-default.json" run code out err "$BRIEF"
 assert_contains "$out" "  profile: --harness 'codex' --model 'gpt-5.6-sol'" "native Codex falls back to the default row when codex-home is absent"
-pass "native Codex binds to codex-home before default, independently of Pi accounts and row order"
+cp "$LANE_RULES" "$RULES"
+pass "native Codex binds to codex-home before default, independently of row order"
 
-jq '.schemaVersion = 5 | .providers |= map(select(.accountKey != "openai-codex")) | del(.providers[].accountKey)' "$SCHEMA6" > "$SCHEMA5_PAIR"
+jq '.schemaVersion = 5 | .providers |= map(select(.accountKey != "codex-home")) | del(.providers[].accountKey)' "$SCHEMA6" > "$SCHEMA5_PAIR"
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA5_PAIR" run code out err "$BRIEF"
 assert_contains "$out" '  status: escalate' "schema 5 keeps joining by provider alone"
 assert_contains "$out" '  reason: genuine spendPriority tie' "every codex profile reads the one schema 5 codex row"
 assert_contains "$out" 'candidate: codex:gpt-5.6-sol  provider=codex  scope=all_models  remaining=11%  spendPriority=-5.6819  runway=projected_exhaustion  -> eligible' "a schema 5 row never needs accountKey"
-
-SCHEMA6_PI_NATIVE="$TMP_ROOT/schema6-pi-native.json"
-jq '.providers |= map(select(.provider != "codex" or .accountKey != "default"))' "$SCHEMA6_NATIVE" > "$SCHEMA6_PI_NATIVE"
-for harness in pi pi-signed; do
-  jq --arg harness "$harness" '.rules[0].use |= map(if .harness == "codex" then
-    {harness: $harness, model: "codex-native/gpt-6-astra", provider: "codex", effort: "ultra"}
-    else . end)' "$LANE_RULES" > "$RULES"
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA6_PI_NATIVE" run code out err "$BRIEF"
-  expect_code 0 "$code" "$harness native adapter schema 6 exits 0"
-  assert_contains "$out" '  status: clear' "$harness native adapter resolves with codex-home and no default row"
-  assert_contains "$out" "candidate: $harness:codex-native/gpt-6-astra  provider=codex  scope=all_models  remaining=80%  spendPriority=0.8  runway=through_reset  -> eligible" "$harness native adapter reads codex-home"
-  assert_contains "$out" "  profile: --harness '$harness' --model 'codex-native/gpt-6-astra' --effort 'ultra'" "$harness native adapter is chosen over exhausted Pi accounts"
-
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/schema6-default.json" run code out err "$BRIEF"
-  assert_contains "$out" "  profile: --harness '$harness' --model 'codex-native/gpt-6-astra' --effort 'ultra'" "$harness native adapter falls back to default"
-
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA6" run code out err "$BRIEF"
-  assert_contains "$out" "candidate: $harness:codex-native/gpt-6-astra  provider=codex  -> eligible, unranked: provider codex has no quota row for account codex-home: disclosed uncertainty" "$harness native adapter never borrows a Pi account"
-
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$SCHEMA5_PAIR" run code out err "$BRIEF"
-  assert_contains "$out" "candidate: $harness:codex-native/gpt-6-astra  provider=codex  scope=all_models  remaining=11%  spendPriority=-5.6819  runway=projected_exhaustion  -> eligible" "$harness native adapter still joins schema 5 by provider alone"
-done
-cp "$LANE_RULES" "$RULES"
-pass "Pi native adapters bind to codex-home with existing fallbacks and schema 5 compatibility"
 
 jq 'del(.providers[1].accountKey)' "$SCHEMA6" > "$TMP_ROOT/schema6-keyless.json"
 reset_log
@@ -1963,19 +1934,22 @@ for bad in \
   '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":[{"harness":"claude","model":"opus"},{"harness":"claude","model":"opus"}]}|default must not contain duplicate harness, model, and effort profiles' \
   '{"rules":[{"when":"x","use":{"harness":"spaceship"}}]}|each use profile must name a verified harness' \
   '{"rules":[{"when":"x","use":{"harness":"grok"}}]}|each use profile must name a verified harness' \
+  '{"rules":[{"when":"x","use":{"harness":"pi"}}]}|each use profile must name a verified harness' \
+  '{"rules":[{"when":"x","use":{"harness":"pi-signed"}}]}|each use profile must name a verified harness' \
+  '{"rules":[{"when":"x","use":{"harness":"omp"}}]}|each use profile must name a verified harness' \
   '{"rules":[{"when":"x","use":{"harness":"agy","effort":"max"}}]}|each use profile effort must be supported by its harness and model' \
   '{"rules":[{"when":"x","use":{"harness":"opencode","model":"anthropic/claude-sonnet-4-5"}}]}|use profiles whose harness lacks one authoritative provider family require provider: opencode' \
   '{"rules":[{"when":"x","use":{"harness":"rovo"}}]}|use profiles whose harness lacks one authoritative provider family require provider: rovo' \
-  '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":{"harness":"pi","model":"anthropic/claude-sonnet-5"}}|default profiles whose harness lacks one authoritative provider family require provider: pi'; do
+  '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":{"harness":"opencode","model":"anthropic/claude-sonnet-5"}}|default profiles whose harness lacks one authoritative provider family require provider: opencode'; do
   printf '%s\n' "${bad%%|*}" > "$RULES"
   TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
   expect_code 2 "$code" "malformed rules exit 2: ${bad#*|}"
   assert_contains "$err" "malformed rules file: $RULES - ${bad#*|}" "malformed rules are named: ${bad#*|}"
 done
-printf '%s\n' '{"rules":[{"when":"x","use":[{"harness":"opencode"},{"harness":"rovo"},{"harness":"codex"}]}],"default":[{"harness":"pi"},{"harness":"claude"}]}' > "$RULES"
+printf '%s\n' '{"rules":[{"when":"x","use":[{"harness":"opencode"},{"harness":"rovo"},{"harness":"codex"}]}],"default":[{"harness":"opencode"},{"harness":"claude"}]}' > "$RULES"
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 expect_code 2 "$code" "multiple provider-less profiles exit 2"
-assert_contains "$err" "malformed rules file: $RULES - use profiles whose harness lacks one authoritative provider family require provider: opencode; use profiles whose harness lacks one authoritative provider family require provider: rovo; default profiles whose harness lacks one authoritative provider family require provider: pi" "all provider-less profiles are reported together across use and default"
+assert_contains "$err" "malformed rules file: $RULES - use profiles whose harness lacks one authoritative provider family require provider: opencode; use profiles whose harness lacks one authoritative provider family require provider: rovo; default profiles whose harness lacks one authoritative provider family require provider: opencode" "all provider-less profiles are reported together across use and default"
 [ "$(printf '%s\n' "$err" | wc -l | tr -d ' ')" -eq 1 ] || fail "provider errors must use one diagnostic"
 assert_absent "$LOG/argv" "configuration errors never reach the network"
 cp "$BASE_RULES" "$RULES"
@@ -2045,7 +2019,7 @@ pass "shared-quota bypasses an unmet profile-level floor: the first declared pro
 # home prefers codex, so the first declared codex profile wins.
 jq '.shared_quota = true | .preferred_provider = "codex" | .rules[3].use = [
   {harness:"claude",model:"sonnet",effort:"high"},
-  {harness:"pi",model:"openai-codex/gpt-5.6-sol",provider:"codex"},
+  {harness:"opencode",model:"openai/gpt-5.6-sol",provider:"codex"},
   {harness:"codex",model:"gpt-5.6-sol"}]' "$BASE_RULES" > "$RULES"
 reset_log
 write_response "$RESPONSE" rule_4 0.9
@@ -2053,7 +2027,7 @@ TYPESAFE_API_KEY=$KEY run code out err "$BRIEF" --project pager
 expect_code 0 "$code" "shared-quota preferred_provider exits 0"
 assert_contains "$out" '  status: clear' "shared-quota preferred_provider status"
 assert_contains "$out" '  preferred_provider: codex: prefer eligible family candidates' "shared-quota still applies the family preference"
-assert_contains "$out" "  profile: --harness 'pi' --model 'openai-codex/gpt-5.6-sol'" "shared-quota preferred_provider picks the first declared preferred-family profile"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'openai/gpt-5.6-sol'" "shared-quota preferred_provider picks the first declared preferred-family profile"
 assert_absent "$LOG/quota-axi.calls" "shared-quota preferred_provider never reads quota-axi"
 [ "$(printf '%s\n' "$out" | grep -c '^  candidate: ')" -eq 3 ] || fail "shared-quota preferred_provider lists every candidate"
 [ "$(printf '%s\n' "$out" | grep '^  candidate: ' | grep -c 'quota ranking off: home declares a single shared quota')" -eq 3 ] ||

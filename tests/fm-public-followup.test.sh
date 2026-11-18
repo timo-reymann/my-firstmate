@@ -204,13 +204,13 @@ seed_commitment() {
     || fail "could not register the public commitment"
 }
 
-# The pi-rearm shape: a report-ready promised-final bound to a secondmate.
+# The rearm shape: a report-ready promised-final bound to a secondmate.
 seed_repro_commitment() {   # <home> <obligation> <request> <work-home> <work-id>
   local home=$1 obligation=$2 request=$3 work_home=$4 work_id=$5
   jq -n --arg r "$request" \
     '{request_id:$r, platform:"discord",
       context_binding:{version:"ctx1", value:("ctx1_" + $r)},
-      public_safe_summary:"reproduce a Pi recovery notification loop",
+      public_safe_summary:"reproduce a recovery notification loop",
       received_at:"2026-08-21T01:12:00Z",
       followup_expires_at:"2026-08-28T01:12:00Z",
       reservation_expires_at:"2026-08-28T01:12:00Z"}' > "$home/request.json"
@@ -1511,38 +1511,38 @@ test_dropped_baton_now_surfaces_open_loop() {
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
   log="$TMP_ROOT/curl.log"; : > "$log"
 
-  seed_repro_commitment "$parent" public-final-pi-rearm-repro req-pirearm \
-    secondmate:mate pi-rearm-loop-repro-s1
+  seed_repro_commitment "$parent" public-final-rearm-repro req-rearm \
+    secondmate:mate rearm-loop-repro-s1
   fm_write_meta "$parent/state/mate.meta" "kind=secondmate" "home=$child"
 
-  "$EMIT" --home "$parent" --obligation public-final-pi-rearm-repro --relation rel-code \
-    --source-home secondmate:mate --work-id pi-rearm-loop-repro-s1 --generation 1 \
-    --outcome report-ready --deliverable report_path=data/pi-rearm-loop-repro-s1/report.md \
+  "$EMIT" --home "$parent" --obligation public-final-rearm-repro --relation rel-code \
+    --source-home secondmate:mate --work-id rearm-loop-repro-s1 --generation 1 \
+    --outcome report-ready --deliverable report_path=data/rearm-loop-repro-s1/report.md \
     --outcome-text 'Reproduced the loop. A bounded fix is scoped and waiting on you, captain.' >/dev/null \
     || fail "emit failed"
   FAKE_CURL_LOG="$log" run_pf "$parent" consume | grep -q '^ready ' || fail "consume not ready"
-  FAKE_CURL_LOG="$log" run_pf "$parent" deliver public-final-pi-rearm-repro >/dev/null || fail "deliver failed"
+  FAKE_CURL_LOG="$log" run_pf "$parent" deliver public-final-rearm-repro >/dev/null || fail "deliver failed"
   [ "$(followup_posts "$log")" = 1 ] || fail "expected exactly one closing post"
-  assert_present "$parent/state/public-followup/registry/public-final-pi-rearm-repro" \
+  assert_present "$parent/state/public-followup/registry/public-final-rearm-repro" \
     "delivery must retain the registration"
 
-  fm_write_meta "$child/state/pi-rearm-loop-fix-r1.meta" \
-    "window=firstmate:fm-pi-rearm-loop-fix-r1" "endpoint_task_id=pi-rearm-loop-fix-r1" \
+  fm_write_meta "$child/state/rearm-loop-fix-r1.meta" \
+    "window=firstmate:fm-rearm-loop-fix-r1" "endpoint_task_id=rearm-loop-fix-r1" \
     "worktree=$child" "project=$child" "kind=ship" "mode=local-only" "spawn_gen=public-followup-fixture"
 
   PATH="$parent/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$parent" \
-    FM_STATE_OVERRIDE="$parent/state" "$PF" guard-work secondmate:mate pi-rearm-loop-fix-r1 \
+    FM_STATE_OVERRIDE="$parent/state" "$PF" guard-work secondmate:mate rearm-loop-fix-r1 \
     || fail "guard-work unexpectedly blocked the unregistered follow-on"
 
   run_pf "$parent" pending > "$TMP_ROOT/pending.out"
-  grep -q '^open-loop public-final-pi-rearm-repro ' "$TMP_ROOT/pending.out" \
+  grep -q '^open-loop public-final-rearm-repro ' "$TMP_ROOT/pending.out" \
     || fail "pending must print the open-loop line after delivery"
-  grep -q 'request=req-pirearm' "$TMP_ROOT/pending.out" \
+  grep -q 'request=req-rearm' "$TMP_ROOT/pending.out" \
     || fail "the open-loop line must name the original request"
 
   PATH="$child/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$child" \
     FM_STATE_OVERRIDE="$child/state" FM_DATA_OVERRIDE="$child/data" FAKE_CURL_LOG="$log" \
-    "$TEARDOWN" pi-rearm-loop-fix-r1 > "$TMP_ROOT/td.out" 2>&1 || true
+    "$TEARDOWN" rearm-loop-fix-r1 > "$TMP_ROOT/td.out" 2>&1 || true
   case "$(cat "$TMP_ROOT/td.out")" in
     *"still owes a public reply"*) fail "teardown unexpectedly guarded the unregistered follow-on" ;;
   esac
@@ -1559,15 +1559,15 @@ test_control_registered_followon_is_guarded() {
   child=$(cd "$child" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
-  seed_repro_commitment "$parent" public-final-pi-rearm-ship req-pirearm2 \
-    secondmate:mate pi-rearm-loop-fix-r1
+  seed_repro_commitment "$parent" public-final-rearm-ship req-rearm2 \
+    secondmate:mate rearm-loop-fix-r1
   fm_write_meta "$parent/state/mate.meta" "kind=secondmate" "home=$child"
-  fm_write_meta "$child/state/pi-rearm-loop-fix-r1.meta" \
-    "window=firstmate:fm-pi-rearm-loop-fix-r1" "endpoint_task_id=pi-rearm-loop-fix-r1" \
+  fm_write_meta "$child/state/rearm-loop-fix-r1.meta" \
+    "window=firstmate:fm-rearm-loop-fix-r1" "endpoint_task_id=rearm-loop-fix-r1" \
     "worktree=$child" "project=$child" "kind=ship" "mode=local-only" "spawn_gen=public-followup-fixture"
   PATH="$child/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$child" \
     FM_STATE_OVERRIDE="$child/state" FM_DATA_OVERRIDE="$child/data" \
-    expect_failure "registered follow-on must be guarded" "$TEARDOWN" pi-rearm-loop-fix-r1
+    expect_failure "registered follow-on must be guarded" "$TEARDOWN" rearm-loop-fix-r1
   assert_contains "$EXPECT_OUT" "still owes a public reply" "the guard fires only on presence"
   pass "CONTROL: the identical teardown REFUSES the moment a commitment is registered"
 }
@@ -1623,13 +1623,13 @@ SH
   "$EMIT" --home "$parent" --obligation public-final-b --relation rel-1 \
     --source-home main --work-id ship-b --generation 1 \
     --outcome pr-merged --deliverable pr_url=https://github.com/example/repo/pull/99 \
-    --outcome-text 'Shipped: the Pi recovery loop is fixed.' >/dev/null || fail "follow-on emit failed"
+    --outcome-text 'Shipped: the recovery loop is fixed.' >/dev/null || fail "follow-on emit failed"
   FAKE_CURL_LOG="$log" run_pf "$parent" consume | grep -q '^ready public-final-b ' \
     || fail "follow-on consume not ready"
   FAKE_CURL_LOG="$log" run_pf "$parent" deliver public-final-b >/dev/null || fail "follow-on deliver failed"
   posts=$(followup_posts "$log")
   [ "$posts" = 2 ] || fail "expected exactly two posts in the same thread, got $posts"
-  assert_grep 'Shipped: the Pi recovery loop is fixed.' "$log" \
+  assert_grep 'Shipped: the recovery loop is fixed.' "$log" \
     "the second post must carry the shipped text"
   assert_grep '"request_id":"req-rechain"' "$log" \
     "both posts must target the original request"

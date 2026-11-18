@@ -76,22 +76,22 @@ backdate_meta() {  # <meta-file>: make the spawn record older than any BUSY_TURN
   touch -t 200001010000 "$1"
 }
 
-# The busy fixture is the triage suite's: a pi harness whose busy record names
+# The busy fixture is the triage suite's: an opencode harness whose busy record names
 # the pane's semantic state, so window_is_busy is decided by the record and the
 # pane's rendered frame stays free to hold still. The idle flip applies the
 # opposite verdict under the same armed generation.
-record_pi_state() {  # <state-dir> <id> <busy|idle>
+record_semantic_state() {  # <state-dir> <id> <busy|idle>
   local state=$1 id=$2 want=$3 gen event
   gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" "$id")
   case "$want" in
-    busy) event=agent-start ;;
-    *) event=agent-end ;;
+    busy) event=session-execution-started ;;
+    *) event=session-idle ;;
   esac
   "$ROOT/bin/fm-busy-event.sh" apply "$state" "$id" "$want" --gen "$gen" \
-    --source pi-ext --event "$event" >/dev/null
+    --source opencode-plugin --event "$event" >/dev/null
 }
 
-# The busy-pane environment: one frozen frame, a busy pi record, and an
+# The busy-pane environment: one frozen frame, a busy opencode record, and an
 # over-age spawn record, so the completed-turn bound owns the ladder and no
 # poll reports a death. The busy route writes neither the stale suppressor nor
 # the escalation counter, on either watcher, by both files' own design.
@@ -165,8 +165,8 @@ run_scenario() {  # <watch> <tag> [cap-env] [rounds]: drive the stuck-pane scena
   : > "$dir/trace"
 
   printf 'idle wedged content' > "$dir/pane.txt"
-  printf 'window=%s\nkind=ship\nharness=pi\n' "$PARITY_WINDOW" > "$state/wedge-cap-parity.meta"
-  record_pi_state "$state" wedge-cap-parity busy
+  printf 'window=%s\nkind=ship\nharness=opencode\n' "$PARITY_WINDOW" > "$state/wedge-cap-parity.meta"
+  record_semantic_state "$state" wedge-cap-parity busy
   backdate_meta "$state/wedge-cap-parity.meta"
   printf 'working: still wedged\n' > "$statusf"
   mark_status_seen "$state" "$statusf"
@@ -188,7 +188,7 @@ run_scenario() {  # <watch> <tag> [cap-env] [rounds]: drive the stuck-pane scena
   # route whose pre-cap shape kept the count standing. Upstream leaves the
   # counter at 2; a watcher that resets it here restarts. The surface wakes
   # without an escalation count.
-  record_pi_state "$state" wedge-cap-parity idle
+  record_semantic_state "$state" wedge-cap-parity idle
   parity_run "$dir" "$watch" first-sight-surface "$IDLE_CREW" "$cap_env"
 
   # The re-wedge: THE discriminator. Upstream and this branch show escalation 3

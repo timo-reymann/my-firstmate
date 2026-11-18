@@ -1771,7 +1771,7 @@ test_handling_delivered_accepts_already_acked_generation() {
 # A non-successor arm start mints a fresh generation, and a confirmation for
 # the churned generation reports a mismatch (status 3). The closing arm check
 # without a reopen - the marker step a handling successor runs - keeps the
-# churned generation. This characterizes existing marker behavior that the Pi
+# churned generation. This characterizes existing marker behavior that a
 # superseded-delivery path relies on.
 test_handling_delivered_rejects_a_superseded_generation() {
   local dir home state pid identity first second status

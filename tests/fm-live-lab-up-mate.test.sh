@@ -9,8 +9,7 @@ command -v tmux >/dev/null 2>&1 || { echo 'ok - skipped: tmux is not installed';
 fm_tmux_isolation_gate
 TMP_ROOT=$(fm_test_tmproot fm-live-up-mate)
 export HOME="$TMP_ROOT/user"
-mkdir -p "$HOME/.pi/agent" "$HOME/.treehouse" "$TMP_ROOT/source/bin" "$TMP_ROOT/fakebin"
-printf '{}\n' > "$HOME/.pi/agent/trust.json"
+mkdir -p "$HOME/.treehouse" "$TMP_ROOT/source/bin" "$TMP_ROOT/fakebin"
 unset CLAUDE_CONFIG_DIR TMUX
 
 # A source checkout with a stubbed mate launch: it creates the same observable

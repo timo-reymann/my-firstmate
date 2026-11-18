@@ -409,7 +409,7 @@ fm_test_make_spawn_fakebin() {
 }
 
 # Drop-in name used by the spawn suites. Extra args are additional exit-0 tools
-# (gh, gh-axi, pi, ...).
+# (gh, gh-axi, ...).
 make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }

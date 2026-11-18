@@ -274,25 +274,25 @@ test_run_scopes_session_before_double_dash() {
   run_with_fake fm_herdr_lab_provision "$name" || fail "double-dash fixture provision failed"
 
   : > "$FAKE_LOG"
-  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind pi --pane w1:p1 >/dev/null \
+  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind codex --pane w1:p1 >/dev/null \
     || fail "run without a -- delimiter failed"
-  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind pi --pane w1:p1 \
+  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind codex --pane w1:p1 \
     -- --no-session -- --version >/dev/null || fail "run with a -- delimiter failed"
-  grep -Fx -- "agent start probe --kind pi --pane w1:p1 --session $name" "$FAKE_LOG" >/dev/null \
+  grep -Fx -- "agent start probe --kind codex --pane w1:p1 --session $name" "$FAKE_LOG" >/dev/null \
     || fail "run without a -- delimiter did not append a trailing lab session"
-  grep -Fx -- "agent start probe --kind pi --pane w1:p1 --session $name -- --no-session -- --version" "$FAKE_LOG" >/dev/null \
+  grep -Fx -- "agent start probe --kind codex --pane w1:p1 --session $name -- --no-session -- --version" "$FAKE_LOG" >/dev/null \
     || fail "run did not place the lab session before the first -- delimiter"
 
   before=$(wc -l < "$FAKE_LOG")
-  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind pi --pane w1:p1 \
+  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind codex --pane w1:p1 \
     -- --session default >/dev/null 2>&1 || status=$?
   expect_code 1 "$status" "a caller --session after the -- delimiter must be refused"
   status=0
-  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind pi --pane w1:p1 \
+  run_with_fake fm_herdr_lab_cli "$name" agent start probe --kind codex --pane w1:p1 \
     --session=default -- --version >/dev/null 2>&1 || status=$?
   expect_code 1 "$status" "a caller --session before the -- delimiter must be refused"
   status=0
-  run_with_fake fm_herdr_lab_cli "$name" -- agent start probe --kind pi --pane w1:p1 >/dev/null 2>&1 || status=$?
+  run_with_fake fm_herdr_lab_cli "$name" -- agent start probe --kind codex --pane w1:p1 >/dev/null 2>&1 || status=$?
   expect_code 1 "$status" "a leading -- delimiter must be refused"
   after=$(wc -l < "$FAKE_LOG")
   [ "$before" = "$after" ] || fail "a refused double-dash run reached Herdr"

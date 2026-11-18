@@ -20,7 +20,7 @@
 #   9. Direct unmarked captain input creates no expectation
 #  10. fm-send secondmate path embeds corr and creates durable pending records
 #  11. Backend busy/idle observation works through the shared busy abstraction
-#      used by Pi/Claude secondmate backends (no conversation scrape)
+#      used by secondmate backends (no conversation scrape)
 #  12. A remote mate's repost waits for its asynchronous reply mirror to be read
 #      past the turn, so a mirrored reply is never nagged and a real miss still
 #      gets its one repost
@@ -1251,7 +1251,7 @@ test_busy_idle_observation_via_backend_abstraction() {
   export FM_PENDING_REPLY_NOW=9200
   corr=$(fm_pending_reply_create "$home" "$state" "hibit" "backend turn")
   fm_pending_reply_mark_delivered "$state" "$corr"
-  # Simulates Pi/Claude secondmate busy_state from fm_backend_busy_state without
+  # Simulates a secondmate busy_state from fm_backend_busy_state without
   # reading conversation text (herdr native idle/busy or tmux unknown fallback).
   fm_pending_reply_observe_busy "$state" "$corr" unknown
   [ -z "$(fm_pending_reply_get "$(fm_pending_reply_path "$state" "$corr")" request_turn_completed_epoch)" ] \
@@ -1260,7 +1260,7 @@ test_busy_idle_observation_via_backend_abstraction() {
   fm_pending_reply_observe_busy "$state" "$corr" idle
   [ -n "$(fm_pending_reply_get "$(fm_pending_reply_path "$state" "$corr")" request_turn_completed_epoch)" ] \
     || fail "busy->idle must prove turn completion"
-  pass "backend busy/idle observation covers Pi/Claude paths without conversation scrape"
+  pass "backend busy/idle observation covers secondmate paths without conversation scrape"
 }
 
 test_unknown_backend_state_uses_capture_fallback() {
@@ -1278,7 +1278,7 @@ test_unknown_backend_state_uses_capture_fallback() {
       export FM_PENDING_REPLY_NOW=10000
       corr=$(fm_pending_reply_create "$home" "$state" "hibit" "$backend fallback")
       fm_pending_reply_mark_delivered "$state" "$corr"
-      fm_write_secondmate_meta "$state/hibit.meta" "$sm_home" "session:fm-hibit" alpha pi
+      fm_write_secondmate_meta "$state/hibit.meta" "$sm_home" "session:fm-hibit" alpha opencode
       [ "$backend" = tmux ] || printf 'backend=%s\n' "$backend" >> "$state/hibit.meta"
       fm_backend_busy_state() { printf 'unknown'; }
       fm_backend_capture() { printf '%s' "$FM_PENDING_TEST_CAPTURE"; }
@@ -1308,7 +1308,7 @@ test_unknown_backend_state_uses_capture_fallback() {
       [ "$(phase_of "$state" "$corr")" = recovery_sent ] \
         || fail "$backend fallback idle should trigger recovery after its own grace period"
       export FM_PENDING_REPLY_NOW=10021
-      export FM_PENDING_TEST_CAPTURE='Working...'
+      export FM_PENDING_TEST_CAPTURE='esc interrupt'
       fm_pending_reply_tick "$state"
       export FM_PENDING_REPLY_NOW=10022
       export FM_PENDING_TEST_CAPTURE='idle footer'

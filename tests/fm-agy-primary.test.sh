@@ -47,7 +47,6 @@ run_under_agy() {
   env -u CLAUDECODE -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
       -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
       -u GEMINI_CLI -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI \
-      -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS \
       "$@" "$FAKE_AGY" -c "$AGY_CHILD_CMD"
 }
 
@@ -59,7 +58,7 @@ install_scripts() {
            fm-arm-pretool-check.sh fm-cd-pretool-check.sh fm-subagent-pretool-check.sh \
            fm-claude-stop-autoarm.sh fm-hook-host-lib.sh \
            fm-primary-scope-lib.sh fm-supervision-lib.sh fm-wake-lib.sh fm-path-lib.sh \
-           fm-session-lock-lib.sh fm-omp-process-lib.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh fm-operational-input.sh \
+           fm-session-lock-lib.sh fm-cursor-lib.sh fm-gemini-lib.sh fm-hermes-process-lib.sh fm-operational-input.sh \
            fm-supervision-instructions.sh fm-harness.sh fm-lock.sh \
            fm-gate-refuse-lib.sh fm-afk-contract.sh fm-classify-lib.sh fm-timeout-lib.sh \
            fm-supervision-engine-lib.sh fm-lease-lib.sh; do

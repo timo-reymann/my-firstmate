@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Opt-in credentialed live regression for the Claude Code Calm mod
-# (.claude/mods/firstmate-calm) in a real Claude Code TUI under tmux, mirroring the
-# Pi interactive case in tests/fm-calm-pi-extension.test.sh. It proves, against the
+# (.claude/mods/firstmate-calm) in a real Claude Code TUI under tmux. It proves, against the
 # installed Claude Code and the shipped project auto-load path (.claude/skills):
 #   1. With CLAUDE_CODE_ENABLE_FUNCTION_HOOKS unset, the mod is a complete no-op even
 #      with the per-home preference already on: no hooks module loads, /calm is not a
 #      command, the stock working row shows, and tool rows draw as stock.
-#   2. With the flag on, the sailboat replaces the working row and moves, tool rows and
+#   2. With the flag on, tool rows and
 #      a record-backed operational doorbell (the carrier Firstmate types into Claude
 #      Code, which strips U+2063 from submitted prompts) draw at zero height, /calm
 #      restores them and persists off, /calm hides them again and persists on, all
@@ -39,8 +38,6 @@ DEBUG_LOG_ON="$LAB/debug-on.log"
 DEBUG_LOG_RESUME="$LAB/debug-resume.log"
 SOCKET="fm-calm-claude-$$"
 SESSION="fm-calm-claude-e2e"
-HULL='╲▁▁▁╱'
-SAIL='◿│◣'
 
 cleanup() {
   local i=0
@@ -168,10 +165,6 @@ command_listed() {  # <command>
   return $((1 - listed))
 }
 
-hull_column() {  # <screen text>
-  printf '%s\n' "$1" | awk -v hull="$HULL" 'index($0, hull) { print index($0, hull); exit }'
-}
-
 # The answer names words that live only in notes.txt, so the settled turn is told apart
 # from the echoed prompt by "gamma" on screen with no working row left.
 PROMPT='Run this exact bash command with the Bash tool: sleep 5; cat notes.txt   Then reply with one short sentence naming the three words.'
@@ -184,8 +177,8 @@ working_row_shown() {  # <screen text>
   return 1
 }
 
-# Wait until the turn has settled: the answer is on screen and no working row or
-# boat remains.
+# Wait until the turn has settled: the answer is on screen and no working row
+# remains.
 wait_settled() {  # <what> [iterations]
   local what=$1 limit=${2:-600} i=0 shot
   while [ "$i" -lt "$limit" ]; do
@@ -196,12 +189,7 @@ wait_settled() {  # <what> [iterations]
         fail "Claude Code $CLAUDE_VERSION exited while waiting for $what"
         ;;
       *'gamma'*)
-        if ! working_row_shown "$shot"; then
-          case "$shot" in
-            *"$HULL"*) ;;
-            *) return 0 ;;
-          esac
-        fi
+        working_row_shown "$shot" || return 0
         ;;
     esac
     sleep 0.25
@@ -227,17 +215,13 @@ if command_listed calm; then
 fi
 send "$PROMPT"
 enter
-# Sample every frame until the turn settles: the boat must never appear, and the
-# stock working row must have been seen, or the flag-off case proved nothing.
+# Sample every frame until the turn settles: the stock working row must have
+# been seen, or the flag-off case proved nothing.
 saw_working=0
 i=0
 while [ "$i" -lt 600 ]; do
   off_frame=$(screen)
   case "$off_frame" in
-    *"$HULL"*|*"$SAIL"*)
-      printf '%s\n' "$off_frame" >&2
-      fail "the working ship appeared although the flag is unset"
-      ;;
     *'CLAUDE_EXIT='*)
       printf '%s\n' "$off_frame" >&2
       fail "Claude Code $CLAUDE_VERSION exited during the flag-off turn"
@@ -268,7 +252,7 @@ enter
 sleep 2
 pass "Claude Code $CLAUDE_VERSION with the flag unset: no hooks module, no /calm, stock working row, stock tool rows, preference on ignored"
 
-# --- 2. Flag on: the boat, the hidden rows, the toggle, the persisted choice -------
+# --- 2. Flag on: the hidden rows, the toggle, the persisted choice ----------------
 launch "$DEBUG_LOG_ON" 1
 wait_idle
 i=0
@@ -286,33 +270,9 @@ fi
 command_listed calm || fail "Claude Code $CLAUDE_VERSION does not list /calm with the flag on"
 send "$PROMPT"
 enter
-wait_screen "$HULL" 'the working ship during a real turn' 200
-boat_one=$(screen)
-case "$boat_one" in
-  *"$SAIL"*) : ;;
-  *)
-    printf '%s\n' "$boat_one" >&2
-    fail "the working ship lost its sail"
-    ;;
-esac
-column_one=$(hull_column "$boat_one")
-column_two=$column_one
-i=0
-while [ "$i" -lt 120 ]; do
-  boat_two=$(screen)
-  column_two=$(hull_column "$boat_two")
-  if [ -n "$column_two" ] && [ "$column_two" != "$column_one" ]; then
-    break
-  fi
-  sleep 0.1
-  i=$((i + 1))
-done
-[ -n "$column_two" ] && [ "$column_two" != "$column_one" ] \
-  || fail "the working ship never moved (hull stayed at column $column_one)"
 wait_settled 'the turn with the flag on'
 on_settled=$(screen)
 case "$on_settled" in
-  *"$HULL"*|*"$SAIL"*) fail "the working ship stayed on screen after the turn settled" ;;
   *'Bash('*|*'shell command'*|*'notes.txt)'*)
     printf '%s\n' "$on_settled" >&2
     fail "a tool row drew while Calm was on"
@@ -420,7 +380,7 @@ esac
 send '/exit'
 enter
 sleep 2
-pass "Claude Code $CLAUDE_VERSION with the flag on: the mod auto-loads from .claude/skills, /calm exists, the sailboat replaces and moves in the working row, tool rows and the record-backed operational doorbell draw at zero height, /calm restores and re-hides them while persisting the shared preference"
+pass "Claude Code $CLAUDE_VERSION with the flag on: the mod auto-loads from .claude/skills, /calm exists, tool rows and the record-backed operational doorbell draw at zero height, /calm restores and re-hides them while persisting the shared preference"
 
 # --- 3. Resume: the restored transcript keeps the hidden rows hidden ---------------
 launch "$DEBUG_LOG_RESUME" 1 --continue

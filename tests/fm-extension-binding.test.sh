@@ -860,7 +860,7 @@ before=$(find "$H_ABSENT" -mindepth 1 -print | LC_ALL=C sort)
 out=$(FM_HOME="$H_ABSENT" FIRSTMATE_EXTENSION_BINDING="$PACKAGES/ignored.json" "$HOST" list)
 assert_contains "$out" "no extension bindings" "an absent registry does not discover an environment binding"
 out=$(cd "$ROOT" && FM_HOME="$H_ABSENT" "$HOST" verify)
-assert_contains "$out" "no extension bindings" "the current project and its Pi packages are not extension discovery roots"
+assert_contains "$out" "no extension bindings" "the current project is not an extension discovery root"
 after=$(find "$H_ABSENT" -mindepth 1 -print | LC_ALL=C sort)
 [ "$before" = "$after" ] || fail "absent-registry inspection created home state: $after"
 pass "an absent home-local registry is inert, state-free, and ignores project/environment discovery"

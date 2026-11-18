@@ -24,7 +24,7 @@ HOST="$ROOT/bin/fm-supervision-host.sh"
 # shellcheck disable=SC2034 # read by the sourcing fm-supervision-host*.test.sh files
 REPORT="$ROOT/bin/fm-branch-report.sh"
 # shellcheck disable=SC2034 # read by the sourcing fm-supervision-host*.test.sh files
-DISPATCH="$ROOT/bin/fm-branch-dispatch.mjs"
+DISPATCH="$ROOT/bin/fm-host-dispatch.mjs"
 CONTRACT="$ROOT/bin/fm-afk-contract.sh"
 # shellcheck disable=SC2034 # read by the sourcing fm-supervision-host*.test.sh files
 LEASE="$ROOT/bin/fm-lease.sh"
@@ -184,7 +184,7 @@ export FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999
 # Keep the real engine watchdog/reaping path, but not its production grace in fixtures.
 export FM_SUPERVISION_ENGINE_GRACE=1
 export FM_ARM_CONFIRM_TIMEOUT=30
-unset FM_SUPERVISION_ACTOR FM_BRANCH_REPORT_TURN FM_LEASE_HOLDER_PID PI_CODING_AGENT
+unset FM_SUPERVISION_ACTOR FM_BRANCH_REPORT_TURN FM_LEASE_HOLDER_PID
 
 # Homes are registered in a file: make_home runs in a command substitution,
 # whose variables never reach this shell.
@@ -429,30 +429,21 @@ present_unacknowledged_outcome_twice() {  # <name>
 # Change the task immediately before the second offer computation, rather
 # than racing the successor startup. The first offer accepts the close; the
 # turn-boundary offer must see the new main-owned decision.
-turn_main_only_at_second_offer() {  # <home> [quiet|snapshot]
-  local real_node turn snapshot=':'
+turn_main_only_at_second_offer() {  # <home> [quiet]
+  local real_node turn
   real_node=$(command -v node)
   turn='printf '"'"'needs-decision [at=%s]: which export format?\n'"'"' "$(date +%s)" >> "$FM_HOME/state/demo.status"'
   # Quiet: the offer alone turns main-only, with no status line for the
   # successor watcher to close on.
   [ "${2:-}" != quiet ] || turn='echo eligible=0; exit 0'
-  if [ "${2:-}" = snapshot ]; then
-    # Freeze the accepted queue before the new status can reach the successor.
-    # Pi must see the old signal plus the new status, not a later decision wake.
-    snapshot='mkdir -p "$FM_HOME/pi-offer-state"
-      cp "$FM_HOME/state/.wake-queue" "$FM_HOME/state/demo.meta" "$FM_HOME/pi-offer-state/"'
-    turn="$turn"'
-      cp "$FM_HOME/state/demo.status" "$FM_HOME/pi-offer-state/"'
-  fi
   cat > "$1/fakebin/node" <<SH
 #!/usr/bin/env bash
 case "\$*" in
-  *fm-branch-dispatch.mjs\ offer*)
+  *fm-host-dispatch.mjs\ offer*)
     count=\$(cat "\$FM_HOME/offer-count" 2>/dev/null || echo 0)
     count=\$((count + 1))
     printf '%s\n' "\$count" > "\$FM_HOME/offer-count"
     if [ "\$count" -eq 2 ]; then
-      $snapshot
       $turn
     fi ;;
 esac
@@ -633,13 +624,13 @@ assert_returned_driver_is_caught() {  # <attended|away>
 #!/usr/bin/env bash
 case "${1:-}" in
   list-windows) printf 'fm-demo\n'; exit 0 ;;
-  capture-pane) printf 'Pi idle prompt; measurement driver returned\n'; exit 0 ;;
+  capture-pane) printf 'idle prompt; measurement driver returned\n'; exit 0 ;;
   display-message) printf 'node\n'; exit 0 ;;
 esac
 exit 1
 SH
   chmod +x "$home/fakebin/tmux"
-  printf 'window=firstmate:fm-demo\nproject=demo\nkind=ship\nharness=pi\nbackend=tmux\n' > "$home/state/demo.meta"
+  printf 'window=firstmate:fm-demo\nproject=demo\nkind=ship\nharness=claude\nbackend=tmux\n' > "$home/state/demo.meta"
   append_status "$home" 'measurement driver returned; inspect receipts' resolved
   # A hang guard only; the stale event's order after the resolved hand-back is the assertion
   wait_until 1200 stale_handled_after_resolved "$home" "$posture" \
@@ -919,7 +910,7 @@ trip_latch() {  # <home>
     "$1/host.out" "the tripping handback must still say why"
   assert_re '^supervision-host: the supervision session is paused after repeated engine errors; every wake reaches you for the next 5 minutes' \
     "$1/host.out" "the second consecutive engine error must trip the latch with one line"
-  assert_grep 'cooldown=300' "$1/state/.supervision-host-health" "the latch must start with the Pi policy's five-minute cooldown"
+  assert_grep 'cooldown=300' "$1/state/.supervision-host-health" "the latch must start with the five-minute cooldown"
   main_drain_and_ack "$1"
 }
 

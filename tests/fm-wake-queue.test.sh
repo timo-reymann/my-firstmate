@@ -877,7 +877,7 @@ SH
 # Scope, so this case is not read as more coverage than it is: the fixture arms
 # the busy contract by hand through fm-busy-event.sh and backdates the launch
 # record afterwards. That isolates the launch-aging defect this case pins.
-# A real --secondmate spawn of claude, opencode, pi, or omp arms the same
+# A real --secondmate spawn of claude or opencode arms the same
 # contract itself; tests/fm-busy-adapter-wiring.test.sh owns that path.
 test_secondmate_long_lived_mate_mid_turn_is_not_a_stall() {
   local dir state sub fakebin stall_count row_epoch
@@ -1551,8 +1551,8 @@ test_slow_annotation_does_not_block_append_and_deleted_file_fails_open() {
 
 # Per-actor consume (docs/watcher-continuity.md "Per-actor acknowledgement").
 # Drives a MIXED queue snapshot - an unacked main-only check row alongside two
-# task-local rows the Pi supervision branch was granted - directly against
-# the real bin/fm-wake-drain.sh, independent of the Pi SDK. This is the core
+# task-local rows the supervision branch was granted - directly against
+# the real bin/fm-wake-drain.sh, independent of any engine. This is the core
 # safety property: a scoped actor's ack must never remove a row outside its
 # own eligible snapshot, no matter that row's sequence number relative to
 # what the actor presents or acks itself. Do not regress it.
@@ -1566,9 +1566,9 @@ test_branch_actor_scoped_ack_never_swallows_a_main_owned_row() {
   append_wake "$state" signal "task-a.status" "signal: task-a" || fail "signal append failed"
   append_wake "$state" stale "fm-window" "stale: fm-window" || fail "stale append failed"
 
-  # The extension's own job (fm-branch-dispatch.ts) is granting exactly the
-  # two task-local rows; this test drives the bash consume contract those
-  # sequence numbers gate, independent of the Pi SDK.
+  # The dispatch module's own job (bin/lib/fm-host-dispatch.ts) is granting
+  # exactly the two task-local rows; this test drives the bash consume contract
+  # those sequence numbers gate, independent of that module.
   FM_STATE_OVERRIDE="$state" "$GRANT" activate "$$" actor-scope || fail "branch owner activation failed"
   FM_STATE_OVERRIDE="$state" "$GRANT" publish actor-scope 2 3 || fail "branch grant publication failed"
 

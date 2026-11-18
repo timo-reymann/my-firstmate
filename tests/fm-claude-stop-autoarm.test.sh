@@ -32,7 +32,6 @@ install_autoarm_scripts() {
   cp "$ROOT/bin/fm-wake-lib.sh" "$dir/bin/fm-wake-lib.sh"
   cp "$ROOT/bin/fm-path-lib.sh" "$dir/bin/fm-path-lib.sh"
   cp "$ROOT/bin/fm-session-lock-lib.sh" "$dir/bin/fm-session-lock-lib.sh"
-  cp "$ROOT/bin/fm-omp-process-lib.sh" "$dir/bin/fm-omp-process-lib.sh"
   cp "$ROOT/bin/fm-cursor-lib.sh" "$dir/bin/fm-cursor-lib.sh"
   cp "$ROOT/bin/fm-hook-host-lib.sh" "$dir/bin/fm-hook-host-lib.sh"
   cp "$ROOT/bin/fm-lock.sh" "$dir/bin/fm-lock.sh"
@@ -465,41 +464,6 @@ test_actionable_close_rewakes_with_reason() {
   pass "auto-arm: actionable close translates to exactly one exit-2 rewake with reason"
 }
 
-# pi-code (Pi's Claude-hook compatibility extension) delivers a Claude-shaped
-# Stop payload but awaits the hook with no asyncRewake support, so the hook
-# must stand down or it wedges Pi's turn for the declared timeout (issue
-# #3343). The discriminator is the payload's transcript_path: pi-code stamps
-# Pi's own session file under .pi/, which a Claude transcript path never
-# contains, so the stand-down must not overmatch a genuine Claude payload or a
-# payload with no transcript_path at all.
-test_stands_down_only_on_pi_code_transcript_path() {
-  local dir out status
-
-  dir=$(make_primary_dir "$TMP_ROOT/picode-pi")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" actionable
-  out=$(run_autoarm "$dir" '{"session_id":"sess-pi","stop_hook_active":false,"transcript_path":"/home/u/.pi/agent/sessions/s.jsonl"}' 2>/dev/null); status=$?
-  expect_code 0 "$status" "hook must stand down silently on a pi-code-delivered transcript_path"
-  [ -z "$out" ] || fail "pi-code stand-down printed output: $out"
-  [ ! -e "$dir/state/arm-ran" ] || fail "hook armed on a pi-code-delivered payload"
-
-  dir=$(make_primary_dir "$TMP_ROOT/picode-claude")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" actionable
-  out=$(run_autoarm "$dir" '{"session_id":"sess-claude","stop_hook_active":false,"transcript_path":"/home/u/.claude/projects/-home-u--pi-proj/s.jsonl"}' 2>/dev/null); status=$?
-  expect_code 2 "$status" "a Claude-shaped transcript_path must still arm and rewake"
-  [ -e "$dir/state/arm-ran" ] || fail "hook did not arm with a Claude-shaped transcript_path present"
-
-  dir=$(make_primary_dir "$TMP_ROOT/picode-none")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" actionable
-  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
-  expect_code 2 "$status" "a payload without transcript_path must still arm"
-  [ -e "$dir/state/arm-ran" ] || fail "hook did not arm without a transcript_path"
-
-  pass "auto-arm: stands down only on a pi-code-delivered transcript_path (/.pi/)"
-}
-
 test_actionable_close_with_live_successor_rewakes_once() {
   local dir out out2 status status2 pid identity
   dir=$(make_primary_dir "$TMP_ROOT/actionable-live-successor")
@@ -651,7 +615,7 @@ test_stopfailure_paced_rewake_honors_afk_and_need_after_wait() {
 }
 
 # An arm that attached to a peer cycle returns when that cycle ends with the wake
-# the peer delivered. Pi, omp, and OpenCode start the next arm before notifying
+# the peer delivered. OpenCode starts the next arm before notifying
 # the model; the hook must do the same, naming the closed arm as the successor's
 # predecessor, and the successor must outlive the hook's exit-2 rewake.
 test_attached_cycle_end_starts_handling_successor() {
@@ -2460,4 +2424,3 @@ test_host_lost_announced_handback_notifies_once_per_episode
 test_host_crash_is_retried_then_reported
 test_arguments_never_arm
 test_fm_lock_status_still_works_with_shared_lib
-test_stands_down_only_on_pi_code_transcript_path

@@ -36,11 +36,11 @@ reset_meta() {
     "endpoint_task_id=ios" \
     "worktree=/srv/fm-home" \
     "project=/srv/fm" \
-    "harness=pi" \
+    "harness=codex" \
     "kind=secondmate" \
     "mode=secondmate" \
     "yolo=off" \
-    "model=openai-codex/gpt-5.6-sol" \
+    "model=gpt-5.6-sol" \
     "effort=medium" \
     "home=/srv/fm-home" \
     "projects=alpha" \
@@ -83,7 +83,7 @@ case "$FM_FAKE_RELAUNCH_MODE" in
     effort=medium
     ;;
 esac
-printf 'relaunched %s harness=%s from=pi model=%s effort=%s backend=herdr endpoint=fm-remote:w1:p1 worktree=/srv/fm-home\n' \
+printf 'relaunched %s harness=%s from=codex model=%s effort=%s backend=herdr endpoint=fm-remote:w1:p1 worktree=/srv/fm-home\n' \
   "$id" "$harness" "$model" "$effort"
 printf 'schema=fm-remote-secondmate-control.v1\n'
 printf 'backend=herdr\n'
@@ -113,9 +113,9 @@ assert_grep 'model=claude-opus-5-5' "$HOME_DIR/state/ios.meta" \
   "the parent record did not pick up the confirmed model"
 assert_grep 'effort=medium' "$HOME_DIR/state/ios.meta" \
   "the parent record did not pick up the confirmed effort"
-assert_no_grep 'harness=pi' "$HOME_DIR/state/ios.meta" \
+assert_no_grep 'harness=codex' "$HOME_DIR/state/ios.meta" \
   "the stale runtime should not still be recorded"
-assert_no_grep 'model=openai-codex/gpt-5.6-sol' "$HOME_DIR/state/ios.meta" \
+assert_no_grep 'model=gpt-5.6-sol' "$HOME_DIR/state/ios.meta" \
   "the stale model should not still be recorded"
 assert_grep 'remote_host=remote-mac' "$HOME_DIR/state/ios.meta" \
   "unrelated route fields must survive the update"

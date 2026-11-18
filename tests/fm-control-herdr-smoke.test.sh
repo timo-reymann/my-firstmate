@@ -291,7 +291,7 @@ pass "real herdr: no control verb removed the endpoint or the task's local copy"
 # --- record is not, and recovery must proceed anyway ------------------------
 #
 # Stopping the agent-named process leaves the pane a plain shell while Herdr
-# keeps the registration, which is exactly the shape a Pi crew leaves behind
+# keeps the registration, which is exactly the shape a crew leaves behind
 # when it exits under a nested shell. Before the fix this read `alive` forever:
 # exit waited out its timeout and refused, and relaunch was refused for good.
 AGENT_PID=$(herdr pane process-info --pane "$PANE_ID" --session "$SESSION" 2>/dev/null \

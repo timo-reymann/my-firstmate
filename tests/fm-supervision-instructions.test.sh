@@ -15,7 +15,6 @@ test_selected_harness_block_only() {
   assert_contains "$out" "Mode: Codex foreground checkpoint." "codex snippet missing"
   assert_contains "$out" "bin/fm-watch-checkpoint.sh" "codex checkpoint helper missing"
   assert_not_contains "$out" "Mode: Claude Stop-hook-owned supervision." "renderer printed the claude snippet too"
-  assert_not_contains "$out" "Mode: Pi extension background wake." "renderer printed the pi snippet too"
   pass "renderer prints exactly the selected harness block"
 }
 
@@ -41,15 +40,15 @@ test_supervision_host_protocol_on_a_claude_home_unless_off() {
   assert_contains "$hosted" "never run the return from it" "the host protocol did not say a handed-back wake is not the captain's return"
   [ "$(printf '%s\n' "$hosted" | grep -vF -e '- Supervision host: on;' | head -n "$(printf '%s\n' "$plain" | wc -l)")" = "$plain" ] \
     || fail "the host protocol changed the claude block it should only append to"
-  other=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness pi)
-  assert_not_contains "$other" "Supervision host" "a pi primary rendered the host protocol"
+  other=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness kimi)
+  assert_not_contains "$other" "Supervision host" "a kimi primary rendered the host protocol"
   rm -f "$config/supervision-host"
-  other=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness pi)
-  assert_not_contains "$other" "Supervision host" "a pi primary without config/supervision-host rendered the host protocol"
+  other=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness kimi)
+  assert_not_contains "$other" "Supervision host" "a kimi primary without config/supervision-host rendered the host protocol"
   pass "renderer adds the supervision-host protocol on a claude home unless config/supervision-host-off opts it out, leaving the claude block intact"
 }
 
-# Each non-Pi arm owner gets the host protocol in its own terms, and only its
+# Each arm owner gets the host protocol in its own terms, and only its
 # own terms; a home with
 # config/supervision-host-off, or a non-Claude home without the file, renders exactly what
 # it did before, with no tag or placeholder.
@@ -58,7 +57,7 @@ test_supervision_host_protocol_on_every_arm_owner() {
   home="$TMP_ROOT/host-owners-home"
   config="$TMP_ROOT/host-owners-config"
   mkdir -p "$home/state" "$config"
-  for harness in claude cursor agy opencode omp codex; do
+  for harness in claude cursor agy opencode codex; do
     : > "$config/supervision-host-off"
     plain=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness "$harness")
     assert_not_contains "$plain" "Supervision host" "$harness: a home opted out by config/supervision-host-off rendered the host protocol"
@@ -87,7 +86,7 @@ test_supervision_host_protocol_on_every_arm_owner() {
   hosted=$(FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" "$RENDER" --harness codex)
   assert_contains "$hosted" 'FM_CODEX_WATCH_CHECKPOINT_AWAY' "codex must learn that an away checkpoint holds longer"
   assert_contains "$hosted" 'checkpoint: no actionable wake within' "codex must learn how the park boundary arrives"
-  pass "renderer gives each non-Pi arm owner the host protocol in its own terms"
+  pass "renderer gives each arm owner the host protocol in its own terms"
 }
 
 test_unknown_fallback() {
@@ -98,7 +97,12 @@ test_unknown_fallback() {
   out=$("$RENDER" --harness grok)
   assert_contains "$out" "primary harness: unknown" "the removed grok harness must render the unknown heading"
   assert_contains "$out" "Mode: Unknown harness fallback." "the removed grok harness must render the unknown fallback"
-  pass "renderer falls back to unknown.md for unverified harness names, including the removed grok"
+  for removed in pi pi-signed omp; do
+    out=$("$RENDER" --harness "$removed")
+    assert_contains "$out" "primary harness: unknown" "the removed $removed harness must render the unknown heading"
+    assert_contains "$out" "Mode: Unknown harness fallback." "the removed $removed harness must render the unknown fallback"
+  done
+  pass "renderer falls back to unknown.md for unverified harness names, including the removed grok, pi, pi-signed and omp"
 }
 
 test_conditional_stanzas() {
@@ -164,66 +168,11 @@ test_repair_lines() {
   out=$(FM_HOME="$home" "$RENDER" --harness opencode --read-only 1 --repair-line)
   assert_contains "$out" "session holding the fleet lock" "read-only repair line missing"
 
-  out=$(FM_HOME="$home" "$RENDER" --harness pi --repair-line)
-  assert_contains "$out" "Pi tool fm_watch_arm_pi" "pi repair line does not direct the model to the extension-owned tool"
-  assert_not_contains "$out" "extension command /fm-watch-arm-pi" "pi repair line still directs the model to the human slash command"
-  out=$(FM_HOME="$home" "$RENDER" --harness omp --repair-line)
-  assert_contains "$out" "omp tool fm_watch_arm_omp" "omp repair line does not direct the model to the extension-owned tool"
-  assert_contains "$out" ".omp/extensions/fm-primary-turnend-guard.ts" "omp repair line does not name its own turn-end extension"
-  assert_not_contains "$out" "fm_watch_arm_pi" "omp repair line must not borrow the Pi tool"
   pass "renderer repair-line mode is harness-aware and honors conditional state"
-}
-
-test_omp_restart_guidance_depends_on_home_vs_checkout() {
-  local home out
-  home="$TMP_ROOT/omp-other-home"
-  mkdir -p "$home/state"
-
-  # Home is not the firstmate checkout: relaunch through the launcher.
-  out=$(FM_HOME="$home" "$RENDER" --harness omp --repair-line)
-  # shellcheck disable=SC2016  # backticks are literal text
-  assert_contains "$out" 'relaunch through `fm <project>`' "omp repair line must direct a non-checkout home to the fm launcher"
-  assert_contains "$out" "a bare omp or /resume from the firstmate checkout does not register the extensions for this home" "omp repair line omits the bare omp warning"
-  assert_not_contains "$out" "restart omp inside this home" "omp repair line still tells a non-checkout home to restart omp inside it"
-  out=$(FM_HOME="$home" "$RENDER" --harness omp)
-  # shellcheck disable=SC2016  # backticks are literal text
-  assert_contains "$out" 'exit omp and relaunch through `fm <project>`, which sets FM_HOME and --cwd' "omp protocol must direct a non-checkout home to the fm launcher"
-  assert_contains "$out" "a bare omp or /resume from the firstmate checkout does not register the extensions for this home" "omp protocol omits the bare omp warning"
-  assert_not_contains "$out" "restart omp inside this home" "omp protocol still tells a non-checkout home to restart omp inside it"
-
-  # Home is the checkout itself: today's text.
-  out=$(FM_HOME="$ROOT" "$RENDER" --harness omp --repair-line)
-  assert_contains "$out" "restart omp inside this home" "omp repair line lost today's wording for the checkout home"
-  assert_not_contains "$out" "fm <project>" "omp repair line named the launcher for the checkout home"
-  out=$(env -u FM_HOME "$RENDER" --harness omp)
-  assert_contains "$out" "restart omp inside this home; pass \`-e " "omp protocol lost today's wording for the checkout home"
-  assert_contains "$out" "restart omp inside this home if the extensions are not loaded" "omp protocol repair step lost today's wording for the checkout home"
-  assert_not_contains "$out" "fm <project>" "omp protocol named the launcher for the checkout home"
-  pass "omp restart guidance names the fm launcher only when the home is not the checkout"
 }
 
 test_cross_harness_ordinary_continuation_and_repair_matrix() {
   local ordinary out
-
-  out=$("$RENDER" --harness pi)
-  assert_contains "$out" "task-level routine outcome that says the worker is still busy" "Pi instructions omitted task-level silent no-change behavior"
-  assert_contains "$out" "captain outcomes are never silent" "Pi instructions allowed silent captain outcomes"
-  ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
-  assert_contains "$ordinary" "Pi extension already owns watcher continuity" "pi ordinary-wake line does not leave continuity to the extension"
-  assert_not_contains "$ordinary" "fm_watch_arm_pi" "pi ordinary-wake line incorrectly calls the recovery tool"
-  out=$("$RENDER" --harness pi --repair-line)
-  assert_contains "$out" "fm_watch_arm_pi" "pi recovery line lost the extension-owned repair tool"
-
-  out=$("$RENDER" --harness omp)
-  assert_contains "$out" "primary harness: omp" "omp heading missing"
-  assert_contains "$out" "Mode: omp (Oh My Pi) extension background wake." "omp snippet missing"
-  assert_contains "$out" "the omp extension already owns watcher continuity" "omp ordinary-wake line does not leave continuity to the extension"
-  assert_contains "$out" ".omp/extensions/fm-primary-omp-watch.ts" "omp snippet did not substitute its watch extension path"
-  assert_not_contains "$out" "__FM_OMP_EXT__" "omp snippet left a placeholder unsubstituted"
-  assert_not_contains "$out" "__FM_OMP_TURNEND_EXT__" "omp snippet left the turn-end placeholder unsubstituted"
-  assert_not_contains "$out" "project trust" "omp snippet must not carry Pi's trust prerequisite"
-  out=$("$RENDER" --harness omp --repair-line)
-  assert_contains "$out" "fm_watch_arm_omp" "omp recovery line lost the extension-owned repair tool"
 
   out=$("$RENDER" --harness opencode)
   ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
@@ -291,59 +240,15 @@ SH
   pass "a parked codex session's ordinary-wake line names the Stop hook and never the foreground checkpoint"
 }
 
-test_pi_signed_preserves_identity_with_pi_supervision_protocol() {
-  local out ordinary
-  out=$("$RENDER" --harness pi-signed)
-  assert_contains "$out" "primary harness: pi-signed" \
-    "pi-signed supervision normalized the visible runtime identity to pi"
-  assert_contains "$out" "Mode: Pi extension background wake." \
-    "pi-signed did not reuse Pi's authoritative supervision protocol"
-  ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
-  assert_contains "$ordinary" "Pi extension already owns watcher continuity" \
-    "pi-signed ordinary-wake semantics diverged from Pi"
-  out=$("$RENDER" --harness pi-signed --repair-line)
-  assert_contains "$out" "Pi tool fm_watch_arm_pi" \
-    "pi-signed repair semantics diverged from Pi"
-  pass "pi-signed keeps its identity while sharing Pi's supervision protocol"
-}
-
-test_pi_snippet_uses_effective_extension_path() {
-  local home out turnend watch
-  home="$TMP_ROOT/pi-home"
-  turnend="$ROOT/.pi/extensions/fm-primary-turnend-guard.ts"
-  watch="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
-  mkdir -p "$home/state" "$home/config"
-  out=$(FM_HOME="$home" "$RENDER" --harness pi)
-  assert_contains "$out" "-e $turnend -e $watch" "pi snippet did not render both effective extension launch paths"
-  assert_contains "$out" "The turn-end guard extension lives at \`$turnend\`" "pi snippet did not render the turn-end guard extension path"
-  assert_contains "$out" "The watcher extension lives at \`$watch\`" "pi snippet did not render the watcher extension path"
-  assert_contains "$out" "MAIN must not re-drain, re-run, or acknowledge it" "pi snippet lost merged-event ownership"
-  assert_contains "$out" "MAIN applies judgment about whether and how to surface, summarize, reference, or incorporate a merged sailboat outcome" "pi snippet imposed a mechanical sailboat treatment"
-  assert_not_contains "$out" "__FM_PI_EXT__" "renderer leaked the Pi extension path placeholder"
-  assert_not_contains "$out" "__FM_PI_TURNEND_EXT__" "renderer leaked the Pi turn-end extension path placeholder"
-  assert_not_contains "$out" "state/fm-primary-pi-watch.ts" "pi snippet kept the old generated state-relative extension path"
-  pass "pi supervision snippet renders the effective extension path"
-}
-
 test_literal_paths_in_rendered_snippets() {
   local name home harness out
   for name in normal 'R&D "double" '\''single'\'' home'; do
     home="$TMP_ROOT/$name"
     mkdir -p "$home/config" "$home/state"
     : > "$home/config/supervision-host-off"
-    for harness in pi pi-signed omp codex cursor opencode claude; do
+    for harness in codex cursor opencode claude; do
       out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$home" "$RENDER" --harness "$harness" --x-mode 1)
       assert_not_contains "$out" '__FM_' "$harness: literal path leaked a placeholder"
-      case "$harness" in
-        pi|pi-signed)
-          assert_contains "$out" "$home/.pi/extensions/fm-primary-pi-watch.ts" "Pi watch path changed"
-          assert_contains "$out" "$home/.pi/extensions/fm-primary-turnend-guard.ts" "Pi turn-end path changed"
-          ;;
-        omp)
-          assert_contains "$out" "$home/.omp/extensions/fm-primary-omp-watch.ts" "omp watch path changed"
-          assert_contains "$out" "$home/.omp/extensions/fm-primary-turnend-guard.ts" "omp turn-end path changed"
-          ;;
-      esac
     done
   done
   pass "snippets preserve literal ampersands, quotes and spaces in paths across primary harnesses"
@@ -357,8 +262,5 @@ test_unknown_fallback
 test_conditional_stanzas
 test_quiet_mode_stanzas
 test_repair_lines
-test_omp_restart_guidance_depends_on_home_vs_checkout
 test_cross_harness_ordinary_continuation_and_repair_matrix
 test_codex_park_ordinary_wake_line_leaves_continuity_to_the_stop_hook
-test_pi_signed_preserves_identity_with_pi_supervision_protocol
-test_pi_snippet_uses_effective_extension_path

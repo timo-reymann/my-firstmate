@@ -24,9 +24,8 @@
 # unauthenticated harness still starts its process, which is all the liveness
 # probe reads.
 #
-# Portable serial CI installs the public Pi package but no credentials, so this
-# guard checks that available token-free surface there and runs against every installed
-# harness on more capable hosts. The portable counterpart in
+# Portable serial CI installs no harness, so this guard checks only what is
+# available there and runs against every installed harness on more capable hosts. The portable counterpart in
 # tests/fm-tmux-agent-liveness.test.sh pins the classifier logic in CI. Run this
 # guard after any harness upgrade and before trusting refreshed evidence.
 set -u
@@ -99,6 +98,19 @@ resolve_harness_binary() {  # <harness>
   return 1
 }
 
+HARNESSES="claude codex opencode kimi cursor muse"
+
+# A host with none of them installed (portable CI installs none) has nothing
+# to prove: skip there, unless the guard was requested, which still fails below.
+installed=0
+for harness in $HARNESSES; do
+  resolve_harness_binary "$harness" >/dev/null && { installed=1; break; }
+done
+if [ "$installed" -eq 0 ] && [ "${FM_HARNESS_LIVENESS_DRIFT:-${FM_LIVE:-}}" != 1 ]; then
+  printf 'skip: live: no verified harness installed\n'
+  exit 0
+fi
+
 CHECKED=0
 SKIPPED=
 
@@ -111,7 +123,7 @@ SKIPPED=
 # cursor matters for the same reason muse does, from the other direction: it
 # runs as a bundled node script, so its pane title is a bare `node` that no name
 # pattern can own, and identity has to come from its install path or argv[0].
-for harness in claude codex opencode pi pi-signed kimi cursor muse; do
+for harness in $HARNESSES; do
   if ! bin_path=$(resolve_harness_binary "$harness"); then
     SKIPPED="$SKIPPED $harness"
     note "skip: $harness is not installed on this machine, so its classification is unverified here"
@@ -149,10 +161,7 @@ for harness in claude codex opencode pi pi-signed kimi cursor muse; do
   pass "harness liveness: $harness $version classifies alive"
 
   # Detection: ask the ancestry walk what it makes of this real harness process.
-  # Both Pi identities share one launcher name, so ancestry can only ever prove
-  # the family; only the launch-boundary marker selects the signed identity.
   expect_harness=$harness
-  [ "$harness" = pi-signed ] && expect_harness=pi
   pane_pid=$("$REAL_TMUX" -L "$SOCKET" display-message -p -t "$target" '#{pane_pid}' 2>/dev/null | tr -d ' ')
   [ -n "$pane_pid" ] || fail "$harness ($version): could not read the pane pid for the detection probe"
   # Probe from BELOW the pane process, not the pane process alone. The shipped

@@ -293,11 +293,9 @@ test_claude_busy_signature_uses_real_capture_shapes() {
   printf 'esc interrupt\n' > "$composer"
   pane_busy cross claude && fail "Claude must ignore OpenCode's interrupt footer"
   printf 'Working...\n' > "$composer"
-  pane_busy cross codex && fail "Codex must ignore Pi's Working footer"
+  pane_busy cross codex && fail "Codex must ignore a Working... footer"
   printf 'esc interrupt\n' > "$composer"
   pane_busy cross codex && fail "Codex must ignore OpenCode's interrupt footer"
-  printf 'esc interrupt\n' > "$composer"
-  pane_busy cross pi && fail "Pi must ignore OpenCode's interrupt footer"
   printf 'esc to interrupt\n' > "$composer"
   pane_busy own codex || fail "Codex's escape footer should be busy"
   printf 'esc interrupt\n' > "$composer"
@@ -305,7 +303,7 @@ test_claude_busy_signature_uses_real_capture_shapes() {
 
   # No harness keeps the historical combined-pattern compatibility fallback.
   printf 'Working...\n' > "$composer"
-  pane_busy fallback || fail "no-harness fallback should retain Pi's shared signature"
+  pane_busy fallback && fail "no-harness fallback must not read the retired Working... footer as busy"
   printf 'Ctrl+c:cancel\n' > "$composer"
   pane_busy fallback && fail "no-harness fallback must not read the retired Ctrl+c:cancel footer as busy"
 
@@ -313,31 +311,22 @@ test_claude_busy_signature_uses_real_capture_shapes() {
   # particularly important for Kimi: its idle key-tip rotation can include a
   # cancel token.
   printf 'Working...\n' > "$composer"
-  pane_busy unknown kimi && fail "Kimi must ignore Pi's Working footer"
+  pane_busy unknown kimi && fail "Kimi must ignore a Working... footer"
   printf 'Ctrl+c:cancel\n' > "$composer"
   pane_busy unknown kimi && fail "idle Kimi must ignore a cancel footer"
 
-  # Older Claude Code and the existing Pi signature remain unchanged.
+  # Older Claude Code's signature remains unchanged.
   printf 'esc to interrupt\n' > "$composer"
   pane_busy old-claude claude || fail "older Claude escape footer should be busy"
-  printf 'Working...\n' > "$composer"
-  pane_busy pi pi || fail "Pi Working footer should be busy"
-  pane_busy pi-signed pi-signed || fail "pi-signed should share Pi's exact Working footer"
-  # omp (Oh My Pi) renders its TUI line with U+2026; Pi's three-dot footer is
-  # not omp's signature, and neither Pi nor Codex may borrow the ellipsis form.
-  # The status-row spinner cell is its second, independent signal, and an idle
-  # status row (identity glyph, no elapsed time) is not busy.
-  pane_busy omp-three-dots omp && fail "omp must not read Pi's three-dot Working... footer as busy"
-  printf ' \xf3\xb1\x8a\xb7 Working\xe2\x80\xa6\n' > "$composer"
-  pane_busy omp omp || fail "omp TUI Working… footer should be busy"
-  pane_busy omp-ellipsis-pi pi && fail "Pi must not borrow omp's Working… footer"
-  pane_busy omp-ellipsis-codex codex && fail "Codex must not borrow omp's Working… footer"
-  printf ' \xe2\xa0\xa7 11s  \xc2\xb7 gpt-6-astra\n' > "$composer"
-  pane_busy omp-spinner omp || fail "omp braille spinner plus elapsed cell should be busy"
-  printf ' \xf3\xb0\xb5\x97  \xc2\xb7 gpt-6-astra \xc2\xb7 36.7%%/41K\n' > "$composer"
-  pane_busy omp-idle omp && fail "omp idle status row must not read busy"
-  printf 'esc interrupt\n' > "$composer"
-  pane_busy omp-cross omp && fail "omp must ignore OpenCode's interrupt footer"
+  # pi, pi-signed and omp are no longer supported harnesses, so their retired
+  # Working footers, and any other harness's footer, never read busy for them.
+  for removed in pi pi-signed omp; do
+    for footer in 'Working...' 'Working\xe2\x80\xa6' 'esc interrupt' 'esc to interrupt'; do
+      printf '%b\n' "$footer" > "$composer"
+      pane_busy "removed-$removed" "$removed" \
+        && fail "an unknown $removed harness must not read '$footer' as busy"
+    done
+  done
   # grok is no longer a supported harness, so it has no busy signature.
   printf 'Ctrl+c:cancel\n' > "$composer"
   pane_busy grok grok && fail "an unknown grok harness must not read a cancel footer as busy"

@@ -13,7 +13,7 @@
 #   D) The parent accepts exactly the session names a remote host can report.
 #
 # The Herdr endpoint is the stateful fixture in tests/remote-herdr-fixture.sh,
-# and omp is a fake that answers `models --json`, so no vendor tool is needed.
+# and opencode is a fake that answers `models`, so no vendor tool is needed.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -39,12 +39,12 @@ rmdir "$FAKEBIN-root/bin" "$FAKEBIN-root"
 ln -sf "$(command -v git)" "$FAKEBIN/git"
 ln -sf "$(command -v jq)" "$FAKEBIN/jq"
 ln -sf "$(command -v node)" "$FAKEBIN/node"
-cat > "$FAKEBIN/omp" <<'SH'
+cat > "$FAKEBIN/opencode" <<'SH'
 #!/usr/bin/env bash
-[ "${1:-}" != models ] || printf '%s\n' '{"models":[{"provider":"anthropic","id":"claude-test","selector":"anthropic/claude-test"}]}'
+[ "${1:-}" != models ] || printf '%s\n' anthropic/claude-test
 exit 0
 SH
-chmod +x "$FAKEBIN/omp"
+chmod +x "$FAKEBIN/opencode"
 
 seed_home() { # <id> -> prints the seeded secondmate home
   local id=$1 home="$TMP_ROOT/home-$1"
@@ -74,7 +74,7 @@ mkdir -p "$SHARED_ACCOUNT/.firstmate"
 printf '%s\n' "$TMP_ROOT/primary-root" > "$SHARED_ACCOUNT/.firstmate/remote-herdr-owner"
 ID=sm-second
 HOME_DIR=$(seed_home "$ID")
-ctl "$SHARED_ACCOUNT" "$HOME_DIR" launch "$ID" omp anthropic/claude-test high herdr \
+ctl "$SHARED_ACCOUNT" "$HOME_DIR" launch "$ID" opencode anthropic/claude-test high herdr \
   > "$TMP_ROOT/launch.out" 2> "$TMP_ROOT/launch.err"
 expect_code 0 "$?" "a second root's host-local launch failed"$'\n'"$(cat "$TMP_ROOT/launch.err")"
 META="$HOME_DIR/state/parent-route/$ID.meta"
@@ -110,7 +110,7 @@ mkdir -p "$OWNER_ACCOUNT/.firstmate"
 printf '%s\n' "$ROOT" > "$OWNER_ACCOUNT/.firstmate/remote-herdr-owner"
 OWNER_ID=sm-owner
 OWNER_HOME=$(seed_home "$OWNER_ID")
-ctl "$OWNER_ACCOUNT" "$OWNER_HOME" launch "$OWNER_ID" omp anthropic/claude-test high herdr \
+ctl "$OWNER_ACCOUNT" "$OWNER_HOME" launch "$OWNER_ID" opencode anthropic/claude-test high herdr \
   > "$TMP_ROOT/owner-launch.out" 2> "$TMP_ROOT/owner-launch.err"
 expect_code 0 "$?" "the owning root's host-local launch failed"$'\n'"$(cat "$TMP_ROOT/owner-launch.err")"
 [ "$(sed -n 's/^herdr_session=//p' "$TMP_ROOT/owner-launch.out")" = fm-remote ] \

@@ -443,7 +443,7 @@ test_run_timed_passes_a_natural_exit_through_a_fired_bound() {
   pass 'fm_run_timed passes a natural exit through when the bound fired after completion'
 }
 
-# An omp shell defines timeout as a builtin, and a function of that name is
+# A harness shell can define timeout as a builtin, and a function of that name is
 # ahead of both the builtin and the executable. command -v reports the name
 # and a bare call runs the shadow, which drops the command's stdout and
 # replaces its status. gtimeout is shadowed the same way, so a host whose

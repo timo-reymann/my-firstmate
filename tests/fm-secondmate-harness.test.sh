@@ -63,7 +63,7 @@ set -u
 # everything these cases set up wherever ancestry is silent. Drop the ambient
 # markers so what this suite asserts does not depend on which harness it was
 # launched from; every case states the marker it means to test.
-unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS CURSOR_AGENT CURSOR_INVOKED_AS
+unset CLAUDECODE CURSOR_AGENT CURSOR_INVOKED_AS
 
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 fm_git_identity fmtest fmtest@example.com
@@ -112,7 +112,6 @@ both absent -> own (backward-compat)^-^-^claude^claude
 crew set, secondmate absent -> crew (backward-compat)^codex^-^codex^codex
 crew set, secondmate set -> secondmate wins, crew untouched^codex^kimi^kimi^codex
 crew absent, secondmate set -> secondmate value, crew own^-^kimi^kimi^claude
-signed Pi wrapper remains a distinct secondmate value^codex^pi-signed^pi-signed^codex
 secondmate=default defers to crew^codex^default^codex^codex
 crew=default resolves to own, secondmate follows^default^-^claude^claude
 secondmate=default with crew absent -> own^-^default^claude^claude
@@ -132,10 +131,10 @@ case "$*" in
 esac
 SH
   chmod +x "$fakebin/ps"
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT \
+  got=$(env -u CLAUDECODE \
     PATH="$fakebin:$BASE_PATH" CURSOR_INVOKED_AS=cursor-agent "$ROOT/bin/fm-harness.sh")
   [ "$got" = cursor ] || fail "Cursor's exact launcher marker resolved '$got', expected cursor"
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT \
+  got=$(env -u CLAUDECODE \
     PATH="$fakebin:$BASE_PATH" CURSOR_INVOKED_AS=cursor "$ROOT/bin/fm-harness.sh")
   [ "$got" != cursor ] || fail "an inexact Cursor marker value was accepted as Cursor Agent CLI"
   pass "fm-harness detects only Cursor Agent CLI's exact invocation marker"
@@ -171,7 +170,6 @@ absent file -> own harness, empty model/effort^ABSENT^claude^^
 bare harness only -> empty model/effort (backward-compat)^claude^claude^^
 harness + model -> model only^claude opus^claude^opus^
 harness + model + effort -> both^claude opus high^claude^opus^high
-signed Pi wrapper + model + effort preserves every token^pi-signed openai-codex/gpt-5.6-sol max^pi-signed^openai-codex/gpt-5.6-sol^max
 default harness token -> falls back to crew, empty model/effort^default^claude^^
 extra whitespace between tokens is tolerated^kimi   kimi-k2    xhigh^kimi^kimi-k2^xhigh
 leading/trailing blank lines and a comment are skipped^# a comment\n\nclaude opus low\n^claude^opus^low
@@ -205,16 +203,16 @@ test_secondmate_per_mate_override_lines() {
     [ "$got_m" = "$exp_model" ] || fail "$label: model resolved '$got_m', expected '$exp_model'"
     [ "$got_e" = "$exp_effort" ] || fail "$label: effort resolved '$got_e', expected '$exp_effort'"
   done <<'ROWS'
-default-only file with an id resolves the default (backward-compat)^pi model-a xhigh^alpha^pi^model-a^xhigh
-default-only file with no id resolves the default (backward-compat)^pi model-a xhigh^^pi^model-a^xhigh
-legacy file ignores a second default line^pi model-a xhigh\nkimi model-b low^alpha^pi^model-a^xhigh
-legacy file ignores extra tokens^pi model-a xhigh extra^alpha^pi^model-a^xhigh
-legacy file ignores trailing malformed text without an override^pi model-a xhigh\nmate: kimi model-b low^alpha^pi^model-a^xhigh
+default-only file with an id resolves the default (backward-compat)^codex model-a xhigh^alpha^codex^model-a^xhigh
+default-only file with no id resolves the default (backward-compat)^codex model-a xhigh^^codex^model-a^xhigh
+legacy file ignores a second default line^codex model-a xhigh\nkimi model-b low^alpha^codex^model-a^xhigh
+legacy file ignores extra tokens^codex model-a xhigh extra^alpha^codex^model-a^xhigh
+legacy file ignores trailing malformed text without an override^codex model-a xhigh\nmate: kimi model-b low^alpha^codex^model-a^xhigh
 legacy default fallback ignores later lines and extra tokens^default ignored high extra\nkimi model-b low^alpha^claude^^
-mate line wins for that exact id^pi def-m xhigh\nmate alpha: claude opus max^alpha^claude^opus^max
-mate line leaves every other id on the default^pi def-m xhigh\nmate alpha: claude opus max^beta^pi^def-m^xhigh
-mate line is ignored when no id is passed^pi def-m xhigh\nmate alpha: claude opus max^^pi^def-m^xhigh
-harness-only mate line yields empty model and effort^pi def-m xhigh\nmate alpha: kimi^alpha^kimi^^
+mate line wins for that exact id^codex def-m xhigh\nmate alpha: claude opus max^alpha^claude^opus^max
+mate line leaves every other id on the default^codex def-m xhigh\nmate alpha: claude opus max^beta^codex^def-m^xhigh
+mate line is ignored when no id is passed^codex def-m xhigh\nmate alpha: claude opus max^^codex^def-m^xhigh
+harness-only mate line yields empty model and effort^codex def-m xhigh\nmate alpha: kimi^alpha^kimi^^
 mate line listed above the default line is honored^mate alpha: muse m1 low\npi def-m xhigh^alpha^muse^m1^low
 mate line whose harness is default defers to the crew chain^claude opus high\nmate alpha: default^alpha^claude^^
 comments and blank lines stay legal between the lines^# pinned by the captain\n\n  \npi def-m xhigh\n\n# exception\nmate alpha: kimi g1 max^alpha^kimi^g1^max
@@ -251,13 +249,13 @@ test_secondmate_malformed_pin_refuses_with_line_number() {
     done
     done
   done <<'ROWS'
-duplicate override for the same mate^pi def-m xhigh\nmate alpha: kimi g1 max\nmate alpha: muse m2 low
-unknown line that is not the default and not an override^pi def-m xhigh\nmate alpha: kimi\npi def-m low
-mate keyword with no id^pi def-m xhigh\nmate alpha: kimi\nmate: kimi g1 max
-mate id containing a space^pi def-m xhigh\nmate alpha: kimi\nmate an alpha: kimi
-override with no tokens after the colon^pi def-m xhigh\nmate alpha:
-override with too many tokens^pi def-m xhigh\nmate alpha: kimi g1 max extra
-default line with too many tokens^pi def-m xhigh extra\nmate alpha: kimi
+duplicate override for the same mate^codex def-m xhigh\nmate alpha: kimi g1 max\nmate alpha: muse m2 low
+unknown line that is not the default and not an override^codex def-m xhigh\nmate alpha: kimi\ncodex def-m low
+mate keyword with no id^codex def-m xhigh\nmate alpha: kimi\nmate: kimi g1 max
+mate id containing a space^codex def-m xhigh\nmate alpha: kimi\nmate an alpha: kimi
+override with no tokens after the colon^codex def-m xhigh\nmate alpha:
+override with too many tokens^codex def-m xhigh\nmate alpha: kimi g1 max extra
+default line with too many tokens^codex def-m xhigh extra\nmate alpha: kimi
 malformed mate with no default line^mate alpha: claude opus high\nmate : kimi
 malformed mate keyword with no default line^mate alpha: claude opus high\nmate: kimi
 invalid mate id with no default line^mate alpha: claude opus high\nmate bad/id: kimi
@@ -292,81 +290,16 @@ test_secondmate_legacy_pin_file_is_never_refused() {
       done
     done
   done <<'ROWS'
-legacy file with a second default line^pi model-a xhigh\nkimi model-b low
-legacy file with a fourth token^pi model-a xhigh extra
-legacy file with a second default line and a fourth token^pi model-a xhigh extra\nkimi model-b low
-legacy file with a mate keyword and no id^pi model-a xhigh\nmate: kimi g1 max
-legacy file with a mate id containing a space^pi model-a xhigh\nmate an alpha: kimi
-legacy file with a mate line that names no id^pi model-a xhigh\nmate : kimi
-legacy file with comments and blank lines^# captain note\n\npi model-a xhigh\n\nkimi model-b low
-legacy file whose default line is the word default^default\npi model-a xhigh
+legacy file with a second default line^codex model-a xhigh\nkimi model-b low
+legacy file with a fourth token^codex model-a xhigh extra
+legacy file with a second default line and a fourth token^codex model-a xhigh extra\nkimi model-b low
+legacy file with a mate keyword and no id^codex model-a xhigh\nmate: kimi g1 max
+legacy file with a mate id containing a space^codex model-a xhigh\nmate an alpha: kimi
+legacy file with a mate line that names no id^codex model-a xhigh\nmate : kimi
+legacy file with comments and blank lines^# captain note\n\ncodex model-a xhigh\n\nkimi model-b low
+legacy file whose default line is the word default^default\ncodex model-a xhigh
 ROWS
   pass "D3 a config/secondmate-harness that declares no mate line is never refused"
-}
-
-# ===========================================================================
-# A/C) pi-signed process identity and shared Pi marker behavior
-# ===========================================================================
-test_pi_signed_detection_and_session_lock_identity() {
-  local dir fakebin got
-  dir="$TMP_ROOT/pi-signed-identity"
-  fakebin=$(fm_fakebin "$dir")
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-field= pid=
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -o) field=$2; shift 2 ;;
-    -p) pid=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-case "$pid:$field:${FM_TEST_SIGNED_SHAPE:-exact}" in
-  100:comm=:*) printf '%s\n' '/test/Pi.app/bin/pi' ;;
-  100:args=:*) printf '%s\n' 'Pi' ;;
-  100:ppid=:*) printf '%s\n' 200 ;;
-  200:comm=:exact) printf '%s\n' '/opt/test/bin/pi-signed' ;;
-  200:args=:exact) printf '%s\n' 'pi-signed --model test/model' ;;
-  200:comm=:helper) printf '%s\n' '/opt/test/bin/pi-signed-helper' ;;
-  200:args=:helper) printf '%s\n' 'pi-signed-helper' ;;
-  200:comm=:plain) printf '%s\n' '/bin/zsh' ;;
-  200:args=:plain) printf '%s\n' 'zsh' ;;
-  200:ppid=:*) printf '%s\n' 1 ;;
-  *:comm=:*) printf '%s\n' bash ;;
-  *:args=:*) printf '%s\n' bash ;;
-  *:ppid=:*) printf '%s\n' 100 ;;
-esac
-SH
-  chmod +x "$fakebin/ps"
-
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "unmarked shared signed-wrapper ancestry resolved '$got', expected pi"
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi-signed ] || fail "selected signed wrapper resolved '$got', expected pi-signed"
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_PI_HARNESS=pi "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "selected plain Pi resolved '$got', expected pi"
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed-helper "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "inexact signed selection marker resolved '$got', expected pi"
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT PATH="$fakebin:$BASE_PATH" FM_PI_HARNESS=pi-signed "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "signed selection marker without Pi's family marker resolved '$got', expected pi"
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_TEST_SIGNED_SHAPE=plain "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "plain Pi marker resolved '$got', expected pi"
-  got=$(env -u CLAUDECODE PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_TEST_SIGNED_SHAPE=helper "$ROOT/bin/fm-harness.sh")
-  [ "$got" = pi ] || fail "unrelated pi-signed-helper ancestry resolved '$got', expected pi"
-
-  got=$(PATH="$fakebin:$BASE_PATH" bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; fm_harness_ancestry_pid' "$ROOT")
-  [ "$got" = 100 ] || fail "session-lock ancestry selected '$got', expected the inner Pi engine pid 100"
-  PATH="$fakebin:$BASE_PATH" bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; kill() { return 0; }; fm_harness_pid_alive 200' "$ROOT" \
-    || fail "session-lock liveness rejected exact pi-signed holder"
-  if PATH="$fakebin:$BASE_PATH" FM_TEST_SIGNED_SHAPE=helper bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; kill() { return 0; }; fm_harness_pid_alive 200' "$ROOT"; then
-    fail "session-lock liveness accepted unrelated pi-signed-helper"
-  fi
-
-  pass "pi-signed identity: authoritative launch selection distinguishes shared wrapper ancestry"
 }
 
 test_dash_leading_process_names_are_basename_operands() {
@@ -400,7 +333,7 @@ SH
   chmod +x "$fakebin/ps"
 
   err="$dir/fm-harness.err"
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT \
+  got=$(env -u CLAUDECODE \
     PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh" 2>"$err")
   [ "$got" = codex ] || fail "dash-leading shell ancestry resolved '$got', expected codex"
   [ ! -s "$err" ] || fail "fm-harness wrote basename option noise for literal -zsh: $(cat "$err")"
@@ -496,10 +429,10 @@ test_propagate_lib() {
   rm -f "$dest/crew-harness" "$outside"
   printf 'outside\n' > "$outside"
   ln -s "$outside" "$dest/crew-harness"
-  printf 'pi\n' > "$src/crew-harness"
+  printf 'kimi\n' > "$src/crew-harness"
   propagate_inheritable_config "$src" "$dest"
   [ ! -L "$dest/crew-harness" ] || fail "destination symlink was not replaced"
-  [ "$(cat "$dest/crew-harness")" = pi ] || fail "destination symlink replacement has wrong content"
+  [ "$(cat "$dest/crew-harness")" = kimi ] || fail "destination symlink replacement has wrong content"
   [ "$(cat "$outside")" = outside ] || fail "destination symlink target was overwritten"
 
   # 4. removing the source mirrors absence downstream (primary-authoritative)
@@ -768,11 +701,11 @@ test_spawn_explicit_harness_wins() {
 
 # The unverified-adapter guard holds on the resolved secondmate path: an unknown
 # config/secondmate-harness aborts the spawn (no meta written) and names the source.
-# grok is no longer a verified adapter, so it must be refused exactly like any
-# other unknown name.
+# grok, pi, pi-signed, and omp are no longer verified adapters, so each must be
+# refused exactly like any other unknown name.
 test_spawn_unverified_secondmate_harness_refused() {
   local w sm fakebin err rc name
-  for name in bogus grok; do
+  for name in bogus grok pi pi-signed omp; do
     w="$TMP_ROOT/spawn-unverified-$name"
     sm="$w/sm"
     mkdir -p "$w/home/config" "$w/home/state"
@@ -795,7 +728,7 @@ test_spawn_unverified_secondmate_harness_refused() {
       "unverified $name: error names the secondmate-harness source"
     [ -e "$w/home/state/sm.meta" ] && fail "unverified $name: a meta was written despite the abort"
   done
-  pass "B6 spawn: an unverified resolved secondmate harness, grok included, is refused (guard intact)"
+  pass "B6 spawn: an unverified resolved secondmate harness, removed adapters included, is refused (guard intact)"
 }
 
 test_spawn_cursor_secondmate_launches_with_its_primary_contract() {
@@ -889,7 +822,7 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
-  fm_fake_exit0 "$fakebin" pi
+  fm_fake_exit0 "$fakebin" opencode
   # BASE_PATH deliberately omits the developer's node, which the trust
   # registration below needs, so link the real one in rather than presenting a
   # node-less spawn host no real fleet member looks like.
@@ -2118,7 +2051,7 @@ test_config_reread_per_home_changed_sets_and_exact_bytes() {
   mkdir -p "$w/alpha/config" "$w/beta/config" "$w/alpha/state" "$w/beta/state"
 
   # alpha is stale on harness + backlog; beta is stale on multiline dispatch only.
-  printf 'pi\n' > "$w/alpha/config/crew-harness"
+  printf 'opencode\n' > "$w/alpha/config/crew-harness"
   printf 'tasks-axi\n' > "$w/alpha/config/backlog-backend"
   printf '{"default":{"harness":"old"}}\n' > "$w/beta/config/crew-dispatch.json"
 
@@ -2203,7 +2136,7 @@ test_config_reread_per_home_changed_sets_and_exact_bytes() {
   # pre-push stale unique value.
   assert_not_contains "$(cat "$instr_a")" '"harness":"old"' \
     "alpha must not receive beta's pre-push stale dispatch"
-  assert_not_contains "$(cat "$instr_b")" $'pi\n' \
+  assert_not_contains "$(cat "$instr_b")" $'opencode\n' \
     "beta instruction must not leak alpha-only stale harness bytes as a standalone scalar block incorrectly"
 
   # Routed send used the from-firstmate marker and carried only the pointer,
@@ -2309,7 +2242,7 @@ test_config_reread_isolation_and_absent_and_send_failure() {
 
   # A later changed push publishes a distinct generation without overwriting
   # the failed generation, then an unchanged push retries both pointers.
-  printf 'pi\n' > "$w/home/config/crew-harness"
+  printf 'opencode\n' > "$w/home/config/crew-harness"
   err="$w/config-reread-send-fail-second.err"
   out2=$(PATH="$(make_fake_toolchain "$w"):$BASE_PATH" \
     FM_HOME="$w/home" FM_ROOT_OVERRIDE="$w/main" FM_SEND_SETTLE=0 \
@@ -2830,12 +2763,12 @@ test_config_reread_bootstrap_path_and_spawn_flexibility() {
   fm_config_reread_mark_pending "$stale" "$stale.pending" \
     || fail "could not create spawn stale reread marker"
   launchlog="$w/spawn-flex.launch.log"
-  spawn_secondmate_capture "$w" sm-flex "$sm" "$launchlog" --harness pi >/dev/null 2>&1
+  spawn_secondmate_capture "$w" sm-flex "$sm" "$launchlog" --harness opencode >/dev/null 2>&1
   assert_no_reread_pending "$sm"
   assert_no_reread_instructions "$sm"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "pi" \
-    "explicit --harness pi must still win over configured codex defaults"
+  assert_contains "$launch" "opencode" \
+    "explicit --harness opencode must still win over configured codex defaults"
   pass "B18 bootstrap config reread path works; spawn flexibility remains defaults-only"
 }
 
@@ -2970,7 +2903,6 @@ test_secondmate_model_effort_tokens
 test_secondmate_per_mate_override_lines
 test_secondmate_malformed_pin_refuses_with_line_number
 test_secondmate_legacy_pin_file_is_never_refused
-test_pi_signed_detection_and_session_lock_identity
 test_dash_leading_process_names_are_basename_operands
 test_propagate_lib
 test_spawn_split_and_inherit

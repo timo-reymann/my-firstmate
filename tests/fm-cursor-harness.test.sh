@@ -414,7 +414,6 @@ const env = { ...process.env };
 delete env.CURSOR_AGENT;
 delete env.CURSOR_INVOKED_AS;
 delete env.CLAUDECODE;
-delete env.PI_CODING_AGENT;
 const result = spawnSync(process.argv[2], [], { encoding: 'utf8', env });
 process.stdout.write(result.stdout);
 process.stderr.write(result.stderr);

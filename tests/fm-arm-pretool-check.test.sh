@@ -52,8 +52,8 @@ matrix_case R05 allow "git grep 'fm-watch-checkpoint.sh && echo bad'"
 matrix_case R06 allow "sed -n '/fm-watch-checkpoint.sh/p' docs/arm-pretool-check.md"
 matrix_case R07 allow 'assert_contains "$content" '\''fm-watch-arm.sh &'\'''
 matrix_case R08 allow "printf '%s\\n' 'bin/fm-watch-checkpoint.sh --seconds 180 >/tmp/out'"
-matrix_case R09 allow "tmux send-keys -t isolated-pi-lab 'bin/fm-watch-arm.sh &' Enter"
-matrix_case R10 allow "tmux send-keys -t isolated-pi-lab \"printf '%s\\n' 'bin/fm-watch-arm.sh &'\"; tmux send-keys -t isolated-pi-lab Enter"
+matrix_case R09 allow "tmux send-keys -t isolated-lab 'bin/fm-watch-arm.sh &' Enter"
+matrix_case R10 allow "tmux send-keys -t isolated-lab \"printf '%s\\n' 'bin/fm-watch-arm.sh &'\"; tmux send-keys -t isolated-lab Enter"
 matrix_case R11 allow "python3 -c 'print(\"bin/fm-watch-arm.sh; echo data\")'"
 matrix_case R12 allow "bash -lc \"rg -n 'fm-watch-arm.sh &' docs\""
 matrix_case R13 allow "echo 'pkill -f fm-watch'"
@@ -170,7 +170,7 @@ run_matrix_entry() {
       printf '%s' "$payload" | "$CHECK" --claude >"$out_file" 2>"$err_file"
       rc=$?
       ;;
-    opencode|pi)
+    opencode)
       "$CHECK" --command "$cmd" >"$out_file" 2>"$err_file"
       rc=$?
       ;;
@@ -197,10 +197,10 @@ run_matrix_entry() {
 test_full_acceptance_matrix() {
   local i entry
   for ((i = 0; i < ${#MATRIX_IDS[@]}; i++)); do
-    for entry in codex claude opencode pi; do
+    for entry in codex claude opencode; do
       run_matrix_entry "${MATRIX_IDS[$i]}" "${MATRIX_EXPECTED[$i]}" "$entry" "${MATRIX_COMMANDS[$i]}"
     done
-    pass "matrix ${MATRIX_IDS[$i]}: ${MATRIX_EXPECTED[$i]} through all four entry forms"
+    pass "matrix ${MATRIX_IDS[$i]}: ${MATRIX_EXPECTED[$i]} through all three entry forms"
   done
 }
 

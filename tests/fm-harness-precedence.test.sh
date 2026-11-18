@@ -29,7 +29,7 @@ set -u
 
 # This suite states the markers it means to test in every case. Drop the ambient
 # ones so a verdict never depends on which harness launched the suite.
-unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS CURSOR_AGENT CURSOR_INVOKED_AS \
+unset CLAUDECODE CURSOR_AGENT CURSOR_INVOKED_AS \
   FM_SUPERVISION_ACTOR FM_SUPERVISION_PRIMARY_HARNESS
 
 HARNESS="$ROOT/bin/fm-harness.sh"
@@ -44,7 +44,7 @@ BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 under_process() {  # <named-executable> [VAR=VAL ...]
   local bin=$1
   shift
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS "$@" \
     "$bin" -c "r=\$(\"$HARNESS\"); printf '%s' \"\$r\""
 }
@@ -107,7 +107,7 @@ under_fake_ps() {  # <fakebin> <VAR=VAL ...> -- [harness args]
     shift
   done
   [ "${1:-}" = -- ] && shift
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS "${assignments[@]}" \
     PATH="$fakebin:$BASE_PATH" "$HARNESS" "$@"
 }
@@ -115,7 +115,7 @@ under_fake_ps() {  # <fakebin> <VAR=VAL ...> -- [harness args]
 with_blind_ancestry() {  # <fakebin> [VAR=VAL ...]
   local fakebin=$1
   shift
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS "$@" \
     PATH="$fakebin:$BASE_PATH" "$HARNESS"
 }
@@ -211,29 +211,23 @@ test_retained_cursor_marker_does_not_rename_a_nested_claude() {
   pass "a retained cursor marker does not rename a nested claude worker"
 }
 
-# --- 3. Pi keeps the marker's more specific identity ------------------------
+# --- 3. Removed harness identities resolve unknown --------------------------
 
-# Both Pi identities share the launcher name, so ancestry can only prove the
-# family. A marker that agrees on the family must keep its finer verdict rather
-# than being flattened to pi by the ancestry walk.
-test_pi_signed_survives_agreeing_ancestry() {
-  local bin got
-  bin=$(named_bin "$TMP_ROOT/pi-tree" pi)
-  got=$(under_process "$bin" PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed)
-  [ "$got" = pi-signed ] || fail "signed Pi over pi ancestry resolved '$got', expected pi-signed"
-  got=$(under_process "$bin" PI_CODING_AGENT=true)
-  [ "$got" = pi ] || fail "plain Pi over pi ancestry resolved '$got', expected pi"
-  got=$(under_process "$bin")
-  [ "$got" = pi ] || fail "unmarked pi ancestry resolved '$got', expected pi"
-
-  bin=$(named_bin "$TMP_ROOT/pi-signed-tree" pi-signed)
-  got=$(under_process "$bin" PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed)
-  [ "$got" = pi-signed ] \
-    || fail "signed Pi over shared signed-wrapper ancestry resolved '$got', expected pi-signed"
-  got=$(under_process "$bin")
-  [ "$got" = pi ] \
-    || fail "unmarked signed-wrapper ancestry resolved '$got', expected pi"
-  pass "an agreeing marker keeps Pi's finer identity that ancestry cannot prove"
+# pi, pi-signed, and omp are no longer verified harnesses. A process named after
+# one of them, carrying the markers those adapters once published, proves no
+# harness at all: neither evidence layer may resolve it to a removed name.
+test_removed_harness_identities_resolve_unknown() {
+  local fakebin name got
+  fakebin=$(namespace_ancestry_bin "$TMP_ROOT/removed-identities")
+  for name in pi pi-signed omp; do
+    got=$(under_fake_ps "$fakebin" FM_TEST_PID1_COMM="$name" \
+      PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed FM_OMP_HARNESS=omp --)
+    [ "$got" = unknown ] \
+      || fail "a $name process with its former markers resolved '$got', expected unknown"
+    got=$(under_fake_ps "$fakebin" FM_TEST_PID1_COMM="$name" -- ancestry)
+    [ -z "$got" ] || fail "the ancestry walk still names a $name process: '$got'"
+  done
+  pass "pi, pi-signed, and omp processes and markers resolve no harness"
 }
 
 # --- 4. The weakest ancestry signal does not outrank a marker ---------------
@@ -251,12 +245,12 @@ test_interpreter_args_match_does_not_outrank_a_marker() {
 r=\$("$HARNESS"); printf '%s' "\$r"
 SH
 
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  got=$(env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS "$node" "$script")
   [ "$got" = codex ] \
     || fail "an unmarked interpreter holding a codex-shaped script path resolved '$got', expected codex"
 
-  got=$(env -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  got=$(env \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 "$node" "$script")
   [ "$got" = claude ] \
     || fail "a published CLAUDECODE lost to a codex-shaped script path, resolving '$got'"
@@ -299,7 +293,7 @@ SH
   # the shim entry point directly below, so this helper stays the plain no-marker
   # launch.
   run_shim() {
-    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+    env -u CLAUDECODE \
       -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
       FM_TEST_HARNESS="$HARNESS" FM_TEST_NATIVE="$native" FM_TEST_PROBE="$probe" \
       "$node" "$entry"
@@ -314,7 +308,7 @@ SH
   [ "$got" = codex ] \
     || fail "the real Codex shim topology with a retained CLAUDECODE resolved '$got', expected codex"
 
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  got=$(env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
     FM_TEST_HARNESS="$HARNESS" FM_TEST_NATIVE="$native" FM_TEST_PROBE="$probe" \
     "$node" "$entry" ancestry)
@@ -392,7 +386,7 @@ SH
 wait "$!"
 SH
 
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
     FM_TEST_NATIVE="$native" FM_TEST_HOLD="$hold" FM_TEST_READY="$ready" \
     "$node" "$entry" &
@@ -482,7 +476,7 @@ printf '%s\n' "$!" > "$FM_TEST_DIR/mcp.pid"
 wait
 SH
 
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
     FM_TEST_DIR="$dir" FM_TEST_NODE="$node" FM_TEST_NATIVE="$native" \
     FM_TEST_WORKER="$worker" FM_TEST_HOLD="$hold" FM_TEST_BLOCK="$block" \
@@ -573,7 +567,7 @@ printf '%s\n' "$!" > "$FM_TEST_DIR/native.pid"
 wait
 SH
 
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
     FM_TEST_DIR="$dir" FM_TEST_NODE="$node" FM_TEST_NATIVE="$native" \
     FM_TEST_HOLD="$hold" FM_TEST_MCP="$mcp_script" FM_TEST_READY="$ready" \
@@ -665,7 +659,7 @@ touch "$FM_TEST_READY"
 wait
 SH
 
-    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+    env -u CLAUDECODE \
       -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
       FM_TEST_ORDER="$order" FM_TEST_DIR="$dir" FM_TEST_NODE="$node" \
       FM_TEST_NATIVE="$native" FM_TEST_BLOCK="$block" FM_TEST_MCP="$mcp_script" \
@@ -711,14 +705,14 @@ SH
 # --- 7. A supervision branch resolves the primary's harness, not its own -----
 
 # A supervision branch running as its own process under another harness sees
-# its own harness in both evidence layers: a Pi engine under a Claude primary
-# carries PI_CODING_AGENT and a pi ancestor. Left alone, an absent or "default"
-# crew or secondmate config would then dispatch workers on Pi. The primary's
+# its own harness in its ancestry: a Codex engine under a Claude primary has a
+# codex ancestor. Left alone, an absent or "default" crew or secondmate config
+# would then dispatch workers on Codex. The primary's
 # pin must win while the branch actor is set, and only then.
 pin_probe() {  # <named-executable> <home> <verb> [VAR=VAL ...]
   local bin=$1 home=$2 verb=$3
   shift 3
-  env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u FM_SUPERVISION_ACTOR \
     -u FM_SUPERVISION_PRIMARY_HARNESS FM_HOME="$home" "$@" \
     "$bin" -c "r=\$(\"$HARNESS\" $verb 2>\"$home/stderr\"); rc=\$?; printf '%s|%s' \"\$r\" \"\$rc\""
@@ -729,44 +723,44 @@ test_supervision_branch_resolves_the_primary_pin() {
   dir="$TMP_ROOT/primary-pin"
   home="$dir/home"
   mkdir -p "$home/config"
-  bin=$(named_bin "$dir/pi-tree" pi)
+  bin=$(named_bin "$dir/codex-tree" codex)
 
   # Without the pin the branch reads as its own engine, which is the hazard.
   for verb in '' crew secondmate; do
-    got=$(pin_probe "$bin" "$home" "$verb" PI_CODING_AGENT=true FM_SUPERVISION_ACTOR=branch)
-    [ "$got" = 'pi|0' ] \
-      || fail "an unpinned branch under a Pi engine resolved '${verb:-own}' as '$got', expected pi (the hazard is not live)"
+    got=$(pin_probe "$bin" "$home" "$verb" FM_SUPERVISION_ACTOR=branch)
+    [ "$got" = 'codex|0' ] \
+      || fail "an unpinned branch under a Codex engine resolved '${verb:-own}' as '$got', expected codex (the hazard is not live)"
   done
 
   for verb in '' crew secondmate; do
-    got=$(pin_probe "$bin" "$home" "$verb" PI_CODING_AGENT=true \
+    got=$(pin_probe "$bin" "$home" "$verb" \
       FM_SUPERVISION_ACTOR=branch FM_SUPERVISION_PRIMARY_HARNESS=claude)
     [ "$got" = 'claude|0' ] \
       || fail "a pinned branch resolved '${verb:-own}' as '$got', expected the primary's claude"
   done
   printf 'default\n' > "$home/config/crew-harness"
-  got=$(pin_probe "$bin" "$home" crew PI_CODING_AGENT=true \
+  got=$(pin_probe "$bin" "$home" crew \
     FM_SUPERVISION_ACTOR=branch FM_SUPERVISION_PRIMARY_HARNESS=claude)
   [ "$got" = 'claude|0' ] || fail "a pinned branch resolved a default crew config as '$got', expected claude"
 
   # An explicit crew config is still the captain's choice, pin or no pin.
-  printf 'codex\n' > "$home/config/crew-harness"
-  got=$(pin_probe "$bin" "$home" crew PI_CODING_AGENT=true \
+  printf 'kimi\n' > "$home/config/crew-harness"
+  got=$(pin_probe "$bin" "$home" crew \
     FM_SUPERVISION_ACTOR=branch FM_SUPERVISION_PRIMARY_HARNESS=claude)
-  [ "$got" = 'codex|0' ] || fail "the pin overrode an explicit crew config: '$got'"
+  [ "$got" = 'kimi|0' ] || fail "the pin overrode an explicit crew config: '$got'"
   rm -f "$home/config/crew-harness"
 
   # Main, or no actor at all, ignores the pin.
-  got=$(pin_probe "$bin" "$home" '' PI_CODING_AGENT=true FM_SUPERVISION_PRIMARY_HARNESS=claude)
-  [ "$got" = 'pi|0' ] || fail "an unmarked process honored the branch-only pin: '$got'"
-  got=$(pin_probe "$bin" "$home" '' PI_CODING_AGENT=true \
+  got=$(pin_probe "$bin" "$home" '' FM_SUPERVISION_PRIMARY_HARNESS=claude)
+  [ "$got" = 'codex|0' ] || fail "an unmarked process honored the branch-only pin: '$got'"
+  got=$(pin_probe "$bin" "$home" '' \
     FM_SUPERVISION_ACTOR=main FM_SUPERVISION_PRIMARY_HARNESS=claude)
-  [ "$got" = 'pi|0' ] || fail "the main actor honored the branch-only pin: '$got'"
+  [ "$got" = 'codex|0' ] || fail "the main actor honored the branch-only pin: '$got'"
 
   # The ancestry evidence verb reports evidence only and never consults it.
-  got=$(pin_probe "$bin" "$home" ancestry PI_CODING_AGENT=true \
+  got=$(pin_probe "$bin" "$home" ancestry \
     FM_SUPERVISION_ACTOR=branch FM_SUPERVISION_PRIMARY_HARNESS=claude)
-  [ "$got" = 'comm pi|0' ] || fail "the ancestry verb consulted the pin: '$got'"
+  [ "$got" = 'comm codex|0' ] || fail "the ancestry verb consulted the pin: '$got'"
   pass "a supervision branch resolves own, crew, and secondmate to the primary's pinned harness"
 }
 
@@ -775,9 +769,9 @@ test_supervision_branch_refuses_an_unknown_primary_pin() {
   dir="$TMP_ROOT/primary-pin-bad"
   home="$dir/home"
   mkdir -p "$home/config"
-  bin=$(named_bin "$dir/pi-tree" pi)
+  bin=$(named_bin "$dir/codex-tree" codex)
   for verb in '' crew secondmate; do
-    got=$(pin_probe "$bin" "$home" "$verb" PI_CODING_AGENT=true \
+    got=$(pin_probe "$bin" "$home" "$verb" \
       FM_SUPERVISION_ACTOR=branch FM_SUPERVISION_PRIMARY_HARNESS=unknown)
     [ "$got" = '|2' ] \
       || fail "an unknown pin resolved '${verb:-own}' as '$got', expected a refusal with nothing on stdout"
@@ -800,13 +794,13 @@ test_supervision_protocol_follows_corrected_verdict() {
   bin=$(named_bin "$dir/codex-tree" codex)
   fakebin=$(blind_ancestry_bin "$dir/blind")
 
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  got=$(env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 FM_HOME="$home" \
     PATH="$fakebin:$BASE_PATH" "$RENDER")
   assert_contains "$got" "primary harness: claude" \
     "with ancestry blinded, the retained marker must still render claude (the case is otherwise vacuous)"
 
-  got=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS \
+  got=$(env -u CLAUDECODE \
     -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 FM_HOME="$home" \
     "$bin" -c "r=\$(\"$RENDER\"); printf '%s' \"\$r\"")
   assert_contains "$got" "primary harness: codex" \
@@ -822,7 +816,7 @@ test_markerless_ancestry_outranks_foreign_marker
 test_genuine_marker_and_ancestry_agree
 test_cursor_ordering_still_decides_when_ancestry_is_silent
 test_retained_cursor_marker_does_not_rename_a_nested_claude
-test_pi_signed_survives_agreeing_ancestry
+test_removed_harness_identities_resolve_unknown
 test_interpreter_args_match_does_not_outrank_a_marker
 test_native_child_of_an_interpreter_shim_decides_at_comm_strength
 test_harness_at_namespace_pid1_is_examined

@@ -186,7 +186,7 @@ run_matrix_entry() {
       printf '%s' "$payload" | "$CHECK" --claude >"$out_file" 2>"$err_file"
       rc=$?
       ;;
-    opencode|pi)
+    opencode)
       "$CHECK" --command "$cmd" >"$out_file" 2>"$err_file"
       rc=$?
       ;;
@@ -213,11 +213,11 @@ run_matrix_entry() {
 test_full_acceptance_matrix() {
   local i entry
   for ((i = 0; i < ${#MATRIX_IDS[@]}; i++)); do
-    for entry in codex claude opencode pi; do
+    for entry in codex claude opencode; do
       run_matrix_entry "${MATRIX_IDS[$i]}" "${MATRIX_EXPECTED[$i]}" "$entry" "${MATRIX_COMMANDS[$i]}"
     done
   done
-  pass "cd-guard acceptance matrix: ${#MATRIX_IDS[@]} cases x 4 harness entry forms, block/allow all correct"
+  pass "cd-guard acceptance matrix: ${#MATRIX_IDS[@]} cases x 3 harness entry forms, block/allow all correct"
 }
 
 # --- primary-checkout scoping ----------------------------------------------
