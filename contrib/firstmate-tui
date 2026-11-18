@@ -46,7 +46,9 @@ Keys:
 
 Input mode (enter in the workers view; the live view title says INPUT):
   every key, including enter, arrows, ctrl combinations and pasted text, goes
-  to the selected worker's Herdr pane; ctrl+] leaves input mode
+  to the selected worker's Herdr pane; escape (or ctrl+]) leaves input mode at
+  once; escape twice within 0.4 s sends one escape to the worker and stays in
+  input mode, because the second press re-enters it
 
 Environment:
   FIRSTMATE_DIR          the firstmate home (default $HOME/workspace/firstmate)
@@ -102,9 +104,11 @@ LEDGER_HINT = "Activity is off: create config/fleet-ledger in the home to turn i
 PANES = ("all", "activity", "workers")
 FILTER_ALL, FILTER_NEEDS, FILTER_TASK = "all", "needs", "task"
 FILTERS = (FILTER_ALL, FILTER_NEEDS, FILTER_TASK)
-# The one key that input mode keeps for itself: it leaves input mode.
-INPUT_LEAVE = "ctrl+right_square_bracket"
-INPUT_LEAVE_LABEL = "ctrl+]"
+# The keys that input mode keeps for itself: they leave input mode.
+INPUT_LEAVE = ("escape", "ctrl+right_square_bracket")
+INPUT_LEAVE_LABEL = "esc"
+# A second escape this soon after leaving goes to the worker as one real escape.
+ESCAPE_WINDOW = 0.4
 
 
 # --- palette and labels (pure) ----------------------------------------------
@@ -1184,7 +1188,7 @@ KEY_MODIFIERS = ("ctrl", "alt", "meta", "super", "hyper")
 def input_for_key(key: str, character: Optional[str]) -> Optional[Tuple[str, str]]:
     """How a key typed in input mode reaches the worker: ("keys", herdr key name),
     ("text", literal text), or None for the key that leaves input mode."""
-    if key == INPUT_LEAVE:
+    if key in INPUT_LEAVE:
         return None
     parts = key.split("+")
     modified = len(parts) > 1 and any(part in KEY_MODIFIERS for part in parts[:-1])
@@ -1194,6 +1198,13 @@ def input_for_key(key: str, character: Optional[str]) -> Optional[Tuple[str, str
     if name in RAW_KEYS:
         return "text", RAW_KEYS[name]
     return "keys", name
+
+
+def escape_resend(left_at: Optional[float], key: str, now: float) -> bool:
+    """Whether this key is the quick second escape that sends one escape to the worker."""
+    return (
+        key == "escape" and left_at is not None and 0 <= now - left_at <= ESCAPE_WINDOW
+    )
 
 
 def input_commands(
@@ -1554,6 +1565,8 @@ def build_app(
             # Input mode: the id and endpoint of the worker that typed keys go to, or None.
             self.typing: Optional[str] = None
             self.typing_target = ""
+            # The worker left by the last escape and when, for the quick second escape.
+            self.escape_left: Optional[Tuple[str, str, float]] = None
             self.sender: Optional[InputSender] = None
 
         def compose(self) -> ComposeResult:
@@ -1731,7 +1744,10 @@ def build_app(
                 return
             if self.sender is None:
                 self.sender = InputSender(herdr_bin, self.sent)
-            self.typing, self.typing_target = worker["id"], worker["target"]
+            self.enter_input(worker["id"], worker["target"])
+
+        def enter_input(self, task: str, target: str) -> None:
+            self.typing, self.typing_target, self.escape_left = task, target, None
             self.redraw()
             self.capture()
 
@@ -1764,11 +1780,37 @@ def build_app(
                 event.stop()
                 event.prevent_default()
                 if item is None:
+                    if event.key == "escape":
+                        self.escape_left = (
+                            self.typing,
+                            self.typing_target,
+                            time.monotonic(),
+                        )
                     self.leave_input()
                     self.redraw()
                 elif item[1] and self.sender is not None:
                     self.sender.put(self.typing_target, item[0], item[1])
                 return
+            if (
+                isinstance(event, events.Key)
+                and not event.is_forwarded
+                and self.escape_left is not None
+                and len(self.screen_stack) == 1
+            ):
+                task, target, left_at = self.escape_left
+                self.escape_left = None
+                worker = self.current()
+                if (
+                    escape_resend(left_at, event.key, time.monotonic())
+                    and worker is not None
+                    and worker["id"] == task
+                    and self.sender is not None
+                ):
+                    event.stop()
+                    event.prevent_default()
+                    self.enter_input(task, target)
+                    self.sender.put(target, "keys", "esc")
+                    return
             await super().on_event(event)
 
         def action_filter(self, choice: str) -> None:
