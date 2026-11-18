@@ -1,4 +1,7 @@
 <h1 align="center">firstmate</h1>
+<p align="center"><strong>This is a personal fork of the upstream <a href="https://github.com/kunchenguid/firstmate">firstmate</a> project.</strong><br />
+It is maintained separately and drops several agents and backends.<br />
+Upstream is the place for the full, supported version.</p>
 <p align="center">
   <a
     href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square"
@@ -19,6 +22,25 @@
 </p>
 
 <h3 align="center">Talk to one agent. Ship with a crew.</h3>
+
+## Changes from upstream
+
+Upstream: <https://github.com/kunchenguid/firstmate>.
+
+This fork removes the following.
+
+- Agents: Grok, Pi, `pi-signed`, and Oh My Pi (`omp`) are no longer supported.
+- Backends: cmux, Paseo, Rex, tern, hc, Zellij, and T3 Code are no longer supported.
+  tmux, Herdr, and Orca remain.
+- The Pi worker account pin, the `ultra` effort level that existed only for native Codex through Pi, and the Pi stream-silence watcher option.
+- The Claude Calm working-ship sprite.
+  The rest of Calm is unchanged.
+- The vendor auth probe, which had Grok as its only probe.
+- The header image and the star history chart in this README.
+
+The supervision host dispatch code, which decides which wake rows the away session may take, moved out of the Pi extension folder into a neutral module (`bin/lib/fm-host-dispatch.ts`, run through `bin/fm-host-dispatch.mjs`).
+Its behavior is unchanged.
+The branch contract doc is now [docs/supervision-branch.md](docs/supervision-branch.md).
 
 ## What it is
 
