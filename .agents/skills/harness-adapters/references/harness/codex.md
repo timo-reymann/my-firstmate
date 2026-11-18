@@ -4,7 +4,7 @@ Verified on 2026-06-11 with codex-cli 0.139.0 unless a fact gives a newer versio
 
 ## Operating facts
 
-These command-line and terminal facts apply to pane-backed sessions; for T3 Code, read the [native lifecycle](../../../../../docs/t3code-backend.md#current-lifecycle-and-safety) and [provider-command limits](../../../../../docs/t3code-backend.md#active-limits).
+These command-line and terminal facts apply to pane-backed sessions.
 
 | Fact | Value |
 |---|---|
