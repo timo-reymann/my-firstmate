@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# Read-only fleet view for firstmate; it reads the fleet snapshot and costs no model tokens.
+# Env overrides: FIRSTMATE_DIR, FM_FLEET_SNAPSHOT_CMD, HERDR_BIN.
+set -u
+
+usage() {
+  cat <<'USAGE'
+Usage: firstmate-fleet [--once] [--interval SECONDS] [--width COLUMNS]
+  --once   print one plain frame to stdout and exit
+Keys: j/k or arrows move, enter jumps to the task tab in Herdr, r refreshes, q quits.
+USAGE
+}
+
+dir="${FIRSTMATE_DIR:-$HOME/workspace/firstmate}"
+herdr_bin="${HERDR_BIN:-herdr}"
+interval=6
+width=""
+once=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --once) once=1 ;;
+    --interval) interval="${2:?--interval needs a value}"; shift ;;
+    --width) width="${2:?--width needs a value}"; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "firstmate-fleet: unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+command -v jq >/dev/null 2>&1 || { echo "firstmate-fleet: jq is required" >&2; exit 1; }
+
+snapshot() {
+  if [ -n "${FM_FLEET_SNAPSHOT_CMD:-}" ]; then
+    bash -c "$FM_FLEET_SNAPSHOT_CMD"
+  else
+    (cd "$dir" && ./bin/fm-fleet-snapshot.sh --json)
+  fi
+}
+
+# The unit separator keeps empty fields from collapsing when read splits a row.
+to_rows() {
+  jq -r '
+    (.tasks // [])
+    | map({
+        id: .id,
+        kind: (.kind // "task"),
+        state: (.current_state.state // "unknown"),
+        attn: ((.hints.pending_decision // false) or (.hints.blocked_event // false)),
+        pr: (.pr.url // ""),
+        branch: (.branch // ""),
+        target: (.endpoint.target // "")
+      })
+    | map(.rank = (if .attn then 0
+                   elif .state == "working" then 1
+                   elif .state == "paused" then 2
+                   elif .state == "done" then 4
+                   else 3 end))
+    | sort_by(.rank, .id)
+    | .[]
+    | [.rank, .id, .kind, .state, (.attn | tostring), .pr, .branch, .target]
+    | join("\u001f")'
+}
+
+ids=()
+targets=()
+lines1=()
+lines2=()
+ranks=()
+
+load_rows() {
+  local json=$1 rows rank id kind state attn pr branch target icon extra
+  rows=$(printf '%s' "$json" | to_rows) || return 1
+  ids=(); targets=(); lines1=(); lines2=(); ranks=()
+  while IFS=$'\x1f' read -r rank id kind state attn pr branch target; do
+    [ -n "$id" ] || continue
+    case "$rank" in
+      0) icon='!' ;;
+      1) icon='*' ;;
+      2) icon='~' ;;
+      4) icon='+' ;;
+      *) icon='?' ;;
+    esac
+    extra=${pr:-$branch}
+    ids+=("$id")
+    targets+=("$target")
+    ranks+=("$rank")
+    lines1+=("$icon $id")
+    if [ "$attn" = true ]; then state="needs you"; fi
+    lines2+=("  $kind - $state${extra:+ - $extra}")
+  done <<<"$rows"
+  return 0
+}
+
+cut_to() {
+  local text=$1 cols=$2
+  if [ "${#text}" -gt "$cols" ]; then
+    printf '%s' "${text:0:$((cols - 1))}~"
+  else
+    printf '%s' "$text"
+  fi
+}
+
+frame() {
+  local mode=$1 cols=$2 sel=$3 first=$4 max=$5 stale=$6 updated=$7
+  local n=${#ids[@]} i last color reset dim mark head
+  reset=""; dim=""
+  if [ "$mode" = tty ]; then reset=$'\e[0m'; dim=$'\e[2m'; fi
+  head="FLEET  $n task$([ "$n" -eq 1 ] || echo s)  $updated"
+  [ "$stale" = 1 ] && head="$head  STALE"
+  printf '%s\n' "$(cut_to "$head" "$cols")"
+  printf '%s\n' "$(printf '%*s' "$cols" '' | tr ' ' '-')"
+  if [ "$n" -eq 0 ]; then
+    printf '%s\n' "no tasks"
+    return
+  fi
+  last=$n
+  if [ "$max" -gt 0 ] && [ $((first + max)) -lt "$n" ]; then last=$((first + max)); fi
+  for ((i = first; i < last; i++)); do
+    color=""
+    if [ "$mode" = tty ]; then
+      case "${ranks[i]}" in
+        0) color=$'\e[1;31m' ;;
+        1) color=$'\e[32m' ;;
+        4) color=$'\e[2m' ;;
+        *) color="" ;;
+      esac
+    fi
+    mark=" "
+    if [ "$mode" = tty ] && [ "$i" -eq "$sel" ]; then mark=">"; fi
+    printf '%s%s%s%s\n' "$color" "$mark" "$(cut_to "${lines1[i]}" $((cols - 1)))" "$reset"
+    printf '%s%s%s\n' "$dim" "$(cut_to "${lines2[i]}" "$cols")" "$reset"
+  done
+}
+
+if [ -n "$once" ]; then
+  json=$(snapshot) || { echo "firstmate-fleet: snapshot failed" >&2; exit 1; }
+  load_rows "$json" || { echo "firstmate-fleet: snapshot is not valid JSON" >&2; exit 1; }
+  frame plain "${width:-60}" 0 0 0 0 "$(date +%H:%M:%S)"
+  exit 0
+fi
+
+jump() {
+  local target=$1 session pane tab
+  [ -n "$target" ] || return 0
+  session=${target%%:*}
+  pane=${target#*:}
+  local -a flag=()
+  [ "$session" = default ] || flag=(--session "$session")
+  tab=$("$herdr_bin" pane get "$pane" ${flag[@]+"${flag[@]}"} 2>/dev/null | jq -r '.result.pane.tab_id // empty')
+  [ -n "$tab" ] && "$herdr_bin" tab focus "$tab" ${flag[@]+"${flag[@]}"} >/dev/null 2>&1
+}
+
+restore() { tput rmcup 2>/dev/null; tput cnorm 2>/dev/null; }
+trap restore EXIT
+trap 'exit 0' INT TERM
+
+tput smcup 2>/dev/null
+tput civis 2>/dev/null
+
+sel=0
+first=0
+stale=0
+updated="--:--:--"
+last_json=""
+next_poll=0
+
+while true; do
+  now=$SECONDS
+  if [ "$now" -ge "$next_poll" ] || [ "${force:-0}" = 1 ]; then
+    if json=$(snapshot 2>/dev/null) && load_rows "$json"; then
+      last_json=$json
+      stale=0
+      updated=$(date +%H:%M:%S)
+    else
+      stale=1
+      [ -n "$last_json" ] && load_rows "$last_json"
+    fi
+    next_poll=$((SECONDS + interval))
+    force=0
+  fi
+  size=$(stty size </dev/tty 2>/dev/null)
+  rows=${size% *}
+  cols=${width:-${size#* }}
+  case "$rows" in '' | *[!0-9]*) rows=24 ;; esac
+  case "$cols" in '' | *[!0-9]*) cols=60 ;; esac
+  per=$(((rows - 4) / 2))
+  [ "$per" -lt 1 ] && per=1
+  n=${#ids[@]}
+  [ "$sel" -ge "$n" ] && sel=$((n > 0 ? n - 1 : 0))
+  [ "$sel" -lt "$first" ] && first=$sel
+  [ "$sel" -ge $((first + per)) ] && first=$((sel - per + 1))
+  hint='j/k move  enter jump  r refresh  q quit'
+  [ "$cols" -lt 40 ] && hint='j/k  enter  r  q'
+  buf=$(frame tty "$cols" "$sel" "$first" "$per" "$stale" "$updated"
+        printf '%s\n' "$(cut_to "$hint" "$cols")")
+  printf '\e[H\e[J%s' "$buf"
+  key=""
+  IFS= read -rsn1 -t 1 key
+  rc=$?
+  if [ "$rc" -gt 128 ]; then
+    key=""
+  elif [ -z "$key" ]; then
+    key=ENTER
+  fi
+  case "$key" in
+    q) exit 0 ;;
+    j) [ "$sel" -lt $((n - 1)) ] && sel=$((sel + 1)) ;;
+    k) [ "$sel" -gt 0 ] && sel=$((sel - 1)) ;;
+    r) force=1 ;;
+    ENTER) jump "${targets[sel]:-}" ;;
+    $'\e')
+      IFS= read -rsn2 -t 0.05 rest || rest=""
+      case "$rest" in
+        '[A') [ "$sel" -gt 0 ] && sel=$((sel - 1)) ;;
+        '[B') [ "$sel" -lt $((n - 1)) ] && sel=$((sel + 1)) ;;
+      esac
+      ;;
+  esac
+done

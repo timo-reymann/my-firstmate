@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# One command for firstmate in Herdr: the first mate pane on the left, the fleet view on the right.
+# Env overrides: FIRSTMATE_DIR, FIRSTMATE_BIN, FLEET_BIN, HERDR_BIN, FM_HERDR_SESSION (named session; default if unset).
+set -u
+
+usage() {
+  cat <<'USAGE'
+Usage: firstmate-herdr [--no-attach] [--ratio SHARE] [first mate arguments...]
+  Inside Herdr: splits the current pane, then runs the first mate here.
+  Outside Herdr: builds a "firstmate" workspace in the session, then attaches to it.
+  --no-attach   build the layout and stop (outside Herdr only)
+  --ratio SHARE share of the width for the first mate pane (default 0.72)
+USAGE
+}
+
+here=$(cd "$(dirname "$0")" && pwd)
+dir="${FIRSTMATE_DIR:-$HOME/workspace/firstmate}"
+firstmate_bin="${FIRSTMATE_BIN:-$here/firstmate}"
+fleet_bin="${FLEET_BIN:-$here/firstmate-fleet}"
+herdr_bin="${HERDR_BIN:-herdr}"
+session="${FM_HERDR_SESSION:-}"
+ratio=0.72
+attach=1
+label=firstmate-fleet
+workspace_label=firstmate
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-attach) attach=0; shift ;;
+    --ratio) ratio="${2:?--ratio needs a value}"; shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+
+die() { echo "firstmate-herdr: $*" >&2; exit 1; }
+
+command -v jq >/dev/null 2>&1 || die "jq is required"
+command -v "$herdr_bin" >/dev/null 2>&1 || die "herdr is not installed (https://herdr.dev)"
+[ -d "$dir" ] || die "firstmate folder not found: $dir"
+
+protocol=$("$herdr_bin" status client 2>/dev/null | awk '/protocol:/ {print $2; exit}')
+case "${protocol:-0}" in
+  '' | *[!0-9]*) protocol=0 ;;
+esac
+[ "$protocol" -ge 14 ] || die "herdr protocol 14 or newer is required (found ${protocol:-none}); see https://herdr.dev"
+
+sflag=()
+inside=0
+if [ "${HERDR_ENV:-}" = 1 ] && [ -n "${HERDR_PANE_ID:-}" ] && [ -z "$session" ]; then
+  inside=1
+elif [ -n "$session" ] && [ "$session" != default ]; then
+  sflag=(--session "$session")
+fi
+
+hr() { "$herdr_bin" "$@" ${sflag[@]+"${sflag[@]}"}; }
+
+fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$fleet_bin")"
+mate_cmd="exec $(printf '%q' "$firstmate_bin")"
+for a in "$@"; do mate_cmd="$mate_cmd $(printf '%q' "$a")"; done
+
+# A new pane shell drops input typed before its startup ends, so prove it reads input first.
+# The typed echo never contains the marker; only the executed command prints it.
+run_when_ready() {
+  local pane=$1 cmd=$2 i
+  for i in $(seq 1 25); do
+    # shellcheck disable=SC2016
+    hr pane run "$pane" 'echo FM_READY_$((40+2))' >/dev/null
+    hr wait output "$pane" --match FM_READY_42 --timeout 800 >/dev/null 2>&1 && break
+    [ "$i" -lt 25 ] || die "the shell in pane $pane did not become ready"
+  done
+  hr pane run "$pane" "clear; $cmd" >/dev/null
+}
+
+# Herdr reads --ratio as the share kept by the original pane, not by the new one.
+split_fleet() {
+  local new
+  new=$(hr pane split "$1" --direction right --ratio "$ratio" --no-focus | jq -r '.result.pane.pane_id // empty')
+  [ -n "$new" ] || die "could not split the pane"
+  hr pane rename "$new" "$label" >/dev/null
+  run_when_ready "$new" "$fleet_cmd"
+}
+
+if [ "$inside" = 1 ]; then
+  have=$(hr pane list --workspace "${HERDR_WORKSPACE_ID:-}" |
+    jq -r --arg tab "${HERDR_TAB_ID:-}" --arg label "$label" \
+      '.result.panes[]? | select(.tab_id == $tab and .label == $label) | .pane_id' | head -n 1)
+  [ -n "$have" ] || split_fleet "$HERDR_PANE_ID"
+  eval "$mate_cmd"
+fi
+
+server_running() {
+  hr status --json 2>/dev/null | jq -e '.server.running == true' >/dev/null 2>&1
+}
+
+if ! server_running; then
+  if [ -n "$session" ] && [ "$session" != default ]; then
+    HERDR_SESSION="$session" nohup "$herdr_bin" server --session "$session" </dev/null >/dev/null 2>&1 &
+  else
+    nohup "$herdr_bin" server </dev/null >/dev/null 2>&1 &
+  fi
+  disown 2>/dev/null || true
+  for _ in $(seq 1 50); do
+    server_running && break
+    sleep 0.2
+  done
+  server_running || die "the herdr server did not start within 10 seconds"
+fi
+
+ws=$(hr workspace list | jq -r --arg label "$workspace_label" \
+  '.result.workspaces[]? | select(.label == $label) | .workspace_id' | head -n 1)
+
+if [ -z "$ws" ]; then
+  created=$(hr workspace create --cwd "$dir" --label "$workspace_label" --no-focus)
+  ws=$(printf '%s' "$created" | jq -r '.result.workspace.workspace_id // empty')
+  root=$(printf '%s' "$created" | jq -r '.result.root_pane.pane_id // empty')
+  [ -n "$ws" ] && [ -n "$root" ] || die "could not create the workspace"
+  split_fleet "$root"
+  run_when_ready "$root" "$mate_cmd"
+fi
+
+hr workspace focus "$ws" >/dev/null
+[ "$attach" = 1 ] || exit 0
+
+if [ ${#sflag[@]} -gt 0 ]; then
+  exec env HERDR_SESSION="$session" "$herdr_bin" "${sflag[@]}"
+fi
+exec "$herdr_bin"
