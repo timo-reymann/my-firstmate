@@ -61,13 +61,9 @@
 # captures in data/fm-composer-consolidation-audit-s1/report.md and
 # docs/verification/runtime-backends.md):
 #   bordered   - a complete boxed composer: a top border, side-bordered content
-#                rows of the same family, and a bottom border (grok, kimi,
-#                older claude). The bottom border may carry a TITLE (grok
-#                writes its model name there). A title embedded in the family's
-#                rule is tolerated at the aligned width, including Grok 1.0.44's
-#                rounded typed model/effort title with ` · always-approve`
-#                (Grok 1.0.77's `<version> Fast` model name too); Grok 1.0.5's
-#                typed title also permits its proven three-column overhang.
+#                rows of the same family, and a bottom border (kimi, older
+#                claude). The bottom border may carry a TITLE. A title embedded
+#                in the family's rule is tolerated at the aligned width.
 #   bare       - an agent prompt glyph row with no border at all (claude `❯`,
 #                codex `›`, muse `⟩`, cursor `→`). The agent glyph is itself the container
 #                proof; a bare SHELL glyph (`>` `$` `%` `#`) never is.
@@ -145,8 +141,8 @@
 #
 # GHOST/PLACEHOLDER TEXT (task afk-herdr-false-pending): a harness fills an
 # otherwise-empty composer with de-emphasized ghost text - claude's rotating
-# prompt suggestion, codex's idle suggestion, grok's placeholder, or cursor's
-# idle placeholder - which a
+# prompt suggestion, codex's idle suggestion, or cursor's idle placeholder -
+# which a
 # plain capture cannot tell apart from text a human typed. codex-cli 0.154.0
 # draws its `Ask Codex to do anything` placeholder as SGR-2 dim text after the
 # bare `›` glyph, which fm_composer_strip_ghost removes.
@@ -266,8 +262,8 @@ fm_composer_kiro_scope() {
 #     A reset (SGR 0) or normal-intensity (SGR 22) ends a dim run.
 #   - dark/muted TRUECOLOR foreground runs (SGR 38;2;r;g;b or the colon form
 #     38:2::r:g:b) whose perceived luminance (0.299R + 0.587G + 0.114B) is below
-#     FM_COMPOSER_GHOST_LUMA_MAX (default 128): how grok renders its placeholder
-#     and hint text. A reset (SGR 0), a default-foreground (SGR 39), any base
+#     FM_COMPOSER_GHOST_LUMA_MAX (default 128): de-emphasised placeholder and
+#     hint text drawn in a dark truecolor foreground. A reset (SGR 0), a default-foreground (SGR 39), any base
 #     foreground colour (30-37 / 90-97), or a lighter 38;2 foreground ends the
 #     dark-foreground run. This assumes a DARK terminal theme, the firstmate
 #     fleet reality, where real typed input is bright and only de-emphasised UI
@@ -456,7 +452,7 @@ fm_composer_strip_ghost() {
 # Matching a footer to confirm a keystroke landed is a different question from
 # asking what a worker is doing, and the two must not be conflated.
 # Delivery-only rendered busy footers per harness. claude/codex: "esc to
-# interrupt"; opencode: "esc interrupt"; pi: "Working..."; omp: "Working…"; grok: "Ctrl+c:cancel"; agy: "esc to cancel";
+# interrupt"; opencode: "esc interrupt"; pi: "Working..."; omp: "Working…"; agy: "esc to cancel";
 # devin: "esc twice to interrupt" and its "❭ Guide Devin while it works" working composer;
 # cortex: "(esc to interrupt)" on its spinner row and "Type to queue message..." in its working composer;
 # commandcode: "esc to interrupt" beside a bullet-framed elapsed cell.
@@ -491,7 +487,7 @@ fm_composer_strip_ghost() {
 # takes its pre-typing baseline with no harness, so without the literal an
 # already-busy kiro pane reads `idle` and wrongly arms the idle-to-busy
 # confirmation.
-FM_DELIVERY_BUSY_REGEX_DEFAULT='esc (to )?interrupt|Working(\.\.\.|…)|Ctrl\+c:cancel|ctrl\+c to stop|esc[[:space:]]+to[[:space:]]+cancel|esc twice to interrupt|^[[:space:]]*❭ Guide Devin while it works$|^[[:space:]]*›[[:space:]]+Kiro is working'
+FM_DELIVERY_BUSY_REGEX_DEFAULT='esc (to )?interrupt|Working(\.\.\.|…)|ctrl\+c to stop|esc[[:space:]]+to[[:space:]]+cancel|esc twice to interrupt|^[[:space:]]*❭ Guide Devin while it works$|^[[:space:]]*›[[:space:]]+Kiro is working'
 FM_DELIVERY_CLAUDE_BUSY_REGEX_DEFAULT='esc to interrupt|…[[:space:]]+\([0-9]+[smh]'
 # Devin 3000.11.1: the working composer and interrupt hint are independent
 # delivery signals. Neither is used as semantic worker-state evidence.
@@ -526,7 +522,6 @@ FM_DELIVERY_PI_BUSY_REGEX_DEFAULT='Working\.\.\.'
 # every omp busy and furniture read on Linux CI.
 FM_OMP_SPINNER_FRAMES_RE='(⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷)'
 FM_DELIVERY_OMP_BUSY_REGEX_DEFAULT='Working…|^[[:space:]]*'"$FM_OMP_SPINNER_FRAMES_RE"'[[:space:]]+[0-9]+[smh]'
-FM_DELIVERY_GROK_BUSY_REGEX_DEFAULT='Ctrl\+c:cancel'
 # cursor-agent's busy footer. The TOKEN is matched, not the spinner verb: the
 # same version rendered both `Working` and `Running` beside its braille spinner
 # in two consecutive turns, while `ctrl+c to stop` was present for the whole
@@ -584,7 +579,6 @@ fm_busy_lines_match() {  # [harness]
       opencode) regex=$FM_DELIVERY_OPENCODE_BUSY_REGEX_DEFAULT ;;
       pi|pi-signed) regex=$FM_DELIVERY_PI_BUSY_REGEX_DEFAULT ;;
       omp) regex=$FM_DELIVERY_OMP_BUSY_REGEX_DEFAULT ;;
-      grok) regex=$FM_DELIVERY_GROK_BUSY_REGEX_DEFAULT ;;
       agy) regex=$FM_DELIVERY_AGY_BUSY_REGEX_DEFAULT ;;
       polytoken) regex=$FM_DELIVERY_POLYTOKEN_BUSY_REGEX_DEFAULT ;;
       kiro) regex=$FM_DELIVERY_KIRO_BUSY_REGEX_DEFAULT ;;
@@ -611,10 +605,9 @@ FM_COMPOSER_AGENT_PROMPT_GLYPHS=$(printf '%s\n' '❯' '›' '⟩' '→' '❭')
 FM_COMPOSER_SHELL_PROMPT_GLYPHS=$(printf '%s\n' '>' '$' '%' '#')
 
 # The ONE fleet-wide idle-placeholder set: composer text a harness renders in
-# an EMPTY composer that a plain capture cannot tell from typed text. Grok's
-# bordered placeholder and opencode's left-bar hint (which uses either three
-# ASCII periods or U+2026 and continues with a rotating quoted suggestion,
-# hence the unanchored tail). cursor-agent renders
+# an EMPTY composer that a plain capture cannot tell from typed text. opencode's
+# left-bar hint uses either three ASCII periods or U+2026 and continues with a
+# rotating quoted suggestion, hence the unanchored tail. cursor-agent renders
 # two, both anchored: `Plan, search, build anything` in a fresh session and
 # `Add a follow-up` once a turn has completed (verified live on cursor-agent
 # 2026.08.11-e8db854, and again on 2026.10.19-6bbf2c4 as one fully dim run).
@@ -630,7 +623,7 @@ FM_COMPOSER_SHELL_PROMPT_GLYPHS=$(printf '%s\n' '>' '$' '%' '#')
 # screen with a raised one. kiro's bare `›` composer needs no entry here: see
 # FM_COMPOSER_HINTED_IDLE_RE_DEFAULT below. FM_COMPOSER_IDLE_RE overrides for an unverified harness;
 # matching is case-insensitive.
-FM_COMPOSER_IDLE_RE_DEFAULT='^Type a message\.\.\.$|^Ask anything(\.\.\.|…)|^Plan, search, build anything$|^Add a follow-up$|^Ask Devin to build features, fix bugs, or work on your code$|^Ask your question\.\.\.$|^Type your message\.\.\.$|^Type to queue message\.\.\.$'
+FM_COMPOSER_IDLE_RE_DEFAULT='^Ask anything(\.\.\.|…)|^Plan, search, build anything$|^Add a follow-up$|^Ask Devin to build features, fix bugs, or work on your code$|^Ask your question\.\.\.$|^Type your message\.\.\.$|^Type to queue message\.\.\.$'
 
 # KIRO ONLY (fm_composer_kiro_scope): idle placeholders that carry a submit hint
 # typed input never renders, so the whole anchored row proves an empty composer
@@ -737,13 +730,6 @@ FM_COMPOSER_CAPTURE_LINES=${FM_COMPOSER_CAPTURE_LINES:-20}
 # structural candidate so two unrelated transcript rules with an arbitrarily
 # large region between them can never be promoted into a composer.
 FM_COMPOSER_PI_MAX_LINES=${FM_COMPOSER_PI_MAX_LINES:-8}
-
-# Column overhang of Grok 1.0.5's titled bottom border over its aligned top
-# and content rows, captured live in issue #3436's 2026-09-14 idle repro
-# (see docs/verification/runtime-backends.md). Not re-verified against a live
-# Grok install since; may need to change if a future Grok release renders a
-# different overhang or scales it with title/model-name length.
-FM_COMPOSER_GROK_TITLE_OVERHANG=3
 
 # 0 when <content> is exactly one glyph drawn from <glyph-list>.
 _fm_composer_is_prompt_glyph() {  # <content> <glyph-list>
@@ -1208,8 +1194,7 @@ _fm_composer_scan_screen() {  # <plain-screen> <cursor-or-empty> [extract-wrap] 
             ascii) bottom_inner=${bottom_inner#+}; bottom_inner=${bottom_inner%+}; bottom_spaces=${bottom_inner//-/ } ;;
           esac
           if [ "$bottom_spaces" != "$top_spaces" ]; then
-            # A TITLED bottom border (grok writes its model name there) is
-            # tolerated when the inner still starts and ends with the family's
+            # A TITLED bottom border is tolerated when the inner still starts and ends with the family's
             # own rule glyph: the corners, family, indent, and every content
             # row's geometry were already proven. Anything else is ambiguity.
             if ! _fm_composer_titled_bottom_ok "$family" "$bottom_inner" "$top_spaces"; then
@@ -1299,26 +1284,6 @@ EOF
   fi
 }
 
-# 0 when <title> is exactly the typed Grok model/effort title shape. With
-# <fast>=1 the model may also carry Grok 1.0.77's single ` Fast` word, the
-# title it draws for grok-4.7-build-fast (`Grok 4.7 Fast (medium)`).
-_fm_composer_grok_typed_title_ok() {  # <title> [fast]
-  local title=$1 fast=${2:-0} effort model
-  case "$title" in
-    'Grok '*\ \(low\)) effort=low ;;
-    'Grok '*\ \(medium\)) effort=medium ;;
-    'Grok '*\ \(high\)) effort=high ;;
-    'Grok '*\ \(xhigh\)) effort=xhigh ;;
-    *) return 1 ;;
-  esac
-  model=${title#Grok }
-  model=${model%" ($effort)"}
-  [ "$fast" != 1 ] || model=${model%' Fast'}
-  [ -n "$model" ] || return 1
-  case "$model" in *[!A-Za-z0-9._-]*) return 1 ;; esac
-  return 0
-}
-
 # 0 when a rounded top rule's inner (corners already stripped) reads as a
 # printable ASCII TITLE embedded in the rule: it starts and ends with `─` and
 # the title between them is printable ASCII only, so a non-ASCII or malformed
@@ -1343,7 +1308,7 @@ _fm_composer_titled_rule_inner_ok() {  # <top-inner>
 # inner (corners already stripped) still starts and ends with the family's own
 # rule glyph, so the title is embedded IN the rule rather than replacing it.
 _fm_composer_titled_bottom_ok() {  # <family> <bottom-inner> <top-spaces>
-  local family=$1 inner=$2 expected=$3 dash spaces title
+  local family=$1 inner=$2 expected=$3 dash spaces
   fm_composer_normalize_trim_var inner
   case "$family" in
     rounded|light) dash='─' ;;
@@ -1356,41 +1321,12 @@ _fm_composer_titled_bottom_ok() {  # <family> <bottom-inner> <top-spaces>
     "$dash"*"$dash") ;;
     *) return 1 ;;
   esac
-  title=${inner//"$dash"/}
-  fm_composer_normalize_trim_var title
-  # Grok 1.0.44 appends its approval mode after the typed title, joined by a
-  # mid-dot. Only that exact suffix on a typed Grok title is known; the single
-  # mid-dot column is swapped for an ASCII one so it cannot survive as residue
-  # in the geometry comparison, while any other mid-dot stays non-space.
-  # Grok 1.0.77's ` Fast` model word was observed only with this suffix.
-  case "$title" in
-    *' · always-approve')
-      # Only the rounded family was observed for this approval-title shape.
-      [ "$family" = rounded ] || return 1
-      _fm_composer_grok_typed_title_ok "${title%' · always-approve'}" 1 || return 1
-      inner=${inner/' · always-approve'/' . always-approve'}
-      ;;
-  esac
   spaces=${inner//"$dash"/ }
   spaces=$(printf '%s' "$spaces" | LC_ALL=C sed 's/[!-~]/ /g')
   case "$spaces" in
     *[![:space:]]*) return 1 ;;
   esac
-  [ "$spaces" = "$expected" ] && return 0
-
-  # Grok 1.0.5 renders its real model title FM_COMPOSER_GROK_TITLE_OVERHANG
-  # columns wider than the otherwise aligned top and content rows (issue
-  # #3436; see the constant's definition for provenance and caveats). Accept
-  # only that exact overhang and only the typed Grok model/effort title
-  # shape, which Grok 1.0.44's approval suffix can never match: 1.0.44 draws
-  # that title at the aligned width, so no overhang shape carrying it has
-  # been observed and none is accepted. This keeps arbitrary malformed bottoms
-  # ambiguous while preserving the complete-box proof around a genuinely idle
-  # or pending Grok composer.
-  local overhang
-  overhang=$(printf '%*s' "$FM_COMPOSER_GROK_TITLE_OVERHANG" '')
-  [ "$spaces" = "$expected$overhang" ] || return 1
-  _fm_composer_grok_typed_title_ok "$title"
+  [ "$spaces" = "$expected" ]
 }
 
 # fm_composer_row_has_edge: 0 when the trimmed row starts or ends with a

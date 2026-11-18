@@ -25,8 +25,8 @@
 #   5. the harness must not already report natively: Claude Code >= 2.1.295
 #      and Pi >= 1.1.0 (herdr discussions #5073/#5106, verified 2026-10-30),
 #      codex-cli >= 0.163.0 (openai/codex#52725, first released in
-#      rust-v0.163.0, verified 2026-11-01), and Grok >= 1.0.67 and Muse Code
-#      >= 1.4.11 (the lowest versions verified reporting on Rex,
+#      rust-v0.163.0, verified 2026-11-01), and Muse Code >= 1.4.11 (the
+#      lowest version verified reporting on Rex,
 #      docs/verification/runtime-backends.md) send their own root records;
 #      a terminal keeps one root record per pane, so a firstmate record would
 #      only replace theirs. The probe runs --agent-bin; one of these
@@ -37,7 +37,7 @@
 # durable signals for the task and emits records to /dev/tty. Activity comes
 # from fm_busy_classify (bin/fm-busy-lib.sh owns every source: the busy-state
 # record, Cursor's transcript / Muse's session log, or the rendered pane
-# fm-backend.sh captures for Grok/Rovo/Agy). With known busy or idle activity,
+# fm-backend.sh captures for Rovo/Agy). With known busy or idle activity,
 # the mapping is, in order:
 #
 #   an open keyed needs-decision or blocked in state/<id>.status
@@ -260,7 +260,6 @@ osc_native() {
     claude) floor=2.1.295 ;;
     pi | pi-signed) floor=1.1.0 ;;
     codex) floor=0.163.0 ;;
-    grok) floor=1.0.67 ;;
     muse) floor=1.4.11 ;;
     *) return 1 ;;
   esac
