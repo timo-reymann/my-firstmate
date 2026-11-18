@@ -22,7 +22,8 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
   `--pane workers` lists the workers, needs-you first, each with its state symbol, kind, task, state, and the age of its last report; a working worker with no report for over an hour shows its age in yellow with `…`.
   Below the list is a live view of the selected worker's screen, read from Herdr about once a second.
   `enter` on a worker starts input mode: the live view title says `INPUT`, and every key you type, including `enter`, arrows, `ctrl` combinations and pasted text, goes to that worker's Herdr pane.
-  `ctrl+]` is the one key input mode keeps for itself; it leaves input mode, and the other keys work as before again.
+  `escape` (or `ctrl+]`) leaves input mode at once, and the other keys work as before again.
+  A worker also uses `escape` to interrupt, so pressing `escape` twice within 0.4 seconds sends one real `escape` to the worker and stays in input mode: the first press leaves, and the quick second press enters input mode again and sends it.
   A pane narrower than 34 columns folds the list to compact tabs and hides the live view.
   `--pane all`, the default, stacks both views in one terminal.
   Every state has its own symbol, so the screen also reads in 16 or 8 colours; `FIRSTMATE_TUI_COLORS` and `FIRSTMATE_TUI_THEME` override the detected colour depth and theme.
