@@ -104,7 +104,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shape (five tools plus the at-least-one harness) for explicit and resolved
 # selections alike.
 REQUIRED_TOOLS=()
-HARNESS_TOOLS=(claude codex opencode pi pi-signed grok kimi omp)
+HARNESS_TOOLS=(claude codex opencode pi pi-signed kimi omp)
 OPTIONAL_TOOLS=(tmux no-mistakes gh)
 # The server API revision Firstmate's rex adapter is verified against
 # (bin/backends/rex.sh's FM_BACKEND_REX_MIN_API).
