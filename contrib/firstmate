@@ -5,6 +5,25 @@ set -euo pipefail
 
 dir="${FIRSTMATE_DIR:-$HOME/workspace/firstmate}"
 claude_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+agent_file="${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/agent"
+
+agent="${FIRSTMATE_AGENT:-}"
+agent_source=FIRSTMATE_AGENT
+if [ -z "$agent" ] && [ -r "$agent_file" ]; then
+  agent=$(awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' "$agent_file")
+  agent_source=$agent_file
+fi
+if [ -z "$agent" ]; then
+  agent=claude
+  agent_source=default
+fi
+case "$agent" in
+  claude | opencode) ;;
+  *)
+    echo "firstmate: unsupported agent '$agent' (from $agent_source); use claude or opencode." >&2
+    exit 2
+    ;;
+esac
 
 [ -d "$dir" ] || { echo "firstmate: folder not found: $dir" >&2; exit 1; }
 cd "$dir"
@@ -20,18 +39,41 @@ if [ -z "${FIRSTMATE_FORCE:-}" ] && [ -r state/.lock ]; then
 fi
 
 prompt="${FIRSTMATE_PROMPT:-Lets start where we left off}"
-
-# Claude keeps the sessions of a folder as .jsonl files. The folder name is the path with / and . as -.
-sessions="$claude_dir/projects/$(pwd -P | sed 's#[/.]#-#g')"
 max_age="${FIRSTMATE_MAX_AGE_MIN:-120}"
-if [ -n "$(find "$sessions" -maxdepth 1 -name '*.jsonl' -mmin "-$max_age" 2>/dev/null | head -n 1)" ]; then
-  cmd=(claude --permission-mode auto --model sonnet --continue "$@" "$prompt")
+
+if [ "$agent" = claude ]; then
+  # Claude keeps the sessions of a folder as .jsonl files. The folder name is the path with / and . as -.
+  sessions="$claude_dir/projects/$(pwd -P | sed 's#[/.]#-#g')"
+  if [ -n "$(find "$sessions" -maxdepth 1 -name '*.jsonl' -mmin "-$max_age" 2>/dev/null | head -n 1)" ]; then
+    cmd=(claude --permission-mode auto --model sonnet --continue "$@" "$prompt")
+  else
+    cmd=(claude --permission-mode auto --model sonnet "$@" "$prompt")
+  fi
 else
-  cmd=(claude --permission-mode auto --model sonnet "$@" "$prompt")
+  # OpenCode 2 must run with --standalone so the home's plugins load in this process.
+  # OpenCode 1, or a version that cannot be read, takes neither --standalone nor the session probe.
+  major=$(opencode --version 2>/dev/null | sed -n 's/^[^0-9]*\([0-9][0-9]*\)\.[0-9][0-9]*\.[0-9][0-9]*.*/\1/p' | head -n 1 || true)
+  cmd=(opencode)
+  fresh=""
+  if [[ "$major" =~ ^[0-9]+$ ]] && [ "$major" -ge 2 ]; then
+    cmd+=(--standalone)
+    # The newest session of this folder; "updated" is in milliseconds.
+    updated=$(opencode session list --standalone -n 1 --format json 2>/dev/null |
+      sed -n 's/.*"updated"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1 || true)
+    if [[ "$updated" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - updated / 1000)) -le $((max_age * 60)) ]; then
+      fresh=1
+    fi
+  fi
+  [ -z "$fresh" ] || cmd+=(--continue)
+  cmd+=("$@" --prompt "$prompt")
 fi
 
 if [ -n "${FIRSTMATE_DRY_RUN:-}" ]; then
-  printf 'cd %s\nCLAUDE_CONFIG_DIR=%s' "$dir" "$claude_dir"
+  if [ "$agent" = claude ]; then
+    printf 'cd %s\nCLAUDE_CONFIG_DIR=%s' "$dir" "$claude_dir"
+  else
+    printf 'cd %s\n' "$dir"
+  fi
   printf ' %q' "${cmd[@]}"
   printf '\n'
   exit 0
