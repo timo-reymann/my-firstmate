@@ -10,7 +10,10 @@ Usage: firstmate-herdr [--no-attach] [--ratio SHARE] [--activity-ratio SHARE] [f
   One tab holds three panes: the activity across the top, the first mate
   bottom left, and the workers bottom right (both views are firstmate-tui).
   Inside Herdr: builds the layout around the current pane, then runs the first mate here.
-  Outside Herdr: builds a "firstmate" workspace in the session, then attaches to it.
+  Outside Herdr: builds a "firstmate-screen" workspace in the session, then attaches to it;
+  the workers keep their own "firstmate" workspace.
+  When another first mate session holds the home lock, the left pane says which pid
+  and how to start the first mate there instead.
   --no-attach             build the layout and stop (outside Herdr only)
   --ratio SHARE           share of the width for the first mate pane (default 0.6)
   --activity-ratio SHARE  share of the height for the activity pane (default 0.28)
@@ -28,7 +31,8 @@ activity_ratio=0.28
 attach=1
 label=firstmate-workers
 activity_label=firstmate-activity
-workspace_label=firstmate
+# The workers run in the "firstmate" workspace (bin/backends/herdr.sh), so the screen needs its own label.
+workspace_label=firstmate-screen
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -74,8 +78,35 @@ view_env="FIRSTMATE_DIR=$(printf '%q' "$dir")"
 tui_cmd="$view_env exec $(printf '%q' "$uv_bin") run --script $(printf '%q' "$tui_bin")"
 workers_cmd="$tui_cmd --pane workers"
 activity_cmd="$tui_cmd --pane activity"
-mate_cmd="exec $(printf '%q' "$firstmate_bin")"
+# No exec: when the first mate stops or refuses to start, its pane keeps the message and a shell.
+mate_cmd=$(printf '%q' "$firstmate_bin")
 for a in "$@"; do mate_cmd="$mate_cmd $(printf '%q' "$a")"; done
+
+# lock_holder: the pid of a live session that holds the home lock (line 1 of state/.lock), or nothing.
+lock_holder() {
+  local pid
+  [ -r "$dir/state/.lock" ] || return 0
+  pid=$(head -n 1 "$dir/state/.lock" 2>/dev/null)
+  [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && printf '%s' "$pid"
+  return 0
+}
+
+# lock_line <pid>: the one line shown instead of the first mate while another session holds the lock.
+lock_line() {
+  printf 'firstmate-herdr: the first mate already runs as pid %s; quit it there, then run %s here (or FIRSTMATE_FORCE=1 %s for a second one).' \
+    "$1" "$mate_cmd" "$mate_cmd"
+}
+
+# start_mate <pane>: runs the first mate in the pane, or shows the lock line there.
+start_mate() {
+  local holder
+  holder=$(lock_holder)
+  if [ -n "$holder" ]; then
+    run_when_ready "$1" "printf '%s\\n' $(printf '%q' "$(lock_line "$holder")")"
+  else
+    run_when_ready "$1" "$mate_cmd"
+  fi
+}
 
 # A new pane shell drops input typed before its startup ends, so prove it reads input first.
 # The typed echo never contains the marker; only the executed command prints it.
@@ -117,7 +148,9 @@ if [ "$inside" = 1 ]; then
     jq -r --arg tab "${HERDR_TAB_ID:-}" --arg label "$label" \
       '.result.panes[]? | select(.tab_id == $tab and .label == $label) | .pane_id' | head -n 1)
   [ -n "$have" ] || build "$HERDR_PANE_ID"
-  eval "$mate_cmd"
+  holder=$(lock_holder)
+  [ -z "$holder" ] || { lock_line "$holder" >&2; echo >&2; exit 1; }
+  eval "exec $mate_cmd"
 fi
 
 server_running() {
@@ -147,7 +180,7 @@ if [ -z "$ws" ]; then
   root=$(printf '%s' "$created" | jq -r '.result.root_pane.pane_id // empty')
   [ -n "$ws" ] && [ -n "$root" ] || die "could not create the workspace"
   build "$root"
-  run_when_ready "$root" "$mate_cmd"
+  start_mate "$root"
 fi
 
 hr workspace focus "$ws" >/dev/null
