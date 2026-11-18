@@ -33,9 +33,10 @@ TMP_ROOT=$(fm_test_tmproot fm-bootstrap-tests)
 # Hermetic runtime-backend detection. These cases pin the backend per-home via
 # config/backend; the dev shell's ambient runtime markers ($TMUX inside tmux,
 # HERDR_ENV inside herdr) must not leak into
-# fm_backend_name and flip a default-backend case onto a non-tmux backend. Unset
-# them once so the suite resolves the tmux reference backend unless a case says
-# otherwise - the same hermeticity discipline as pinning PATH via BASE_PATH.
+# fm_backend_name and flip a default-backend case onto a detected backend. Unset
+# them once so the suite resolves the default backend (herdr,
+# FM_BACKEND_DEFAULT_NAME in bin/fm-backend.sh) unless a case says otherwise -
+# the same hermeticity discipline as pinning PATH via BASE_PATH.
 unset TMUX TMUX_PANE HERDR_ENV HERDR_PANE_ID HERDR_SESSION HERDR_SOCKET_PATH 2>/dev/null || true
 
 # A case that simulates a tool as absent removes it from the fake bin directory,
@@ -48,11 +49,19 @@ unset TMUX TMUX_PANE HERDR_ENV HERDR_PANE_ID HERDR_SESSION HERDR_SOCKET_PATH 2>/
 # case keeps bare BASE_PATH.
 
 # A fake toolchain where every required tool is present and gh is authenticated.
+# It holds the tools of the default backend (herdr, jq) and of tmux, so a case
+# that sets no config/backend and a case that selects tmux both start complete.
+# jq is the host's real jq, not a stub: bootstrap also uses jq outside the
+# backend check, and a stub that always exits 0 would change those results.
 # treehouse's `get --help` advertises --lease only when FM_FAKE_TREEHOUSE_LEASE_HELP=1.
 make_fake_toolchain() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
-  fm_fake_exit0 "$fakebin" tmux node chrome-devtools-axi
+  fm_fake_exit0 "$fakebin" tmux herdr node chrome-devtools-axi
+  # A wrapper file, not a symlink: a helper that later stubs jq with
+  # fm_fake_exit0 then replaces this file instead of writing through to the host.
+  printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$(command -v jq)" > "$fakebin/jq"
+  chmod +x "$fakebin/jq"
   fm_fake_version_tool "$fakebin" lavish-axi FM_FAKE_LAVISH_AXI_VERSION 0.1.80
   cat > "$fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
@@ -889,6 +898,7 @@ test_session_provider_backends_gate_own_cli_not_tmux() {
     printf '%s\n' "$backend" > "$case_dir/home/config/backend"
     # Toolchain has jq + treehouse but NOT the session CLI and NOT tmux.
     fakebin=$(make_fake_toolchain_no_tmux "$case_dir")
+    rm -f "$fakebin/$cli"
     out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
       FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
     case "$backend" in
