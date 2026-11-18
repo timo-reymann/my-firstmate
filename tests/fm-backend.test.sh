@@ -151,17 +151,65 @@ test_backend_name_precedence() {
   # source time, from FM_CONFIG_OVERRIDE); a later FM_CONFIG_OVERRIDE=... prefix
   # on the function call itself does not re-bind it, so these calls set
   # FM_BACKEND_CONFIG_DIR directly.
-  [ "$(unset TMUX HERDR_ENV; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name)" = tmux ] \
-    || fail "fm_backend_name should default to tmux with no env/config/detection markers"
+  # This fork's tracked default is herdr, so each explicit step below picks a
+  # backend that differs from the step after it and from the default.
+  [ "$(unset TMUX HERDR_ENV; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name)" = herdr ] \
+    || fail "fm_backend_name should default to herdr with no env/config/detection markers"
 
   printf 'tmux\n' > "$cfg/backend"
   [ "$(unset TMUX HERDR_ENV; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name)" = tmux ] \
-    || fail "fm_backend_name should read config/backend"
+    || fail "fm_backend_name should read config/backend ahead of the herdr default"
 
-  [ "$(unset TMUX HERDR_ENV; FM_BACKEND=tmux FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name)" = tmux ] \
+  [ "$(unset TMUX HERDR_ENV; FM_BACKEND=orca FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name)" = orca ] \
     || fail "FM_BACKEND env should win over config/backend"
 
-  pass "fm_backend_name: FM_BACKEND env > config/backend > default tmux"
+  pass "fm_backend_name: FM_BACKEND env > config/backend > default herdr"
+}
+
+# fm_backend_resolve records which step chose the backend, and
+# fm_backend_default_check refuses only a default whose tools are missing.
+# The default check runs with PATH set to a directory with no herdr, jq, or
+# treehouse, so the case never depends on what the host has installed and never
+# reaches a real herdr.
+test_backend_default_check() {
+  local dir cfg nobin out rc
+
+  dir="$TMP_ROOT/default-check"; cfg="$dir/config"; nobin="$dir/nobin"
+  mkdir -p "$cfg" "$nobin"
+
+  out=$(unset TMUX HERDR_ENV; FM_BACKEND=''; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; printf '%s %s' "$FM_BACKEND_RESOLVED" "$FM_BACKEND_ORIGIN")
+  [ "$out" = "herdr default" ] || fail "nothing selected should resolve 'herdr default', got '$out'"
+
+  out=$(unset HERDR_ENV; TMUX='fake,1,0' FM_BACKEND=''; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; printf '%s %s' "$FM_BACKEND_RESOLVED" "$FM_BACKEND_ORIGIN")
+  [ "$out" = "tmux detected" ] || fail "\$TMUX should resolve 'tmux detected', got '$out'"
+
+  out=$(unset TMUX HERDR_ENV; FM_BACKEND=tmux; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; printf '%s %s' "$FM_BACKEND_RESOLVED" "$FM_BACKEND_ORIGIN")
+  [ "$out" = "tmux explicit" ] || fail "FM_BACKEND=tmux should resolve 'tmux explicit', got '$out'"
+
+  rc=0
+  out=$(unset TMUX HERDR_ENV; FM_BACKEND=''; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; PATH="$nobin" fm_backend_default_check 2>&1) || rc=$?
+  [ "$rc" -eq 1 ] || fail "a missing default herdr must be refused, got rc=$rc"$'\n'"$out"
+  case "$out" in
+    *"default backend 'herdr'"*"needs: herdr jq treehouse"*"FM_BACKEND=tmux"*) ;;
+    *) fail "the refusal must name the herdr default, the missing tools, and how to select tmux"$'\n'"$out" ;;
+  esac
+
+  # An explicit or detected choice keeps its own checks; the default check
+  # stays silent even with the same tools missing.
+  out=$(unset TMUX HERDR_ENV; FM_BACKEND=herdr; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; PATH="$nobin" fm_backend_default_check 2>&1) \
+    || fail "an explicit herdr must not be refused by the default check"$'\n'"$out"
+  [ -z "$out" ] || fail "the default check must stay silent for an explicit backend"$'\n'"$out"
+  out=$(unset TMUX; HERDR_ENV=1 FM_BACKEND=''; FM_BACKEND_CONFIG_DIR="$cfg"
+    fm_backend_resolve; PATH="$nobin" fm_backend_default_check 2>&1) \
+    || fail "a detected herdr must not be refused by the default check"$'\n'"$out"
+  [ -z "$out" ] || fail "the default check must stay silent for a detected backend"$'\n'"$out"
+
+  pass "fm_backend_default_check: a missing default herdr is refused by name, explicit and detected choices pass"
 }
 
 # fm_backend_detect: environment-marker runtime auto-detection (mirrors
@@ -211,7 +259,7 @@ test_backend_name_autodetect_notice() {
 
   : > "$errfile"
   out=$(unset TMUX HERDR_ENV; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$cfg" fm_backend_name 2>"$errfile")
-  [ "$out" = tmux ] || fail "fm_backend_name should default to tmux with no detection markers, got '$out'"
+  [ "$out" = herdr ] || fail "fm_backend_name should default to herdr with no detection markers, got '$out'"
   [ -s "$errfile" ] && fail "fm_backend_name must stay silent with no detection markers"$'\n'"$(cat "$errfile")"
 
   : > "$errfile"
@@ -1049,7 +1097,7 @@ test_spawn_default_backend_writes_no_meta_field() {
     "$ROOT/bin/fm-spawn.sh" "$id" "$proj" claude --mode no-mistakes --yolo off --backend tmux 2>&1)
   expect_code 0 $? "explicit --backend tmux should spawn successfully"$'\n'"$out"
   assert_no_grep 'backend=' "$state/$id.meta" \
-    "an explicit --backend tmux (the default) must not write backend= to meta (P1 compatibility contract)"
+    "an explicit --backend tmux must not write backend= to meta (P1 compatibility contract: missing means tmux)"
   rm -rf "/tmp/fm-$id"
   pass "fm-spawn.sh: an explicit --backend tmux resolves silently and writes no backend= (missing means tmux)"
 }
@@ -1092,7 +1140,7 @@ test_spawn_autodetect_nesting_resolves_tmux_silently() {
   # configured, so auto-detect runs. $TMUX and HERDR_ENV=1 are both present
   # (tmux nested inside a herdr pane) - the full fm-spawn.sh pipeline, not just
   # fm_backend_name, must resolve this to tmux and stay completely silent about
-  # it (today's default path, byte-identical).
+  # it (the meta-less tmux path, byte-identical).
   out=$(PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$ROOT" HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' \
     FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$TMP_ROOT/unused-projects" FM_SPAWN_NO_GUARD=1 TMUX="fake,1,0" HERDR_ENV=1 \
@@ -1127,6 +1175,7 @@ fi
 backend_base_ref >/dev/null
 
 test_backend_name_precedence
+test_backend_default_check
 test_backend_detect_precedence
 test_backend_name_autodetect_notice
 test_backend_name_explicit_beats_detection
