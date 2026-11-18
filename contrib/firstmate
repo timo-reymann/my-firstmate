@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 # Opens the firstmate session: resumes the latest one if it is fresh, or starts a new one. FIRSTMATE_DRY_RUN=1 prints only.
 # A session counts as fresh when it changed in the last FIRSTMATE_MAX_AGE_MIN minutes (default 120).
+# When Herdr, jq and uv are usable it hands over to the firstmate screen (firstmate-herdr next to this script),
+# which runs the first mate in its left pane; --plain or FIRSTMATE_HERDR=0 keeps the session in this terminal.
 set -euo pipefail
+
+plain=""
+if [ "${1:-}" = --plain ]; then
+  plain=1
+  shift
+elif [ "${FIRSTMATE_HERDR:-}" = 0 ]; then
+  plain=1
+fi
 
 dir="${FIRSTMATE_DIR:-$HOME/workspace/firstmate}"
 claude_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -26,6 +36,27 @@ case "$agent" in
 esac
 
 [ -d "$dir" ] || { echo "firstmate: folder not found: $dir" >&2; exit 1; }
+
+# The screen starts the first mate again with --plain, so this hand-over runs once.
+if [ -z "$plain" ]; then
+  herdr_launcher="$(cd "$(dirname "$0")" && pwd)/firstmate-herdr"
+  if [ -f "$herdr_launcher" ]; then
+    why=$(bash "$herdr_launcher" --check 2>&1 >/dev/null) && why="" || why=${why:-firstmate-herdr --check failed}
+  else
+    why="firstmate-herdr not found next to firstmate"
+  fi
+  if [ -z "$why" ]; then
+    if [ -n "${FIRSTMATE_DRY_RUN:-}" ]; then
+      printf 'bash %q --' "$herdr_launcher"
+      for a in "$@"; do printf ' %q' "$a"; done
+      printf '\n'
+      exit 0
+    fi
+    exec bash "$herdr_launcher" -- "$@"
+  fi
+  why=$(printf '%s\n' "$why" | head -n 1)
+  echo "firstmate: plain mode, ${why#firstmate-herdr: } (--plain or FIRSTMATE_HERDR=0 skips this check)" >&2
+fi
 cd "$dir"
 
 # One live session per home. Line 1 of state/.lock is the pid of the session that owns it.

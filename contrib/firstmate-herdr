@@ -6,15 +6,17 @@ set -u
 
 usage() {
   cat <<'USAGE'
-Usage: firstmate-herdr [--no-attach] [--ratio SHARE] [--activity-ratio SHARE] [first mate arguments...]
+Usage: firstmate-herdr [--no-attach] [--check] [--ratio SHARE] [--activity-ratio SHARE] [first mate arguments...]
   One tab holds three panes: the activity across the top, the first mate
   bottom left, and the workers bottom right (both views are firstmate-tui).
   Inside Herdr: builds the layout around the current pane, then runs the first mate here.
   Outside Herdr: builds a "firstmate-screen" workspace in the session, then attaches to it;
   the workers keep their own "firstmate" workspace.
+  The first mate pane runs "firstmate --plain"; FIRSTMATE_FORCE=1 starts it despite a live session.
   When another first mate session holds the home lock, the left pane says which pid
   and how to start the first mate there instead.
   --no-attach             build the layout and stop (outside Herdr only)
+  --check                 check that Herdr, jq, uv and firstmate-tui are usable, print why not, and stop
   --ratio SHARE           share of the width for the first mate pane (default 0.6)
   --activity-ratio SHARE  share of the height for the activity pane (default 0.28)
 USAGE
@@ -29,6 +31,7 @@ session="${FM_HERDR_SESSION:-}"
 ratio=0.6
 activity_ratio=0.28
 attach=1
+check=0
 label=firstmate-workers
 activity_label=firstmate-activity
 # The workers run in the "firstmate" workspace (bin/backends/herdr.sh), so the screen needs its own label.
@@ -37,6 +40,7 @@ workspace_label=firstmate-screen
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-attach) attach=0; shift ;;
+    --check) check=1; shift ;;
     --ratio) ratio="${2:?--ratio needs a value}"; shift 2 ;;
     --activity-ratio) activity_ratio="${2:?--activity-ratio needs a value}"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
@@ -47,8 +51,8 @@ done
 
 die() { echo "firstmate-herdr: $*" >&2; exit 1; }
 
-command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v "$herdr_bin" >/dev/null 2>&1 || die "herdr is not installed (https://herdr.dev)"
+command -v jq >/dev/null 2>&1 || die "jq is required"
 [ -d "$dir" ] || die "firstmate folder not found: $dir"
 
 uv_bin=$(command -v uv 2>/dev/null || true)
@@ -60,6 +64,7 @@ case "${protocol:-0}" in
   '' | *[!0-9]*) protocol=0 ;;
 esac
 [ "$protocol" -ge 14 ] || die "herdr protocol 14 or newer is required (found ${protocol:-none}); see https://herdr.dev"
+[ "$check" = 0 ] || exit 0
 
 sflag=()
 inside=0
@@ -79,12 +84,20 @@ tui_cmd="$view_env exec $(printf '%q' "$uv_bin") run --script $(printf '%q' "$tu
 workers_cmd="$tui_cmd --pane workers"
 activity_cmd="$tui_cmd --pane activity"
 # No exec: when the first mate stops or refuses to start, its pane keeps the message and a shell.
-mate_cmd=$(printf '%q' "$firstmate_bin")
+# --plain keeps firstmate from handing over to this screen again.
+mate_cmd="$(printf '%q' "$firstmate_bin") --plain"
 for a in "$@"; do mate_cmd="$mate_cmd $(printf '%q' "$a")"; done
+# A pane shell does not inherit this environment, so the first mate settings that are set go with the command.
+mate_env=""
+for v in FIRSTMATE_DIR FIRSTMATE_AGENT FIRSTMATE_FORCE FIRSTMATE_MAX_AGE_MIN FIRSTMATE_PROMPT CLAUDE_CONFIG_DIR XDG_CONFIG_HOME; do
+  [ -z "${!v:-}" ] || mate_env="$mate_env$v=$(printf '%q' "${!v}") "
+done
 
 # lock_holder: the pid of a live session that holds the home lock (line 1 of state/.lock), or nothing.
+# FIRSTMATE_FORCE skips the lock, as it does for firstmate.
 lock_holder() {
   local pid
+  [ -z "${FIRSTMATE_FORCE:-}" ] || return 0
   [ -r "$dir/state/.lock" ] || return 0
   pid=$(head -n 1 "$dir/state/.lock" 2>/dev/null)
   [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && printf '%s' "$pid"
@@ -104,7 +117,7 @@ start_mate() {
   if [ -n "$holder" ]; then
     run_when_ready "$1" "printf '%s\\n' $(printf '%q' "$(lock_line "$holder")")"
   else
-    run_when_ready "$1" "$mate_cmd"
+    run_when_ready "$1" "$mate_env$mate_cmd"
   fi
 }
 
