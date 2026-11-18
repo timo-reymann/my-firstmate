@@ -119,6 +119,7 @@ STATES: Dict[str, Tuple[str, str, Optional[str]]] = {
     "decision": ("?", "decision", "badge_decision"),
     "blocked": ("✖", "blocked", "badge_blocked"),
     "failed": ("✖", "failed", "badge_blocked"),
+    "stale-head": ("⟳", "new head", "badge_decision"),
     "pr": ("⇡", "PR ready", "badge_pr"),
     "working": ("●", "working", None),
     "paused": ("‖", "paused", None),
@@ -126,8 +127,17 @@ STATES: Dict[str, Tuple[str, str, Optional[str]]] = {
     "done": ("✓", "done", None),
     "note": ("·", "", None),
 }
-STATE_ROLES = {"failed": "blocked", "parked": "paused", "note": "dim"}
-NEEDS_YOU = ("decision", "blocked", "failed", "pr")
+STATE_ROLES = {
+    "failed": "blocked",
+    "stale-head": "decision",
+    "parked": "paused",
+    "note": "dim",
+}
+NEEDS_YOU = ("decision", "blocked", "failed", "stale-head", "pr")
+# A one-line hint the live view shows under the worker head for a state that needs it.
+STATE_HINTS = {
+    "stale-head": "ready, but the head changed after approval: re-approve it or start a fresh task",
+}
 # kind: (glyph, word, palette role)
 KINDS: Dict[str, Tuple[str, str, str]] = {
     "ship": ("▲", "ship", "ship"),
@@ -611,14 +621,14 @@ def parse_snapshot(text: str) -> Dict[str, Any]:
 
 
 def worker_state(task: Dict[str, Any], merged: Iterable[str] = ()) -> str:
-    """The displayed state: decision, blocked, failed, PR ready, then the current state."""
+    """The displayed state: decision, blocked, failed, head changed, PR ready, then the current state."""
     if task["decision"]:
         return "decision"
     if task["blocked"]:
         return "blocked"
     raw = task["raw_state"]
-    if raw == "failed":
-        return "failed"
+    if raw in ("failed", "stale-head"):
+        return raw
     if task["pr"] and task["id"] not in merged:
         return "pr"
     return raw if raw in ("working", "paused", "parked", "done") else "note"
@@ -629,7 +639,7 @@ def attention_key(worker: Dict[str, Any]) -> str:
     return "%s|%s|%s" % (worker["state"], worker["note"], worker["pr"])
 
 
-RANKS = {"decision": 0, "blocked": 1, "failed": 1, "pr": 2}
+RANKS = {"decision": 0, "blocked": 1, "failed": 1, "stale-head": 1, "pr": 2}
 LATER_RANKS = {"working": 10, "paused": 11, "parked": 11, "note": 12, "done": 13}
 
 
@@ -1014,6 +1024,9 @@ def live_box(
         if project:
             head += " · " + project
         body.append(Line().add(fit(head, inner), kind_role + "+bold"))
+    hint = STATE_HINTS.get(worker.get("state", ""))
+    if hint and rows >= 4:
+        body.append(Line().add(fit(" " + hint, inner), state_role(worker["state"])))
     content = rows - len(body) - (1 if rows >= 2 else 0)
     if content > 0:
         if live:
