@@ -100,28 +100,77 @@ assert events == [] and present is False
   pass "ledger read drops a partial last line and a cut first line, and reports a missing file"
 }
 
-test_snapshot_parsing() {
+test_palette_and_symbols() {
+  py '
+states = ("working", "paused", "decision", "blocked", "done", "pr")
+symbols = [tui.STATES[s][0] for s in states]
+assert len(set(symbols)) == len(symbols), symbols
+assert [tui.kind_info(k)[0] for k in ("ship", "scout", "secondmate")] == ["▲", "◇", "◆"]
+assert tui.kind_info("other")[1] == "task"
+# Every role has a style at every depth; 16 and 8 colours use ANSI indexes only.
+for role in tui.PALETTE:
+    for depth in tui.DEPTHS:
+        for theme in tui.THEMES:
+            style = tui.style_for(role, depth, theme)
+            if depth in ("16", "8"):
+                assert "#" not in style, (role, depth, style)
+assert tui.style_for("decision", "16") == "bold color(11)"
+assert tui.style_for("decision", "8") == "bold color(3)"
+assert tui.style_for("done", "8") == "dim color(7)"
+assert tui.style_for("selected", "16") == "bold color(15) on color(4)"
+assert tui.style_for("selected", "8") == "bold color(7) on color(4)"
+assert tui.style_for("badge_blocked", "8") == "bold color(7) on color(1)"
+assert tui.style_for("working", "truecolor", "light", "panel") == "bold #146c2e on #f0ece2"
+assert tui.color_depth({"FIRSTMATE_TUI_COLORS": "8", "COLORTERM": "truecolor"}) == "8"
+assert tui.color_depth({"COLORTERM": "truecolor"}) == "truecolor"
+assert tui.color_depth({"TERM": "xterm-256color"}) == "256"
+assert tui.color_depth({"TERM": "xterm"}, 8) == "8"
+assert tui.color_depth({"TERM": "xterm"}) == "16"
+assert tui.color_theme({"COLORFGBG": "0;15"}) == "light"
+assert tui.color_theme({"COLORFGBG": "15;0"}) == "dark"
+assert tui.color_theme({"FIRSTMATE_TUI_THEME": "light"}) == "light"
+assert tui.fit("abcdef", 4) == "abc…" and tui.fit("ab", 4) == "ab  "
+assert tui.cell_width("日本") == 4
+' || fail "palette"
+  pass "every state has its own symbol, and the palette maps to 16 and 8 colours and both themes"
+}
+
+test_workers_sorting_labels_and_read_marks() {
   local snap
   snap=$(make_home "$TMP_ROOT/parse")
   SNAP="$snap" py '
 import os
 snap = tui.parse_snapshot(open(os.environ["SNAP"]).read())
-ids = [t["id"] for t in snap["tasks"]]
-assert ids == ["audit-cache", "stuck-build", "tidy-docs", "fix-login"], ids
 assert snap["state_dir"].endswith("/parse/state")
-states = {t["id"]: tui.display_state(t) for t in snap["tasks"]}
-assert states == {"audit-cache": "needs-decision", "stuck-build": "blocked", "tidy-docs": "working", "fix-login": "done"}, states
-assert tui.needs_you(snap["tasks"]) == [
-  ("PR ready", "fix-login", "https://github.com/acme/webapp/pull/7"),
-  ("decision", "audit-cache", ""),
-  ("blocked", "stuck-build", ""),
-]
-assert [t["id"] for t in tui.filter_tasks(snap["tasks"], "working")] == ["tidy-docs"]
-assert len(tui.filter_tasks(snap["tasks"], tui.FILTER_NEEDS_YOU)) == 3
-assert tui.filter_choices(snap["tasks"])[:2] == ["all", "needs you"]
+workers = tui.build_workers(snap["tasks"], [], {})
+assert [w["id"] for w in workers] == ["audit-cache", "stuck-build", "fix-login", "tidy-docs"], [w["id"] for w in workers]
+assert [w["state"] for w in workers] == ["decision", "blocked", "pr", "working"]
+assert tui.unread_count(workers) == 3
+assert workers[3]["quiet"] and not workers[0]["quiet"]
+wide = tui.worker_row(workers[0], 46, False, tui.task_column(workers, 46)).plain()
+assert wide.startswith("▌ ? ◇ scout audit-cache") and "decision" in wide and "30s" in wide, wide
+narrow = tui.worker_row(workers[0], 36, False, tui.task_column(workers, 36)).plain()
+assert "scout" not in narrow and "? ◇ audit-cache" in narrow, narrow
+quiet = tui.worker_row(workers[3], 46, True).plain()
+assert quiet.startswith("›") and "2h…" in quiet, quiet
+assert tui.rail_row(workers[0], 20, False).plain() == "▌?◇ audit-cache     "
+# A merged PR is not shown as ready.
+merged = [{"event": "task.merged", "task": "fix-login", "ts": 1}]
+assert {w["id"]: w["state"] for w in tui.build_workers(snap["tasks"], merged, {})}["fix-login"] == "done"
+# A read mark sorts the item after the unread ones until its state, report or PR changes.
+read = {"audit-cache": tui.attention_key(workers[0])}
+again = tui.build_workers(snap["tasks"], [], read)
+assert [w["id"] for w in again][:3] == ["stuck-build", "fix-login", "audit-cache"]
+assert tui.unread_count(again) == 2
+changed = [dict(t, note="new report") if t["id"] == "audit-cache" else t for t in snap["tasks"]]
+assert tui.build_workers(changed, [], read)[0]["unread"]
+assert tui.next_needs(again, 0) == 1
 assert [tui.format_age(s) for s in (None, 5, 61, 7300, 90000)] == ["-", "5s", "1m", "2h", "1d"]
+assert tui.herdr_target("default:w1:p2") == ("w1:p2", [])
+assert tui.herdr_target("lab:w1:p2") == ("w1:p2", ["--session", "lab"])
+assert tui.herdr_target("") is None
 odd = tui.parse_snapshot("{\"tasks\": [7, {\"id\": \"bare\"}]}")
-assert odd["tasks"][0]["state"] == "unknown" and odd["tasks"][0]["kind"] == "task"
+assert odd["tasks"][0]["raw_state"] == "unknown" and odd["tasks"][0]["kind"] == "task"
 for bad in ("[]", "not json"):
     try:
         tui.parse_snapshot(bad)
@@ -129,54 +178,128 @@ for bad in ("[]", "not json"):
         pass
     else:
         raise AssertionError(bad)
-' || fail "snapshot parsing"
-  pass "snapshot parsing orders tasks, finds what needs attention, and filters by state"
+' || fail "workers"
+  pass "workers sort needs-you first, draw state, kind and age, and a read mark lasts until the item changes"
 }
 
-test_once_frame() {
-  local home="$TMP_ROOT/frame" now i line
+test_shared_selection_file() {
+  local dir="$TMP_ROOT/shared"
+  mkdir -p "$dir"
+  DIR="$dir" py '
+import os, json
+path = os.path.join(os.environ["DIR"], "firstmate-tui.json")
+assert tui.load_shared(path) == {"selected": None, "filter": "all", "read": {}}
+for text in ("", "[]", "{\"filter\": \"zoom\", \"selected\": 3, \"read\": [1]}"):
+    assert tui.parse_shared(text) == {"selected": None, "filter": "all", "read": {}}, text
+tui.save_shared(path, {"selected": "a", "read": {"a": "k", "gone": "k"}}, ["a", "b"])
+tui.save_shared(path, {"filter": "task"}, ["a", "b"])
+data = json.load(open(path))
+assert data == {"v": 1, "selected": "a", "filter": "task", "read": {"a": "k"}}, data
+assert sorted(os.listdir(os.environ["DIR"])) == ["firstmate-tui.json"]
+' || fail "shared file"
+  pass "the shared selection file tolerates bad content, merges changes, drops departed tasks, and leaves no temp file"
+}
+
+# fake_screen: the live view reads ANSI lines from this herdr, never from a real one.
+fake_screen() {
+  cat > "$TMP_ROOT/screen-herdr" <<'EOF'
+#!/usr/bin/env bash
+[ "$1 $2" = "pane read" ] || exit 1
+printf '\033[32m●\033[0m worker line one\n\033[1;33mneeds-decision\033[0m worker line two\n\n'
+EOF
+  chmod +x "$TMP_ROOT/screen-herdr"
+}
+
+# frame <home> <herdr> [args...]: runs --once with a chosen herdr; sets OUT and RC.
+frame() {
+  local home=$1 herdr=$2
+  shift 2
+  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$herdr" \
+    python3 -B "$TUI" --once "$@" 2>&1)
+  RC=$?
+}
+
+max_width() {
+  printf '%s\n' "$1" | python3 -B -c 'import sys; print(max(len(l.rstrip("\n")) for l in sys.stdin))'
+}
+
+test_once_activity_frame() {
+  local home="$TMP_ROOT/activity" now i
   make_home "$home" >/dev/null
   now=$(date +%s)
   {
-    for i in $(seq 1 40); do
+    for i in $(seq 1 20); do
       printf '{"v":1,"ts":%s,"event":"task.status","task":"tidy-docs","state":"working","key":null,"text":" step %s"}\n' "$((now - 100 + i))" "$i"
     done
+    printf '{"v":1,"ts":%s,"event":"task.status","task":"tidy-docs","state":"working","key":null,"text":" step 20"}\n' "$((now - 80))"
     printf '{"v":1,"ts":%s,"event":"task.pr_ready","task":"fix-login","pr":"https://github.com/acme/webapp/pull/7"}\n' "$now"
+    printf '{"v":1,"ts":%s,"event":"task.cleaned_up","task":"half' "$now"
   } > "$home/state/fleet-ledger.jsonl"
-  once "$home" --width 60
+  once "$home" --pane activity --width 100
   [ "$RC" -eq 0 ] || fail "--once exit $RC: $OUT"
-  assert_contains "$OUT" "firstmate fleet - frame - refreshed" "header"
-  assert_contains "$OUT" "! PR ready fix-login" "needs-you PR"
-  assert_contains "$OUT" "! decision audit-cache" "needs-you decision"
-  assert_contains "$OUT" "! blocked stuck-build" "needs-you blocked"
-  assert_contains "$OUT" "TASKS (4)" "task count"
-  assert_contains "$OUT" "ACTIVITY (last 30)" "feed size"
-  assert_contains "$OUT" "https://github.com/acme/webapp/pull/7" "full PR URL"
-  assert_not_contains "$OUT" "step 11"$'\n' "feed keeps only the newest 30"
-  [ "$(printf '%s\n' "$OUT" | sed -n '/^ACTIVITY/{n;p;}')" != "" ] || fail "feed lines missing"
-  printf '%s\n' "$OUT" | sed -n '/^ACTIVITY/,$p' | sed -n 2,3p | grep -q 'PR ready' || fail "feed is not newest first: $OUT"
-  while IFS= read -r line; do
-    case "$line" in *https://*) continue ;; esac
-    [ "${#line}" -le 60 ] || fail "line wider than 60 columns: $line"
-  done <<<"$OUT"
-  once "$home" --width 80
-  [ "$RC" -eq 0 ] || fail "--once 80 exit $RC"
-  while IFS= read -r line; do
-    [ "${#line}" -le 80 ] || fail "line wider than 80 columns: $line"
-  done <<<"$OUT"
-  pass "--once prints the header, needs-you strip, task table and newest 30 events within the width"
+  assert_equals "10" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" "activity box height"
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 1p)" "ACTIVITY · last 8 ─ NEEDS YOU 3" "title and badge"
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 1p)" "l full log" "log hint"
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 2p)" "│▌" "needs-you bar"
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 2p)" "⇡ fix-login" "newest first"
+  assert_contains "$OUT" "PR ready https://github.com/acme/webapp/pull/7" "full PR URL"
+  assert_contains "$OUT" "● tidy-docs" "working symbol"
+  assert_contains "$OUT" "step 14" "the eighth newest event"
+  assert_not_contains "$OUT" "step 13" "only the last 8"
+  assert_not_contains "$OUT" "half" "partial last line"
+  assert_equals "1" "$(printf '%s\n' "$OUT" | grep -c 'step 20')" "a repeated record shows once"
+  once "$home" --pane activity --width 80
+  assert_equals "80" "$(max_width "$OUT")" "80-column activity"
+  assert_contains "$OUT" "NEEDS YOU 3" "80-column badge"
+  once "$home" --pane activity --width 50 --height 2
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 1p)" " ACTIVITY · last 8  NEEDS 3" "a low pane falls back to a title row"
+  pass "--once activity draws the last 8 events newest first in a box, with the needs-you badge and full lines"
+}
+
+test_once_workers_frame_and_fold() {
+  local home="$TMP_ROOT/workers"
+  make_home "$home" >/dev/null
+  fake_screen
+  frame "$home" "$TMP_ROOT/screen-herdr" --pane workers --width 48 --height 24
+  [ "$RC" -eq 0 ] || fail "--once workers exit $RC: $OUT"
+  assert_contains "$OUT" "WORKERS 4 · NEEDS YOU 3" "list title"
+  assert_contains "$OUT" "↑↓ move" "move hint"
+  assert_contains "$(printf '%s\n' "$OUT" | sed -n 2p)" "› ? ◇ scout audit-cache" "the first row is selected and needs you"
+  assert_contains "$OUT" "live · read-only" "live view box"
+  assert_contains "$OUT" "● worker line one" "the live view shows the worker screen"
+  assert_not_contains "$OUT" $'\033' "the plain frame has no escapes"
+  assert_contains "$OUT" "⏎ open real tab   ⇥ next tab" "live view footer"
+  assert_contains "$(printf '%s\n' "$OUT" | tail -n 1)" "↑↓ select  ⏎ open  l log" "key bar"
+  assert_equals "24" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" "frame height"
+  assert_equals "48" "$(max_width "$OUT")" "frame width"
+  frame "$home" "$TMP_ROOT/no-herdr" --pane workers --width 22 --height 18
+  [ "$RC" -eq 0 ] || fail "--once rail exit $RC: $OUT"
+  assert_contains "$OUT" "TABS 4" "rail title"
+  assert_contains "$OUT" "?◇ audit-cache" "compact tab"
+  assert_contains "$OUT" "worker view hidden" "the rail hides the live view"
+  assert_not_contains "$OUT" "live · read-only" "no live view in the rail"
+  assert_equals "22" "$(max_width "$OUT")" "rail width"
+  printf '{"selected":"tidy-docs","filter":"all","read":{}}\n' > "$home/state/firstmate-tui.json"
+  frame "$home" "$TMP_ROOT/no-herdr" --pane workers --width 48 --height 24
+  assert_contains "$OUT" "› ● ▲ ship  tidy-docs" "the shared selection"
+  assert_contains "$OUT" "no live view: the worker has no Herdr pane" "a worker without a pane"
+  pass "--once workers lists needs-you first over the live view, and folds to a rail at 22 columns"
 }
 
 test_once_without_ledger_hints_and_stays_read_only() {
   local home="$TMP_ROOT/noledger" before after
   make_home "$home" >/dev/null
   before=$(cd "$home" && find . | LC_ALL=C sort)
-  once "$home"
+  once "$home" --pane activity
   [ "$RC" -eq 0 ] || fail "--once exit $RC: $OUT"
   assert_contains "$OUT" "create config/fleet-ledger" "ledger hint"
+  frame "$home" "$TMP_ROOT/no-herdr" --width 60 --height 30
+  [ "$RC" -eq 0 ] || fail "--once all exit $RC: $OUT"
+  assert_contains "$OUT" "ACTIVITY" "all stacks the activity"
+  assert_contains "$OUT" "WORKERS 4" "all stacks the workers"
   after=$(cd "$home" && find . | LC_ALL=C sort)
   assert_equals "$before" "$after" "--once changed the home"
-  pass "--once without a ledger shows the hint and writes nothing to the home"
+  pass "--once without a ledger shows the hint, and no pane writes anything to the home"
 }
 
 test_once_failures_and_help() {
@@ -196,6 +319,10 @@ test_once_failures_and_help() {
   assert_contains "$OUT" "--once" "help names --once"
   assert_contains "$OUT" "--interval" "help names --interval"
   assert_contains "$OUT" "FM_FLEET_SNAPSHOT_CMD" "help names the snapshot override"
+  assert_contains "$OUT" "--pane NAME" "help names --pane"
+  assert_not_contains "$OUT" "zoom" "no zoom"
+  OUT=$(python3 -B "$TUI" --once --pane zoom 2>&1)
+  [ $? -eq 2 ] || fail "unknown pane accepted: $OUT"
   OUT=$(python3 -B "$TUI" </dev/null 2>&1 | cat)
   assert_contains "$OUT" "use --once" "no-TTY refusal"
   pass "--once reports a failed or invalid snapshot, and --help documents the options"
@@ -214,9 +341,10 @@ test_uv_once_and_headless_app() {
   fi
   local home="$TMP_ROOT/uv" pilot="$TMP_ROOT/pilot.py" deps
   make_home "$home" >/dev/null
-  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" uv run --offline --quiet --script "$TUI" --once --width 70 2>&1) ||
+  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$TMP_ROOT/no-herdr" \
+    uv run --offline --quiet --script "$TUI" --once --pane workers --width 48 --height 20 2>&1) ||
     fail "uv run --once failed: $OUT"
-  assert_contains "$OUT" "TASKS (4)" "uv frame"
+  assert_contains "$OUT" "WORKERS 4" "uv frame"
   # The app runs headless under the dependencies the script itself declares.
   deps=$(python3 -B -c '
 import re, sys
@@ -224,41 +352,61 @@ block = re.search(r"^# /// script\n(.*?)^# ///$", open(sys.argv[1]).read(), re.S
 print(",".join(re.findall(r"\"([^\"]+)\"", block.split("dependencies", 1)[1])))
 ' "$TUI") || fail "could not read the script dependencies"
   cat > "$pilot" <<'EOF'
-import asyncio, importlib.machinery, importlib.util, os, sys
+import asyncio, importlib.machinery, importlib.util, json, os, sys
 loader = importlib.machinery.SourceFileLoader("firstmate_tui", sys.argv[1])
 spec = importlib.util.spec_from_loader("firstmate_tui", loader)
 tui = importlib.util.module_from_spec(spec)
 loader.exec_module(tui)
 
 async def main():
-    app = tui.build_app(os.environ["FIRSTMATE_DIR"], dict(os.environ), 6.0)
-    async with app.run_test(size=(70, 30)) as pilot:
+    app = tui.build_app(os.environ["FIRSTMATE_DIR"], dict(os.environ), 6.0, "workers")
+    async with app.run_test(size=(60, 30)) as pilot:
         for _ in range(100):
             await pilot.pause(0.1)
             if app.snapshot is not None:
                 break
-        table = app.query_one("DataTable")
-        assert table.row_count == 4, table.row_count
-        await pilot.press("j")
-        assert table.cursor_row == 1, table.cursor_row
-        await pilot.press("f")
-        assert app.choice == "needs you" and len(app.shown) == 3, (app.choice, len(app.shown))
+        shared = os.path.join(os.environ["FIRSTMATE_DIR"], "state", "firstmate-tui.json")
+        assert [w["id"] for w in app.rows][:2] == ["audit-cache", "stuck-build"], app.rows
+        await pilot.press("down")
+        assert app.selected == 1 and json.load(open(shared))["selected"] == "stuck-build"
+        await pilot.press("k")
+        assert app.selected == 0
+        await pilot.press("m")
+        assert list(json.load(open(shared))["read"]) == ["audit-cache"]
+        assert app.rows[0]["id"] == "stuck-build" and app.rows[app.selected]["id"] == "audit-cache"
+        await pilot.press("t")
+        assert json.load(open(shared))["filter"] == "task"
+        await pilot.press("n")
+        assert json.load(open(shared))["filter"] == "needs" and app.rows[app.selected]["unread"]
+        await pilot.press("3")
+        assert app.selected == 2
+        await pilot.press("l")
+        assert len(app.screen_stack) == 2
+        await pilot.press("escape")
+        assert len(app.screen_stack) == 1
+        await pilot.press("question_mark")
+        assert len(app.screen_stack) == 2
+        await pilot.press("escape")
         await pilot.press("enter")
         await pilot.press("q")
+    assert sorted(os.listdir(os.path.join(os.environ["FIRSTMATE_DIR"], "state"))) == ["firstmate-tui.json"]
 
 asyncio.run(main())
 EOF
   OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$TMP_ROOT/no-herdr" \
     uv run --offline --quiet --no-project --with "$deps" python -B "$pilot" "$TUI" 2>&1) ||
     fail "headless app failed: $OUT"
-  pass "uv runs --once, and the app loads rows, moves, filters and survives a jump outside Herdr"
+  pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays and survives a jump outside Herdr"
 }
 
 fm_test_run \
   test_ledger_parser_tolerates_bad_input \
   test_ledger_file_partial_tail_and_missing \
-  test_snapshot_parsing \
-  test_once_frame \
+  test_palette_and_symbols \
+  test_workers_sorting_labels_and_read_marks \
+  test_shared_selection_file \
+  test_once_activity_frame \
+  test_once_workers_frame_and_fold \
   test_once_without_ledger_hints_and_stays_read_only \
   test_once_failures_and_help \
   test_uv_once_and_headless_app
