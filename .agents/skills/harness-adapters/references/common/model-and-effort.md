@@ -18,14 +18,12 @@ Choose intermediate levels as complexity, uncertainty, blast radius, or open-end
 If an adapter lacks `xhigh`, cap at its highest supported non-`max` level rather than silently omitting the intent.
 Never select `max` through this fallback; only an explicit per-task or standing captain preference permits it.
 
-The explicit native `ultra` value follows the model-scoped refusal contract in `../../../bin/fm-harness.sh validate-native-effort`; it is never silently omitted or mapped to a Pi level.
 [`configuration.md`](../../../../../docs/configuration.md#crew-dispatch-profiles-configcrew-dispatchjson) owns backend-specific refusal or omission behavior for other effort values, including harnesses with no verified interactive effort flag.
 Polytoken uses its [model-scoped selectable-reference contract](../harness/polytoken.md) instead of record-and-omit.
 
 ## Harness and provider identity
 
 Harness identity is independent of model provider.
-`harness=pi` with `model=xai/grok-*` is Pi using xAI, not standalone Grok Build, and does not require Grok CLI login.
 `harness=cursor` with `model=cursor-grok-4.5-*` is Cursor routing a Grok model.
 
 No script resolves credential provenance for you.

@@ -39,9 +39,7 @@ Muse, Gemini, Devin, Command Code, Polytoken, Cortex, Kiro, and Hermes are verif
 
 `../../../bin/fm-harness.sh` prints firstmate's own harness from verified environment markers and process ancestry, and owns how they combine.
 A marker names its harness, but a structural ancestor of a different harness outranks it, because a marker is ordinary environment state a child or a multiplexer can retain while ancestry is what proves who owns the process tree.
-Only `FM_PI_HARNESS=pi-signed` at the launch boundary together with `PI_CODING_AGENT=true` selects Pi-signed; shared unmarked launcher ancestry remains Pi.
-omp publishes no marker of its own; `FM_OMP_HARNESS=omp` is Firstmate's launch marker and the anchored identity in `bin/fm-omp-process-lib.sh` (process name `omp`, or `bun` running the omp launcher) is its ancestry evidence, as `references/harness/omp.md` records.
-`../../../bin/fm-spawn.sh` owns worker marker establishment, while the README launch command owns the signed-primary boundary.
+`../../../bin/fm-spawn.sh` owns worker marker establishment.
 `../../../bin/fm-harness.sh crew` resolves `config/crew-harness`, where absent or `default` means firstmate's own harness.
 [`docs/configuration.md`](../../../docs/configuration.md#choose-the-secondmate-harness) owns secondmate pin resolution, including per-mate overrides; [`bin/fm-harness.sh`](../../../bin/fm-harness.sh) owns the resolver commands.
 `../../../bin/fm-spawn.sh` re-resolves on every spawn, and an explicit per-spawn argument wins for that spawn.
@@ -84,14 +82,11 @@ A new tool remains undispatchable until the `verify` plan, its harness entry, ev
     "claude": "references/harness/claude.md",
     "codex": "references/harness/codex.md",
     "opencode": "references/harness/opencode.md",
-    "pi": "references/harness/pi.md",
-    "pi-signed": "references/harness/pi.md",
     "kimi": "references/harness/kimi.md",
     "cursor": "references/harness/cursor.md",
     "gemini": "references/harness/gemini.md",
     "muse": "references/harness/muse.md",
     "rovo": "references/harness/rovo.md",
-    "omp": "references/harness/omp.md",
     "agy": "references/harness/agy.md",
     "devin": "references/harness/devin.md",
     "commandcode": "references/harness/commandcode.md",
