@@ -112,7 +112,7 @@ printf '%s\n' "$*" >> "$HERDR_LOG"
 case "$1 ${2:-}" in
   "status client") echo "protocol: 14" ;;
   "status --json") echo '{"server":{"running":true}}' ;;
-  "workspace list") echo '{"result":{"workspaces":[]}}' ;;
+  "workspace list") echo "{\"result\":{\"workspaces\":[${FAKE_WORKSPACES:-}]}}" ;;
   "workspace create") echo '{"result":{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"p1"}}}' ;;
   "pane split")
     n=$(($(grep -c '^pane split' "$HERDR_LOG") + 1))
@@ -161,6 +161,50 @@ test_herdr_builds_three_panes() {
   pass "firstmate-herdr puts the activity across the top, the first mate bottom left and the workers bottom right"
 }
 
+test_herdr_screen_has_its_own_workspace() {
+  local workers='{"workspace_id":"w9","label":"firstmate"}' screen='{"workspace_id":"w5","label":"firstmate-screen"}'
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  herdr_layout FAKE_WORKSPACES="$workers"
+  [ "$RC" -eq 0 ] || fail "layout exit $RC: $OUT"
+  assert_contains "$LOG" "workspace create --cwd $HOME_DIR/workspace/firstmate --label firstmate-screen --no-focus" "screen workspace"
+  assert_contains "$LOG" "pane split p1 --direction right" "layout built beside the workers workspace"
+  assert_contains "$LOG" "workspace focus w1" "focus the new screen"
+  assert_not_contains "$LOG" "workspace focus w9" "the workers workspace is not the screen"
+  herdr_layout FAKE_WORKSPACES="$workers,$screen"
+  assert_not_contains "$LOG" "workspace create" "an existing screen is reused"
+  assert_contains "$LOG" "workspace focus w5" "focus the existing screen"
+  pass "firstmate-herdr builds its own firstmate-screen workspace next to the workers' firstmate workspace"
+}
+
+test_herdr_lock_holder_gets_one_line() {
+  local home="$HOME_DIR/workspace/firstmate" mate line
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  mkdir -p "$home/state"
+  printf '%s\n' "$$" > "$home/state/.lock"
+  herdr_layout
+  [ "$RC" -eq 0 ] || fail "layout exit $RC: $OUT"
+  mate=$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")
+  assert_equals "1" "$(printf '%s\n' "$mate" | grep -c .)" "one first mate pane command"
+  line=$(bash -c "$mate")
+  assert_equals "1" "$(printf '%s\n' "$line" | wc -l | tr -d ' ')" "one line"
+  assert_contains "$line" "already runs as pid $$" "names the pid"
+  assert_contains "$line" "then run $ROOT/contrib/firstmate here" "how to start it here"
+  assert_contains "$line" "FIRSTMATE_FORCE=1" "how to start a second one"
+  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" HERDR_ENV=1 HERDR_PANE_ID=p1 \
+    HERDR_TAB_ID=t1 HERDR_WORKSPACE_ID=w1 bash "$HERDR_LAUNCHER" 2>&1)
+  RC=$?
+  [ "$RC" -eq 1 ] || fail "inside herdr exit $RC: $OUT"
+  assert_contains "$OUT" "already runs as pid $$" "inside herdr names the pid"
+  printf '999999999\n' > "$home/state/.lock"
+  herdr_layout
+  assert_contains "$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")" "$ROOT/contrib/firstmate" "a stale lock starts the first mate"
+  assert_not_contains "$LOG" "already runs" "no line for a stale lock"
+  rm -f "$home/state/.lock"
+  pass "while another session holds the home lock, the first mate pane shows one line with its pid and how to start it there"
+}
+
 test_herdr_needs_uv() {
   fake_herdr
   rm -f "$FAKEBIN/uv"
@@ -178,4 +222,6 @@ fm_test_run \
   test_file_selects_agent_and_env_wins \
   test_invalid_agent_is_refused \
   test_herdr_builds_three_panes \
+  test_herdr_screen_has_its_own_workspace \
+  test_herdr_lock_holder_gets_one_line \
   test_herdr_needs_uv

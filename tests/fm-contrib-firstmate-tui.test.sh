@@ -268,8 +268,8 @@ test_once_workers_frame_and_fold() {
   assert_contains "$OUT" "live · read-only" "live view box"
   assert_contains "$OUT" "● worker line one" "the live view shows the worker screen"
   assert_not_contains "$OUT" $'\033' "the plain frame has no escapes"
-  assert_contains "$OUT" "⏎ open real tab   ⇥ next tab" "live view footer"
-  assert_contains "$(printf '%s\n' "$OUT" | tail -n 1)" "↑↓ select  ⏎ open  l log" "key bar"
+  assert_contains "$OUT" "⏎ type into it   o open real tab" "live view footer"
+  assert_contains "$(printf '%s\n' "$OUT" | tail -n 1)" "↑↓ select  ⏎ type  o open  l log" "key bar"
   assert_equals "24" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" "frame height"
   assert_equals "48" "$(max_width "$OUT")" "frame width"
   frame "$home" "$TMP_ROOT/no-herdr" --pane workers --width 22 --height 18
@@ -284,6 +284,56 @@ test_once_workers_frame_and_fold() {
   assert_contains "$OUT" "› ● ▲ ship  tidy-docs" "the shared selection"
   assert_contains "$OUT" "no live view: the worker has no Herdr pane" "a worker without a pane"
   pass "--once workers lists needs-you first over the live view, and folds to a rail at 22 columns"
+}
+
+test_input_mode_keys_and_frame() {
+  local snap
+  snap=$(make_home "$TMP_ROOT/input")
+  SNAP="$snap" py '
+import os
+assert tui.input_for_key("ctrl+right_square_bracket", "\x1d") is None
+cases = {
+    ("a", "a"): ("text", "a"),
+    ("A", "A"): ("text", "A"),
+    ("space", " "): ("text", " "),
+    ("eacute", "é"): ("text", "é"),
+    ("q", "q"): ("text", "q"),
+    ("enter", "\r"): ("keys", "enter"),
+    ("tab", "\t"): ("keys", "tab"),
+    ("shift+tab", None): ("keys", "shift+tab"),
+    ("backspace", "\x7f"): ("keys", "backspace"),
+    ("escape", "\x1b"): ("keys", "esc"),
+    ("up", None): ("keys", "up"),
+    ("ctrl+up", None): ("keys", "ctrl+up"),
+    ("ctrl+c", "\x03"): ("keys", "ctrl+c"),
+    ("ctrl+q", "\x11"): ("keys", "ctrl+q"),
+    ("ctrl+backslash", "\x1c"): ("keys", "ctrl+\\"),
+    ("alt+x", "x"): ("keys", "alt+x"),
+    ("f5", None): ("keys", "f5"),
+    ("home", None): ("text", "\x1b[H"),
+    ("pagedown", None): ("text", "\x1b[6~"),
+    ("delete", None): ("text", "\x1b[3~"),
+}
+for (key, char), want in cases.items():
+    assert tui.input_for_key(key, char) == want, (key, tui.input_for_key(key, char))
+assert tui.input_commands("hb", "default:w1:p2", "keys", "enter") == [["hb", "pane", "send-keys", "w1:p2", "enter"]]
+assert tui.input_commands("hb", "lab:w1:p2", "text", "--session x") == [
+    ["hb", "pane", "send-text", "w1:p2", text, "--session", "lab"] for text in ("-", "-", "session x")]
+assert tui.input_commands("hb", "default:w1:p2", "text", "-") == [["hb", "pane", "send-text", "w1:p2", "-"]]
+assert tui.input_commands("hb", "", "text", "a") == []
+assert tui.live_view_shown("workers", 48, 24, 4) and tui.live_view_shown("all", 60, 30, 4)
+assert not tui.live_view_shown("workers", 22, 24, 4), "the rail has no live view"
+assert not tui.live_view_shown("activity", 100, 24, 4)
+snap = tui.parse_snapshot(open(os.environ["SNAP"]).read())
+shared = {"selected": None, "filter": "all", "read": {}}
+frame = tui.render_pane("workers", 48, 24, snap, [], True, shared, 0, ["prompt>"], "", False, True)
+text = tui.plain_frame(frame)
+assert "INPUT  audit-cache" in text and "ctrl+] leaves" in text, text
+assert "typing into audit-cache · ctrl+] leaves input" in text, text
+assert "live · read-only" not in text, text
+assert text.rstrip("\n").split("\n")[-1].startswith(" keys go to the worker  ctrl+] leave input"), text
+' || fail "input mode"
+  pass "input mode sends printable keys as text, named and ctrl keys as herdr keys, keeps ctrl+] to leave, and says INPUT in the live view"
 }
 
 test_once_without_ledger_hints_and_stays_read_only() {
@@ -339,7 +389,13 @@ test_uv_once_and_headless_app() {
     printf 'ok - uv run --once and the headless app # SKIP uv absent or Textual not cached (the suite stays offline)\n'
     return 0
   fi
-  local home="$TMP_ROOT/uv" pilot="$TMP_ROOT/pilot.py" deps
+  local home="$TMP_ROOT/uv" pilot="$TMP_ROOT/pilot.py" deps herdr="$TMP_ROOT/log-herdr"
+  cat > "$herdr" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$HERDR_LOG"
+[ "$1 $2" != "pane read" ] || printf 'worker prompt>\n'
+EOF
+  chmod +x "$herdr"
   make_home "$home" >/dev/null
   OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$TMP_ROOT/no-herdr" \
     uv run --offline --quiet --script "$TUI" --once --pane workers --width 48 --height 20 2>&1) ||
@@ -353,6 +409,7 @@ print(",".join(re.findall(r"\"([^\"]+)\"", block.split("dependencies", 1)[1])))
 ' "$TUI") || fail "could not read the script dependencies"
   cat > "$pilot" <<'EOF'
 import asyncio, importlib.machinery, importlib.util, json, os, sys
+from textual import events
 loader = importlib.machinery.SourceFileLoader("firstmate_tui", sys.argv[1])
 spec = importlib.util.spec_from_loader("firstmate_tui", loader)
 tui = importlib.util.module_from_spec(spec)
@@ -387,16 +444,53 @@ async def main():
         await pilot.press("question_mark")
         assert len(app.screen_stack) == 2
         await pilot.press("escape")
+        await pilot.press("o")
+        await pilot.press("1")
+        assert app.rows[0]["target"] == "", "a worker without a pane"
         await pilot.press("enter")
+        assert app.typing is None, "no input mode without a Herdr pane"
+        await pilot.press(str([w["id"] for w in app.rows].index("audit-cache") + 1))
+        worker = app.rows[app.selected]
+        await pilot.press("enter")
+        assert app.typing == worker["id"], app.typing
+        pane = worker["target"].split(":", 1)[1]
+        for key in ("h", "i", "q", "enter", "up", "ctrl+c", "tab", "home", "escape"):
+            await pilot.press(key)
+        app.post_message(events.Paste("pasted -x"))
+        await pilot.pause(0.2)
+        assert app.typing == worker["id"] and app.rows[app.selected]["id"] == worker["id"] and len(app.screen_stack) == 1
+        await pilot.press("ctrl+right_square_bracket")
+        assert app.typing is None
+        want = [("send-text", "hiq"), ("send-keys", "enter"), ("send-keys", "up"),
+                ("send-keys", "ctrl+c"), ("send-keys", "tab"), ("send-text", "\x1b[H"),
+                ("send-keys", "esc"), ("send-text", "pasted -x")]
+        for _ in range(100):
+            sends = []
+            for line in open(os.environ["HERDR_LOG"]).read().split("\n"):
+                parts = line.split(" ", 3)
+                if len(parts) == 4 and parts[1] in ("send-keys", "send-text"):
+                    assert parts[2] == pane, line
+                    if sends and sends[-1][0] == parts[1] == "send-text" and not sends[-1][1].startswith("\x1b"):
+                        sends[-1] = (parts[1], sends[-1][1] + parts[3])
+                    else:
+                        sends.append((parts[1], parts[3]))
+            if sends == want:
+                break
+            await pilot.pause(0.1)
+        assert sends == want, sends
+        before = app.selected
+        await pilot.press("k")
+        assert app.selected == max(0, before - 1), "keys move the selection again after input mode"
         await pilot.press("q")
     assert sorted(os.listdir(os.path.join(os.environ["FIRSTMATE_DIR"], "state"))) == ["firstmate-tui.json"]
 
 asyncio.run(main())
 EOF
-  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$TMP_ROOT/no-herdr" \
-    uv run --offline --quiet --no-project --with "$deps" python -B "$pilot" "$TUI" 2>&1) ||
+  : > "$TMP_ROOT/herdr.log"
+  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$herdr" \
+    HERDR_LOG="$TMP_ROOT/herdr.log" uv run --offline --quiet --no-project --with "$deps" python -B "$pilot" "$TUI" 2>&1) ||
     fail "headless app failed: $OUT"
-  pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays and survives a jump outside Herdr"
+  pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays, jumps, and forwards input mode keys in order until ctrl+]"
 }
 
 fm_test_run \
@@ -407,6 +501,7 @@ fm_test_run \
   test_shared_selection_file \
   test_once_activity_frame \
   test_once_workers_frame_and_fold \
+  test_input_mode_keys_and_frame \
   test_once_without_ledger_hints_and_stays_read_only \
   test_once_failures_and_help \
   test_uv_once_and_headless_app
