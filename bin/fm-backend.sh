@@ -21,10 +21,11 @@
 #
 # Compatibility contract: a task's meta may omit `backend=`; every reader here
 # treats that as `tmux` (fm_backend_of_meta), and fm-spawn.sh does not write
-# `backend=tmux` for a default-backend task, so existing and newly spawned
-# default-path metas stay byte-identical. Only a task spawned on a non-tmux
-# spawn-capable backend, currently herdr or orca, carries an explicit
-# `backend=` line.
+# `backend=tmux` for a tmux task, so existing and newly spawned tmux metas stay
+# byte-identical. Only a task spawned on a non-tmux spawn-capable backend,
+# currently herdr or orca, carries an explicit `backend=` line. That holds
+# independently of FM_BACKEND_DEFAULT_NAME below: a default herdr spawn records
+# `backend=herdr`.
 #
 # Event-source framing (herdr-addendum "Events as the core abstraction"): a
 # backend's supervision surface is conceptually an EVENT SOURCE - it produces
@@ -54,6 +55,14 @@ FM_BACKEND_CONFIG_DIR="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 # codex-app remains deliberately absent; see docs/codex-app-backend.md.
 FM_BACKEND_KNOWN="tmux herdr orca"
 FM_BACKEND_SPAWN="tmux herdr orca"
+
+# FM_BACKEND_DEFAULT_NAME: the backend a new spawn uses when nothing selects one
+# (no --backend, FM_BACKEND, config/backend, or detection marker). This is the
+# single owner of that default. This fork defaults to herdr; upstream firstmate
+# defaults to tmux. It is a constant, not an environment override: select another
+# backend with FM_BACKEND or config/backend. A default that is not installed is
+# refused by fm_backend_default_check, never replaced by another backend.
+FM_BACKEND_DEFAULT_NAME=herdr
 
 # fm_backend_list_contains: whitespace-delimited membership without relying on
 # shell word splitting. fm-backend.sh is normally sourced by bash scripts, but
@@ -122,20 +131,24 @@ fm_backend_explicit_name() {
 # FM_BACKEND_RESOLVED, absent an explicit per-task override. Precedence:
 # FM_BACKEND env, then config/backend (a single word on its first non-empty
 # line, mirroring config/crew-harness), then runtime auto-detection
-# (fm_backend_detect), then default tmux. A per-task `--backend` flag is
+# (fm_backend_detect), then FM_BACKEND_DEFAULT_NAME. A per-task `--backend` flag is
 # parsed by the caller (fm-spawn.sh) and takes precedence over this
 # resolution entirely; it is not read here. Auto-detect fires only when
 # nothing was explicitly configured, so an explicit setting always wins and
-# leaves FM_BACKEND_DETECTED empty.
+# leaves FM_BACKEND_DETECTED empty. FM_BACKEND_ORIGIN records which step chose
+# the backend: explicit, detected, or default.
 # Auto-detected herdr stays silent like tmux.
 fm_backend_resolve() {
   FM_BACKEND_DETECTED=""
+  FM_BACKEND_ORIGIN=explicit
   FM_BACKEND_RESOLVED=$(fm_backend_explicit_name) && return 0
   if fm_backend_detect >/dev/null; then
+    FM_BACKEND_ORIGIN=detected
     FM_BACKEND_RESOLVED=$FM_BACKEND_DETECTED
     return 0
   fi
-  FM_BACKEND_RESOLVED=tmux
+  FM_BACKEND_ORIGIN=default
+  FM_BACKEND_RESOLVED=$FM_BACKEND_DEFAULT_NAME
 }
 
 # fm_backend_name: fm_backend_resolve for callers that only need the name.
@@ -190,6 +203,24 @@ fm_backend_required_tool_available() {  # <backend> <tool>
   required=$(fm_backend_required_tools "$backend") || return 1
   fm_backend_list_contains "$required" "$tool" || return 1
   command -v "$tool" >/dev/null 2>&1
+}
+
+# fm_backend_default_check: after fm_backend_resolve, refuse a backend that only
+# the default chose when its required tools are missing. The message names the
+# default and how to select another backend, because the operator selected
+# nothing. It never switches to another backend. Silent and 0 when an explicit
+# setting or detection chose the backend, or when every required tool is present.
+fm_backend_default_check() {
+  local tool required missing=''
+  [ "${FM_BACKEND_ORIGIN:-}" = default ] || return 0
+  required=$(fm_backend_required_tools "$FM_BACKEND_RESOLVED") || return 0
+  for tool in $required; do
+    command -v "$tool" >/dev/null 2>&1 || missing="${missing:+$missing }$tool"
+  done
+  [ -n "$missing" ] || return 0
+  echo "error: no backend is selected (no --backend, FM_BACKEND, config/backend, \$TMUX, or HERDR_ENV=1), so the default backend '$FM_BACKEND_RESOLVED' applies, but it needs: $missing" >&2
+  echo "error: install the missing tools, or select another backend, for example 'tmux' in config/backend or FM_BACKEND=tmux" >&2
+  return 1
 }
 
 # fm_meta_get: the LAST value of `key=` in <meta-file>, or empty (never

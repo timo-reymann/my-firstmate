@@ -123,7 +123,9 @@
 #   is authorized). Without it, the script resolves FM_BACKEND, then
 #   config/backend, then runtime auto-detection from the runtime firstmate's
 #   environment: $TMUX or HERDR_ENV=1 (via bin/fm-backend.sh's
-#   fm_backend_detect), then tmux.
+#   fm_backend_detect), then the default backend (FM_BACKEND_DEFAULT_NAME in
+#   bin/fm-backend.sh, herdr in this fork), which is refused rather than
+#   replaced when its tools are missing.
 #   Spawn-capable backends are the reference tmux adapter, verified herdr
 #   adapter, and experimental orca adapter. Orca owns both the task
 #   worktree and terminal, so ship/scout Orca spawns do not run treehouse get.
@@ -131,7 +133,7 @@
 #   Herdr leases its slot durably (treehouse get --lease) and moves the pane's
 #   top-level shell into it, because a restart restores that shell's cwd.
 #   codex-app is not a known backend yet; docs/codex-app-backend.md owns that
-#   blocked backend contract. Default tmux spawns do not write backend= to meta;
+#   blocked backend contract. tmux spawns do not write backend= to meta;
 #   absent backend= means tmux. Orca does not support --secondmate spawns.
 #   A backend spawn refusal (missing dependency, version gate, unauthenticated
 #   socket, or unsupported secondmate mode) is terminal for that selected backend;
@@ -2173,17 +2175,19 @@ if [ "$KIND" = secondmate ]; then
 fi
 # Backend selection (data/fm-backend-design-d7): explicit --backend, else
 # FM_BACKEND env, else config/backend, else runtime auto-detection, else
-# default tmux (fm_backend_name). fm_backend_validate_spawn refuses unknown or
-# non-spawn-capable backends. The resolved value is
+# FM_BACKEND_DEFAULT_NAME (fm_backend_resolve). fm_backend_default_check refuses
+# a default backend whose tools are missing, and fm_backend_validate_spawn refuses
+# unknown or non-spawn-capable backends. The resolved value is
 # recorded in meta only when it is NOT tmux (fm-teardown.sh and fm-watch.sh's
 # window_backend/fm_backend_of_meta already treat an absent backend= as tmux),
-# so the default path's meta stays byte-identical.
+# so a tmux task's meta stays byte-identical.
 if [ "$RELAUNCH" -eq 0 ]; then
   if [ "$BACKEND_SET" -eq 1 ]; then
     BACKEND=$BACKEND_ARG
   else
     fm_backend_resolve
     BACKEND=$FM_BACKEND_RESOLVED
+    fm_backend_default_check || exit 1
   fi
   fm_backend_validate_spawn "$BACKEND" || exit 1
   fm_backend_source "$BACKEND" || exit 1
@@ -6327,8 +6331,8 @@ preserve_relaunch_meta() {
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.
-  # backend= is written only for a non-default (non-tmux) backend, so the
-  # default path's meta stays byte-identical (absent backend= means tmux;
+  # backend= is written only for a non-tmux backend, so a tmux task's
+  # meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).
   [ "$BACKEND" = tmux ] || echo "backend=$BACKEND"
   if [ "$BACKEND" = herdr ]; then
