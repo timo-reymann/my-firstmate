@@ -23,6 +23,30 @@ Upstream is the place for the full, supported version.</p>
 
 <h3 align="center">Talk to one agent. Ship with a crew.</h3>
 
+## Getting started
+
+You need [herdr](https://herdr.dev), `uv`, `jq`, and `claude` or `opencode`.
+
+Link the three binaries from `contrib/` into a directory on your `PATH`.
+`~/.bin` is only an example; any `PATH` directory works.
+
+```sh
+FIRSTMATE_DIR=/path/to/your/firstmate/clone
+mkdir -p ~/.bin
+ln -sf "$FIRSTMATE_DIR/contrib/firstmate" ~/.bin/firstmate
+ln -sf "$FIRSTMATE_DIR/contrib/firstmate-herdr" ~/.bin/firstmate-herdr
+ln -sf "$FIRSTMATE_DIR/contrib/firstmate-tui" ~/.bin/firstmate-tui
+case ":$PATH:" in *":$HOME/.bin:"*) echo "~/.bin is on your PATH" ;; *) echo "add ~/.bin to your PATH" ;; esac
+```
+
+- `firstmate` opens the herdr screen; `firstmate --plain` stays in one terminal.
+- `firstmate-herdr` builds the herdr screen directly.
+- `firstmate-tui` is the read-only view that the screen's panes run.
+
+Check that it works with `firstmate-herdr --check`, which reports what is missing and stops.
+If the clone is not at `~/workspace/firstmate`, export `FIRSTMATE_DIR` with its path so the launchers find it.
+More detail is in [contrib/README.md](contrib/README.md).
+
 ## Changes from upstream
 
 Upstream: <https://github.com/kunchenguid/firstmate>.
