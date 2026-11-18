@@ -2434,7 +2434,7 @@ test_live_and_unproven_endpoints_still_wedge_escalate() {
   local dir state fakebin out capture window key spec verdict comm inventory
   local working='state: working · source: run-step · ci running'
   window="test:fm-wedge"; key=$(watch_window_key "$window")
-  for spec in 'alive|grok|fm-wedge' 'ambiguous|node|fm-wedge' 'unreadable||fm-wedge'; do
+  for spec in 'alive|kimi|fm-wedge' 'ambiguous|node|fm-wedge' 'unreadable||fm-wedge'; do
     verdict=${spec%%|*}; comm=${spec#*|}; inventory=${comm#*|}; comm=${comm%%|*}
     dir=$(wedge_threshold_fixture "wedge-live-$verdict" 'working: still compiling' 0)
     state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
@@ -2668,7 +2668,7 @@ test_gone_report_rearms_when_the_endpoint_comes_back() {
   ack_stopped_cycle "$state" || fail "could not acknowledge the first gone report"
 
   # A replacement is launched into the same window and then wedges for real.
-  FM_TEST_PANE_COMMAND=grok FM_TEST_TMUX_WINDOWS=fm-wedge
+  FM_TEST_PANE_COMMAND=kimi FM_TEST_TMUX_WINDOWS=fm-wedge
   : > "$out"
   wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
     || fail "a replacement agent's wedge was swallowed by the earlier gone report: $(cat "$out")"
@@ -2720,7 +2720,7 @@ test_second_death_after_a_same_window_relaunch_reports_in_full() {
   # A replacement launches: the pane churns and the bookkeeping resets, but the
   # round ends before the fresh timer could reach a threshold, so no probe runs
   # and the once-record survives the churn untouched.
-  FM_TEST_PANE_COMMAND=grok FM_TEST_TMUX_WINDOWS=fm-wedge
+  FM_TEST_PANE_COMMAND=kimi FM_TEST_TMUX_WINDOWS=fm-wedge
   printf '%s\n' 'waiting on the build queue' > "$capture"
   : > "$out"
   FM_TEST_STALE_ESCALATE=999 wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" absorb \

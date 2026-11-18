@@ -48,7 +48,7 @@ set -u
 # from inside another harness inherits those markers, which outrank the fake
 # ancestry the detection cases set up. Drop the ambient markers so the asserted
 # verdict does not depend on which harness launched the suite.
-unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS \
+unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS CURSOR_AGENT CURSOR_INVOKED_AS \
   ATLASSIAN_AGENT_TYPE ROVODEV_CLI GEMINI_CLI AGENT FM_OMP_HARNESS FM_TASK_ID FM_TASK_INBOX
 
 # shellcheck source=/dev/null
@@ -265,7 +265,7 @@ test_polytoken_composer_is_the_verified_separated_shape() {
   out=$(fm_composer_classify_screen "$CAPS_TMUX" "$transcript$pair$footer" 2 probe-absent)
   [ "$out" = unknown ] || fail "a separated shape with no live owner must read unknown, got '$out'"
   # An unverified owner name must not borrow the separated shape.
-  out=$(fm_composer_classify_screen "$CAPS_TMUX" "$transcript$pair$footer" 2 "$(printf 'grok\tidle')")
+  out=$(fm_composer_classify_screen "$CAPS_TMUX" "$transcript$pair$footer" 2 "$(printf 'spaceship\tidle')")
   [ "$out" = unknown ] || fail "an unverified owner must not borrow the separated shape, got '$out'"
   pass "fm-composer-lib: the polytoken separated shape reads empty, pending, and unknown exactly"
 }

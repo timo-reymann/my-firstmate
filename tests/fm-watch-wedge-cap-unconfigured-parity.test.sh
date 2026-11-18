@@ -95,7 +95,7 @@ record_pi_state() {  # <state-dir> <id> <busy|idle>
 # over-age spawn record, so the completed-turn bound owns the ladder and no
 # poll reports a death. The busy route writes neither the stale suppressor nor
 # the escalation counter, on either watcher, by both files' own design.
-BUSY_ENV=(FM_FAKE_TMUX_CURRENT_COMMAND=grok FM_BUSY_TURN_MAX_SECS=1)
+BUSY_ENV=(FM_FAKE_TMUX_CURRENT_COMMAND=kimi FM_BUSY_TURN_MAX_SECS=1)
 IDLE_CREW='state: idle · source: none'
 
 parity_run() {  # <dir> <watch> <label> <crew-state> <cap-assignment> [extra-env...]

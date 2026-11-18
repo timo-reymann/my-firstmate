@@ -1973,7 +1973,7 @@ assert_dirty_diagnostic() {
     done
     # Preserve the existing exemptions without counting them as leftovers.
     mkdir "$case_dir/wt/.claude"
-    touch "$case_dir/wt/.claude/settings.local.json" "$case_dir/wt/.fm-grok-turnend"
+    touch "$case_dir/wt/.claude/settings.local.json" "$case_dir/wt/.fm-kimi-turnend"
   fi
   before=$(git -C "$case_dir/wt" status --porcelain)
   rc=0
@@ -1992,7 +1992,7 @@ assert_dirty_diagnostic() {
   if [ "$kind" != tracked ]; then
     grep -Fq '00 proof scratch/' "$case_dir/stderr" || fail "$kind/$mode: scratch folder not named"
     grep -Fxq '  09-scratch.txt' "$case_dir/stderr" || fail "$kind/$mode: tenth path missing"
-    ! grep -q '10-scratch.txt\|11-scratch.txt\|\.claude/\|\.fm-grok-turnend' "$case_dir/stderr" \
+    ! grep -q '10-scratch.txt\|11-scratch.txt\|\.claude/\|\.fm-kimi-turnend' "$case_dir/stderr" \
       || fail "$kind/$mode: path list exceeded its bound or included exempt files"
     grep -Fq 'additional untracked paths omitted' "$case_dir/stderr" || fail "$kind/$mode: no truncation notice"
   else
@@ -3337,7 +3337,6 @@ test_secondmate_home_teardown_delivers_final_line_or_refuses() {
   channel="$case_dir/parent/state/mate-x.status"
   write_meta "$case_dir" local-only ship
   mkdir -p "$case_dir/tasktmp"
-  printf '!\n' > "$case_dir/state/task-x1.grok-turnend-token"
   printf '!\n' > "$case_dir/state/task-x1.kimi-turnend-token"
   printf 'tasktmp=%s\n' "$case_dir/tasktmp" >> "$case_dir/state/task-x1.meta"
   wt_commit "$case_dir" "merged work"
@@ -3353,8 +3352,7 @@ test_secondmate_home_teardown_delivers_final_line_or_refuses() {
     || fail "mate-teardown-refuses: refusal did not name the parent channel: $(cat "$case_dir/stderr")"
   [ -f "$case_dir/state/task-x1.meta" ] && [ -f "$case_dir/state/task-x1.status" ] \
     || fail "mate-teardown-refuses: refusal did not retain the task records"
-  [ -f "$case_dir/state/task-x1.grok-turnend-token" ] \
-    && [ -f "$case_dir/state/task-x1.kimi-turnend-token" ] \
+  [ -f "$case_dir/state/task-x1.kimi-turnend-token" ] \
     && [ -d "$case_dir/tasktmp" ] \
     || fail "mate-teardown-refuses: refusal removed endpoint records before parent delivery"
   rmdir "$channel"

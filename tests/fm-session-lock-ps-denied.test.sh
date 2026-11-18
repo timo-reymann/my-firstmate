@@ -889,7 +889,7 @@ SH
   # The ppid is a walk input, not an identity field: a ppid that cannot be
   # read only ends the ancestry walk one hop early, which is the
   # conservative direction. The base read it the same tolerant way, and
-  # the grok and kimi harness suites pin that - their stubbed ps answers
+  # the kimi harness suite pins that - its stubbed ps answers
   # comm= and args= and refuses every other question.
   PATH="$fakebin:$PATH" FM_TEST_FAILED_FIELD=ppid bash -c '
     . "$1"

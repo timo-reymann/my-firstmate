@@ -10,8 +10,8 @@
 # delivered to a model and no key is sent. After the record exists, each
 # installed harness that the spawn arms (claude, opencode, pi, omp) is
 # started for real, with no prompt, long enough to prove that process stays
-# up beside the wiring the spawn just wrote. Grok and codex are the
-# disconfirming launches: they stay unarmed and gain no parent turn-end.
+# up beside the wiring the spawn just wrote. Codex is the
+# disconfirming launch: it stays unarmed and gains no parent turn-end.
 # An absent binary is reported and skipped. A run that checks nothing fails.
 #
 # Refresh docs/verification/runtime-backends.md ("Secondmate busy contract")
@@ -192,13 +192,12 @@ check_harness() {  # <harness>
   else
     [ ! -e "$state/$id.busy-gen" ] || fail "$harness $version: an unarmed secondmate spawn wrote a busy generation"
     [ ! -e "$state/$id.turn-ended" ] || fail "$harness $version: an unarmed secondmate spawn touched the parent's turn-ended marker"
-    [ ! -e "$state/$id.grok-turnend-token" ] || fail "$harness $version: spawn installed a parent grok turn-end token"
     pass "$harness $version: secondmate spawn stays unarmed and does not emit a parent turn-end"
   fi
   CHECKED=$((CHECKED + 1))
 }
 
-for harness in claude opencode pi pi-signed omp grok codex; do
+for harness in claude opencode pi pi-signed omp codex; do
   check_harness "$harness"
 done
 

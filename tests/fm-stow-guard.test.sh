@@ -25,9 +25,7 @@ invoke_guard() {
   shift 3
   : > "$OUT"
   : > "$ERR"
-  env -u GROK_AGENT -u GROK_HOOK_EVENT -u GROK_HOOK_NAME -u GROK_SESSION_ID \
-    -u GROK_WORKSPACE_ROOT \
-    FM_ROOT_OVERRIDE="$root" FM_HOME="$root" \
+  env FM_ROOT_OVERRIDE="$root" FM_HOME="$root" \
     FM_STATE_OVERRIDE="$state" FM_CONFIG_OVERRIDE="$config" \
     "$@" \
     "$GUARD" >"$OUT" 2>"$ERR"
@@ -262,8 +260,7 @@ test_missing_python_skips_the_age_ask() {
   done
   PATH="$fakebin" command -v python3 >/dev/null 2>&1 && fail "fixture PATH still finds python3"
   now=$((epoch + 100))
-  payload | env -u GROK_AGENT -u GROK_HOOK_EVENT -u GROK_HOOK_NAME -u GROK_SESSION_ID \
-    -u GROK_WORKSPACE_ROOT PATH="$fakebin" \
+  payload | env PATH="$fakebin" \
     FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" \
     FM_STATE_OVERRIDE="$CASE_STATE" FM_CONFIG_OVERRIDE="$CASE_CONFIG" \
     FM_STOW_GUARD_NOW="$now" \
@@ -274,8 +271,7 @@ test_missing_python_skips_the_age_ask() {
   : > "$CASE_TRANSCRIPT"
   write_usage 400000
   rc=0
-  payload | env -u GROK_AGENT -u GROK_HOOK_EVENT -u GROK_HOOK_NAME -u GROK_SESSION_ID \
-    -u GROK_WORKSPACE_ROOT PATH="$fakebin" \
+  payload | env PATH="$fakebin" \
     FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" \
     FM_STATE_OVERRIDE="$CASE_STATE" FM_CONFIG_OVERRIDE="$CASE_CONFIG" \
     FM_STOW_GUARD_NOW="$now" \
@@ -306,15 +302,6 @@ test_bad_payloads_and_missing_jq_are_silent() {
   [ "$rc" -eq 0 ] || fail "cursor payload must exit 0, got $rc"
   assert_silent "cursor payload"
 
-  rc=0
-  payload | env -u GROK_HOOK_EVENT GROK_AGENT=1 \
-    FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" \
-    FM_STATE_OVERRIDE="$CASE_STATE" FM_CONFIG_OVERRIDE="$CASE_CONFIG" \
-    "$GUARD" >"$OUT" 2>"$ERR" || rc=$?
-  [ "$rc" -eq 0 ] || fail "grok environment must exit 0, got $rc"
-  assert_silent "grok environment"
-  [ ! -e "$CASE_STATE/.stow-guard.json" ] || fail "a refused payload wrote trigger state"
-
   mkdir -p "$fakebin"
   for entry in /bin/* /usr/bin/*; do
     [ -x "$entry" ] || continue
@@ -326,14 +313,14 @@ test_bad_payloads_and_missing_jq_are_silent() {
   PATH="$fakebin" command -v dirname >/dev/null 2>&1 || fail "fixture PATH lost dirname"
   PATH="$fakebin" command -v jq >/dev/null 2>&1 && fail "fixture PATH still finds jq"
   rc=0
-  payload | env -u GROK_AGENT -u GROK_HOOK_EVENT PATH="$fakebin" \
+  payload | env PATH="$fakebin" \
     FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" \
     FM_STATE_OVERRIDE="$CASE_STATE" FM_CONFIG_OVERRIDE="$CASE_CONFIG" \
     "$GUARD" >"$OUT" 2>"$ERR" || rc=$?
   [ "$rc" -eq 0 ] || fail "missing jq must exit 0, got $rc: $(cat "$ERR")"
   assert_silent "missing jq"
   [ ! -e "$CASE_STATE/.stow-guard.json" ] || fail "missing jq wrote trigger state"
-  pass "bad json, an empty payload, a cursor payload, grok, and a missing jq all stay silent"
+  pass "bad json, an empty payload, a cursor payload, and a missing jq all stay silent"
 }
 
 test_overlong_token_line_keeps_the_default() {
@@ -347,18 +334,17 @@ test_overlong_token_line_keeps_the_default() {
   pass "a token line past integer range keeps the 300000 default and still asks"
 }
 
-test_tracked_stop_hook_is_synchronous_and_grok_inert() {
+test_tracked_stop_hook_is_synchronous() {
   local matches
   matches=$(jq -e '
     [.hooks.Stop[0].hooks[]
       | select(.command | contains("/bin/fm-stow-guard.sh"))
       | select(.timeout == 10)
-      | select(.asyncRewake | not)
-      | select(.command | contains("${GROK_AGENT:-}${GROK_HOOK_EVENT:-}"))]
+      | select(.asyncRewake | not)]
     | length' "$ROOT/.claude/settings.json") \
     || fail "tracked Stop hooks could not be read"
-  [ "$matches" -eq 1 ] || fail "expected one synchronous grok-inert Stop hook for fm-stow-guard.sh, saw $matches"
-  pass "tracked Claude Stop settings run fm-stow-guard.sh once, synchronously, and inert under grok"
+  [ "$matches" -eq 1 ] || fail "expected one synchronous Stop hook for fm-stow-guard.sh, saw $matches"
+  pass "tracked Claude Stop settings run fm-stow-guard.sh once and synchronously"
 }
 
 fm_test_run \
@@ -372,4 +358,4 @@ fm_test_run \
   test_missing_python_skips_the_age_ask \
   test_bad_payloads_and_missing_jq_are_silent \
   test_overlong_token_line_keeps_the_default \
-  test_tracked_stop_hook_is_synchronous_and_grok_inert
+  test_tracked_stop_hook_is_synchronous

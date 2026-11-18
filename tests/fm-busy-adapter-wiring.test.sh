@@ -36,8 +36,7 @@ run_spawn() {  # <home> <wt> <fakebin> <spawn-args...>
   # fixed valid one.
   local home=$1 wt=$2 fakebin=$3
   shift 3
-  GROK_HOME="$home/grok-home" \
-    fm_test_run_spawn "$home" "$wt" "$fakebin" "$@" --mode no-mistakes --yolo off
+  fm_test_run_spawn "$home" "$wt" "$fakebin" "$@" --mode no-mistakes --yolo off
 }
 
 read_case_record() {
@@ -801,8 +800,7 @@ test_gemini_is_refused_as_a_secondmate() {
   read_case_record "$rec"
   # A secondmate spawn carries no delivery contract, so this one deliberately
   # bypasses run_spawn's ship-only --mode/--yolo arguments.
-  out=$(GROK_HOME="$HOME_DIR/grok-home" \
-    fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" --secondmate "$id" gemini) && {
+  out=$(fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" --secondmate "$id" gemini) && {
     fail "a gemini secondmate must be refused, it has no primary supervision protocol: $out"
   }
   assert_contains "$out" 'crewmate/scout adapter only' \
@@ -891,19 +889,15 @@ test_raw_kiro_launch_has_no_semantic_wiring() {
   pass "raw kiro launch remains unwired and classifies unknown"
 }
 
-test_kimi_and_grok_install_no_unverified_wiring() {
+test_kimi_installs_no_unverified_wiring() {
   local state out
   state="$TMP_ROOT/gates/state"
   mkdir -p "$state"
   [ -z "$(fm_busy_sources_for_harness kimi)" ] \
     || fail "standalone kimi must trust no semantic source until it is verified"
-  [ -z "$(fm_busy_sources_for_harness grok)" ] \
-    || fail "grok must trust no semantic source while its structured path is unverified"
   out=$(fm_busy_classify tmux fake:w kimi gate-k "$state" '🌒 · thinking')
   [ "$out" = "unknown kimi-unverified" ] || fail "kimi must classify unknown, not from its spinner, got '$out'"
-  out=$(fm_busy_classify tmux fake:w grok gate-g "$state" 'Ctrl+c:cancel')
-  [ "$out" = "busy grok-regex" ] || fail "grok must classify through its isolated fallback, got '$out'"
-  pass "kimi and grok install no unverified semantic wiring and classify through their own gates"
+  pass "kimi installs no unverified semantic wiring and classifies through its own gate"
 }
 
 # A --secondmate launch used to skip the busy arm entirely, so a tmux-backed
@@ -1292,8 +1286,8 @@ test_raw_secondmate_launch_writes_no_busy_wiring() {
   pass "a raw claude, pi, pi-signed, or omp secondmate launch writes no busy wiring and classifies unknown"
 }
 
-test_secondmate_codex_and_grok_do_not_arm_a_parent_turnend() {
-  local case_dir id state launch out sm
+test_secondmate_codex_does_not_arm_a_parent_turnend() {
+  local case_dir id state launch out
   case_dir="$TMP_ROOT/sm-codex"
   id='sm-codex'
   out=$(spawn_secondmate_harness "$case_dir" "$id" codex) \
@@ -1305,19 +1299,7 @@ test_secondmate_codex_and_grok_do_not_arm_a_parent_turnend() {
   assert_not_contains "$launch" "notify=" "codex secondmate launch included the parent turn-end notify hook"
   out=$(classify codex "$id" "$state")
   [ "$out" = "unknown codex-unverified" ] || fail "codex secondmate must stay unknown, got '$out'"
-
-  case_dir="$TMP_ROOT/sm-grok"
-  id='sm-grok'
-  sm="$case_dir/sm"
-  out=$(GROK_HOME="$case_dir/grok-home" spawn_secondmate_harness "$case_dir" "$id" grok) \
-    || fail "grok secondmate spawn failed: $out"
-  state="$case_dir/primary/state"
-  assert_absent "$state/$id.busy-gen" "grok secondmate must keep its rendered-tail fallback instead of an armed record"
-  assert_absent "$sm/.fm-grok-turnend" "grok secondmate spawn installed a parent turn-end pointer"
-  assert_absent "$state/$id.grok-turnend-token" "grok secondmate spawn installed a parent turn-end token"
-  out=$(fm_busy_classify tmux "firstmate:fm-$id" grok "$id" "$state" 'Ctrl+c:cancel')
-  [ "$out" = "busy grok-regex" ] || fail "grok secondmate must still classify from its tail, got '$out'"
-  pass "codex and grok secondmates stay on their existing verdicts and do not emit a parent turn-end"
+  pass "a codex secondmate stays on its existing verdict and does not emit a parent turn-end"
 }
 
 test_secondmate_claude_spawn_arms_busy_for_the_stall_gate
@@ -1329,11 +1311,11 @@ test_pi_stream_extension_activation_and_lifecycle
 test_secondmate_pi_extension_reports_busy_without_a_parent_turnend
 test_secondmate_omp_extension_reports_busy_without_a_parent_turnend
 test_secondmate_opencode_plugin_closes_without_a_parent_turnend
-test_secondmate_codex_and_grok_do_not_arm_a_parent_turnend
+test_secondmate_codex_does_not_arm_a_parent_turnend
 test_pi_extension_semantic_lifecycle
 test_pi_extension_serializes_settle_before_next_start
 test_pi_extension_stale_incarnation_rejected
-test_kimi_and_grok_install_no_unverified_wiring
+test_kimi_installs_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
 test_opencode_plugin_v2_execution_lifecycle
 test_opencode_plugin_applies_events_in_emission_order

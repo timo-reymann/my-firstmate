@@ -564,7 +564,7 @@ test_push_untrusted_owner_is_ignored() {
 test_push_level_reconcile_and_dedupe() {
   local res rec
   push_case push-level
-  printf '{"records":[{"state":"blocked","kind":"auth","app":"grok-build","msg":"Sign in","owner":{"pid":4242}}]}\n' \
+  printf '{"records":[{"state":"blocked","kind":"auth","app":"kimi-code","msg":"Sign in","owner":{"pid":4242}}]}\n' \
     >"$PUSH_DIR/fake/status/${PUSH_BID#block:}.json"
   res=$(push_wait 1)
   [ "${res%%|*}" = 0 ] || fail "a block already blocked must be returned by the level reconcile, got $res"
@@ -573,8 +573,8 @@ test_push_level_reconcile_and_dedupe() {
   rex_env "$PUSH_DIR" "fm_backend_commit_transition rex \"\$STATE\" '$PUSH_SID' '$rec'" || fail "commit failed"
   res=$(push_wait 1)
   assert_equals "1|" "$res" "a committed blocked block must not be re-delivered"
-  rex_event "$PUSH_BID" working "" grok-build 4242 "" >"$PUSH_DIR/fake/events"
-  rex_event "$PUSH_BID" blocked question grok-build 4242 "Pick one" >>"$PUSH_DIR/fake/events"
+  rex_event "$PUSH_BID" working "" kimi-code 4242 "" >"$PUSH_DIR/fake/events"
+  rex_event "$PUSH_BID" blocked question kimi-code 4242 "Pick one" >>"$PUSH_DIR/fake/events"
   res=$(push_wait 5)
   [ "${res%%|*}" = 0 ] || fail "a working edge must clear the marker so the next blocked edge escalates, got $res"
   rex_env "$PUSH_DIR" "fm_backend_commit_transition rex \"\$STATE\" '$PUSH_SID' '${res#*|}'"
@@ -920,14 +920,14 @@ test_firstmate_records_never_count_as_worker_state() {
   assert_equals unknown "$(rex_env "$PUSH_DIR" "fm_backend_busy_state rex '$PUSH_T'")" "a Firstmate record must not decide busy state"
   res=$(push_wait 1)
   assert_equals "1|" "$res" "the level reconcile must ignore a Firstmate record"
-  printf '{"records":[{"state":"working","app":"firstmate-grok","title":"fm-t1","owner":{"pid":4242}}]}\n' \
+  printf '{"records":[{"state":"working","app":"firstmate-kimi","title":"fm-t1","owner":{"pid":4242}}]}\n' \
     >"$PUSH_DIR/fake/status/${PUSH_BID#block:}.json"
   assert_equals unknown "$(rex_env "$PUSH_DIR" "fm_backend_busy_state rex '$PUSH_T'")" "the status bridge's own root record must not decide busy state"
   rm -f "$PUSH_DIR/fake/status/${PUSH_BID#block:}.json"
   rex_event "$PUSH_BID" blocked question firstmate 4242 "Needs your decision" >"$PUSH_DIR/fake/events"
   res=$(push_wait 1)
   assert_equals "1|" "$res" "a streamed Firstmate record must never escalate"
-  rex_event "$PUSH_BID" blocked question firstmate-grok 4242 "Needs your decision" >"$PUSH_DIR/fake/events"
+  rex_event "$PUSH_BID" blocked question firstmate-kimi 4242 "Needs your decision" >"$PUSH_DIR/fake/events"
   res=$(push_wait 1)
   assert_equals "1|" "$res" "a streamed status-bridge record must never escalate"
   rex_event "$PUSH_BID" blocked question claude-code 4242 "Continue?" >"$PUSH_DIR/fake/events"

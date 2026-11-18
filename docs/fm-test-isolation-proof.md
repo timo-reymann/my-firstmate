@@ -32,7 +32,6 @@ This record owns concurrent isolation evidence for the portable parallel candida
 - `tests/fm-composer-lib.test.sh`
 - `tests/fm-crew-state.test.sh`
 - `tests/fm-ensure-agents-md.test.sh`
-- `tests/fm-grok-harness.test.sh`
 - `tests/fm-herdr-lab.test.sh`
 - `tests/fm-lint.test.sh`
 - `tests/fm-park.test.sh`
@@ -99,6 +98,11 @@ The backend suite spawns real tasks, and `fm-spawn.sh` creates each task's `/tmp
 - Command: `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on macOS arm64 with Bash 5.3 and tmux, run under `caffeinate -i`
 - Result: `FM_ISOLATION_SUMMARY total=27 failed=0 concurrency=4 duration_ms=1372646`
 - `tests/fm-park.test.sh` exit 0 (188248 ms).
+
+## 2026-11-18: Grok harness suite removed
+
+`tests/fm-grok-harness.test.sh` left the candidate set when firstmate dropped the Grok harness.
+The 2026-08-20 durations above and `docs/fm-test-isolation-proof.json` still record it, because they describe that run.
 
 ## Family concurrency proofs
 

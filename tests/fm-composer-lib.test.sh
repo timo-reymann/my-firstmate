@@ -139,13 +139,12 @@ test_real_text_is_pending() {
 # correctness matrix (audit data/fm-composer-consolidation-audit-s1, task
 # fm-composer-thin-adapter-refactor-r1).
 #
-# Fixtures are the audit's byte-level captures of six REAL idle harnesses:
+# Fixtures are the audit's byte-level captures of five REAL idle harnesses:
 # claude 2.1.226 (bare `❯` + U+00A0 NO-BREAK SPACE), codex 0.146.0 (bold `›`
 # + SGR-2 dim hint), codex 0.154.0 (the same `›` amid a braille starfield over
 # a status footer, captured through Herdr on 2026-09-15), muse (truecolor `⟩`, 38;2;90;160;255), pi (blank row
-# between solid `─` rules), opencode 1.14.46 (left-bar `┃` rows), and grok
-# 1.0.0 (bordered box with a TITLED bottom border), plus claude captured
-# inside zellij through `dump-screen --ansi` (`ESC[m` `❯` U+00A0).
+# between solid `─` rules), and opencode 1.14.46 (left-bar `┃` rows), plus
+# claude captured inside zellij through `dump-screen --ansi` (`ESC[m` `❯` U+00A0).
 #
 # Capability profiles mirror the real adapters' descriptors: tmux
 # (styled+cursor+identity), herdr/zellij (styled), cmux/orca (plain). Every
@@ -1162,32 +1161,6 @@ test_matrix_opencode_leftbar_abs_cwd_furniture() {
   pass "matrix: opencode's absolute cwd rail on a wide pane reads empty busy and idle; typed text stays pending"
 }
 
-test_matrix_grok_titled_bottom_border() {
-  # Grok 1.0.5 widened its titled BOTTOM border three columns past the top and
-  # content rows. This is the idle capture from issue #3436; Herdr has no
-  # cursor anchor, so the geometry mismatch used to make the proven box
-  # ambiguous and the verdict unknown, stranding away-mode injection.
-  local titled plain_border typed malformed placeholder_draft
-  titled=$'  ╭──────────────────────────────────────────────────────────────────────────╮\n  │ ❯                                                                        │\n  ╰────────────────────────────────────────────────────────── Grok 4.6 (xhigh) ─╯\n\n  Shift+Tab:mode  │  Ctrl+x:shortcuts'
-  plain_border=$'  ╭──────────────────────────────────────╮\n  │ ❯                                    │\n  ╰──────────────────────────────────────╯'
-  assert_screen "grok titled on tmux" empty "$CAPS_TMUX" "$titled" 1
-  assert_screen "grok titled on tmux bottom-border cursor" empty "$CAPS_TMUX" "$titled" 2
-  assert_screen "issue #3436 idle grok 1.0.5 on herdr" empty "$CAPS_STYLED" "$titled"
-  placeholder_draft=$'  ╭──────────────────────────────────────────────────────────────────────────╮\n  │ ❯ Type a message...                                                      │\n  ╰────────────────────────────────────────────────────────── Grok 4.6 (xhigh) ─╯'
-  assert_screen "grok bright placeholder-like draft on tmux" pending "$CAPS_TMUX" "$placeholder_draft" 1
-  assert_screen "grok placeholder on plain backends" empty "$CAPS_PLAIN" "$placeholder_draft"
-  assert_screen "grok titled on cmux/orca" empty "$CAPS_PLAIN" "$titled"
-  assert_screen "grok titled on zellij" empty "$CAPS_STYLED_NOID" "$titled"
-  # The tolerance is additive: an untitled border still proves the same box.
-  assert_screen "grok untitled border" empty "$CAPS_TMUX" "$plain_border" 1
-  typed=$'  ╭──────────────────────────────────────────────────────────────────────────╮\n  │ ❯ deploy the fix                                                         │\n  ╰────────────────────────────────────────────────────────── Grok 4.6 (xhigh) ─╯'
-  assert_screen "grok typed on tmux" pending "$CAPS_TMUX" "$typed" 1
-  assert_screen "grok typed on herdr" pending "$CAPS_STYLED" "$typed"
-  malformed=$'  ╭──────────────────────────────────────────────────────────────────────────╮\n  │ ❯                                                                        │\n  ╰────────────────────────────────────────────────────────── unknown surface ─╯'
-  assert_screen "oversized unknown title on herdr" unknown "$CAPS_STYLED" "$malformed"
-  pass "matrix: grok's real oversized titled bottom is empty while typed and unproved panes stay safe"
-}
-
 test_matrix_claude_titled_top_rule() {
   # A named Claude Code session draws its title into the composer's TOP rule
   # (issues #5601 and #5558; observed on herdr as
@@ -1239,114 +1212,6 @@ test_matrix_claude_titled_top_rule() {
   assert_screen "untitled claude idle on herdr" empty "$CAPS_STYLED" \
     "$bottom"$'\n❯'"$NBSP"$'\n'"$bottom"$'\n'"$footer" '' "$claude_idle"
   pass "matrix: claude's titled top rule proves an idle composer empty and a draft pending (#5601, #5558)"
-}
-
-test_matrix_grok_144_approval_titled_bottom_border() {
-  # Grok 1.0.44 draws the title inside a bottom border exactly as wide as the
-  # top border and appends its approval mode (` · always-approve`). The mid-dot
-  # used to survive the geometry residue test, so an idle pane read unknown and
-  # the guarded exit/relaunch refused to type /exit.
-  local top empty_row typed_row bottom idle typed
-  top='  ╭'$(_grok_rule 74)'╮'
-  empty_row='  │ ❯'"$(printf '%*s' 72 '')"'│'
-  typed_row='  │ ❯ deploy the fix'"$(printf '%*s' 57 '')"'│'
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 (high) · always-approve')
-  idle="$top"$'\n'"$empty_row"$'\n'"$bottom"
-  typed="$top"$'\n'"$typed_row"$'\n'"$bottom"
-  assert_screen "grok 1.0.44 idle on tmux content row" empty "$CAPS_TMUX" "$idle" 1
-  assert_screen "grok 1.0.44 idle on tmux bottom border" empty "$CAPS_TMUX" "$idle" 2
-  assert_screen "grok 1.0.44 idle on herdr" empty "$CAPS_STYLED" "$idle"
-  assert_screen "grok 1.0.44 idle on cmux/orca" empty "$CAPS_PLAIN" "$idle"
-  assert_screen "grok 1.0.44 typed on tmux" pending "$CAPS_TMUX" "$typed" 1
-  assert_screen "grok 1.0.44 typed on herdr" pending "$CAPS_STYLED" "$typed"
-  # The approval title is proven only on Grok's rounded box. An otherwise
-  # aligned box from another family must not grant permission to type.
-  local family tl tr bl br edge dash unobserved
-  for family in light heavy double ascii; do
-    case "$family" in
-      light) tl=┌; tr=┐; bl=└; br=┘; edge=│; dash=─ ;;
-      heavy) tl=┏; tr=┓; bl=┗; br=┛; edge=┃; dash=━ ;;
-      double) tl=╔; tr=╗; bl=╚; br=╝; edge=║; dash=═ ;;
-      ascii) tl=+; tr=+; bl=+; br=+; edge='|'; dash=- ;;
-    esac
-    unobserved=${idle//╭/$tl}; unobserved=${unobserved//╮/$tr}
-    unobserved=${unobserved//╰/$bl}; unobserved=${unobserved//╯/$br}
-    unobserved=${unobserved//│/$edge}; unobserved=${unobserved//─/$dash}
-    assert_screen "grok approval title rejects $family on tmux" unknown "$CAPS_TMUX" "$unobserved" 1
-    assert_screen "grok approval title rejects $family on herdr" unknown "$CAPS_STYLED" "$unobserved"
-    assert_screen "grok approval title rejects $family on cmux/orca" unknown "$CAPS_PLAIN" "$unobserved"
-  done
-  for effort in low medium high xhigh; do
-    bottom=$(_grok_titled_bottom 74 "Grok 4.6 ($effort) · always-approve")
-    assert_screen "grok 1.0.44 $effort effort" empty "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  done
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 (high) · auto-approve')
-  assert_screen "grok unknown approval suffix" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 (high) · always-approve now')
-  assert_screen "grok approval suffix with trailing text" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Other 4.7 (high) · always-approve')
-  assert_screen "unknown surface title with approval suffix" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 (turbo) · always-approve')
-  assert_screen "unknown effort with approval suffix" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'unknown surface · mode')
-  assert_screen "mid-dot title outside the known shape" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 (high) · always-approve · extra')
-  assert_screen "second mid-dot after the known suffix" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  # The approval title is only known at the aligned width.
-  bottom=$(_grok_titled_bottom 77 'Grok 4.7 (high) · always-approve')
-  assert_screen "approval title with 1.0.5 overhang" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  # The 1.0.5 overhang shape keeps proving empty beside the new equal-width one.
-  bottom=$(_grok_titled_bottom 77 'Grok 4.6 (xhigh)')
-  assert_screen "grok 1.0.5 overhang still empty" empty "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Grok 4.6 (xhigh)')
-  assert_screen "grok typed title at equal width" empty "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  pass "matrix: grok 1.0.44's approval-titled equal-width bottom is empty while typed and unknown titles stay safe"
-}
-
-test_matrix_grok_1077_fast_model_title() {
-  # Grok 1.0.77 (50ca579fa996) launched with --always-approve --model
-  # grok-4.7-build-fast, captured live on 2026-11-12 through the Rex adapter's
-  # styled viewport read (24 rows, cursor row 19) after one turn and a Ctrl+C
-  # interrupt. Its bottom title `Grok 4.7 Fast (medium) · always-approve`
-  # carries a two-word model name, which read unknown, so exit and relaunch
-  # refused the idle pane (#8388).
-  local fixtures idle typed top empty_row bottom
-  fixtures="$ROOT/tests/fixtures/rex-grok-1.0.77"
-  idle=$(<"$fixtures/grok-1.0.77-fast-idle-after-interrupt.vt")
-  typed=$(<"$fixtures/grok-1.0.77-fast-typed.vt")
-  assert_screen "grok 1.0.77 fast idle with cursor" empty "$CAPS_TMUX" "$idle" 19
-  assert_screen "grok 1.0.77 fast idle cursorless" empty "$CAPS_STYLED" "$idle"
-  assert_screen "grok 1.0.77 fast idle plain" empty "$CAPS_PLAIN" "$(printf '%s' "$idle" | fm_composer_strip_ansi)"
-  assert_screen "grok 1.0.77 fast typed with cursor" pending "$CAPS_TMUX" "$typed" 19
-  assert_screen "grok 1.0.77 fast typed cursorless" pending "$CAPS_STYLED" "$typed"
-  top='  ╭'$(_grok_rule 74)'╮'
-  empty_row='  │ ❯'"$(printf '%*s' 72 '')"'│'
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 Fast Mini (medium) · always-approve')
-  assert_screen "grok second model word after Fast" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 74 'Grok 4.7 Turbo (medium) · always-approve')
-  assert_screen "grok model word other than Fast" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  bottom=$(_grok_titled_bottom 77 'Grok 4.7 Fast (medium)')
-  assert_screen "grok Fast title with 1.0.5 overhang" unknown "$CAPS_TMUX" "$top"$'\n'"$empty_row"$'\n'"$bottom" 1
-  pass "matrix: grok 1.0.77's Fast-model approval title is empty while typed and unobserved titles stay safe"
-}
-
-# <count> box-drawing rule glyphs, one glyph per iteration so the emitted width
-# never depends on whether ${#} counts bytes or characters in the ambient locale.
-_grok_rule() {  # <count>
-  local n=$1 i=0 out=
-  while [ "$i" -lt "$n" ]; do out+='─'; i=$((i + 1)); done
-  printf '%s' "$out"
-}
-
-# Bottom border of total inner width <width> carrying <title> before a trailing rule.
-# Every non-ASCII glyph these fixtures use is one column wide, so the width is
-# measured on an ASCII twin: the rule stays byte-exact and ${#} equals the column
-# count under any locale, including LC_ALL=C.
-_grok_titled_bottom() {  # <width> <title>
-  local width=$1 title=" $2 " cols lead
-  cols=${title//·/.}
-  lead=$((width - ${#cols} - 1))
-  printf '  ╰%s%s─╯' "$(_grok_rule "$lead")" "$title"
 }
 
 test_matrix_kimi_bordered_shell_glyph_box() {
@@ -1474,7 +1339,7 @@ test_cursorless_bare_wrap_region_classifies() {
 }
 
 test_cursorless_container_rejects_contiguous_lower_activity() {
-  local box leftbar grok kimi opencode
+  local box leftbar rounded kimi opencode
   box=$'╭────────────────────────╮\n│ ❯                      │\n╰────────────────────────╯\nWorking on request...'
   assert_screen "stale box above activity on herdr" unknown "$CAPS_STYLED" "$box"
   assert_screen "stale box above activity on zellij" unknown "$CAPS_STYLED_NOID" "$box"
@@ -1485,10 +1350,10 @@ test_cursorless_container_rejects_contiguous_lower_activity() {
   assert_screen "stale left-bar above activity on zellij" unknown "$CAPS_STYLED_NOID" "$leftbar"
   assert_screen "stale left-bar above activity on cmux/orca" unknown "$CAPS_PLAIN" "$leftbar"
 
-  grok=$'╭────────────────────────╮\n│ ❯                      │\n╰──────── Grok 4.5 ──────╯\n\nGrok status'
+  rounded=$'╭────────────────────────╮\n│ ❯                      │\n╰────────────────────────╯\n\nAgent status'
   kimi=$'╭────────────────────────╮\n│ >                      │\n╰────────────────────────╯\n\nKimi status'
   opencode=$'┃\n┃  Ask anything...\n┃\n┃  Build · GPT-5.5 Fast OpenAI · high\n╹▀▀▀▀▀▀▀▀\n\nOpenCode status'
-  assert_screen "blank-separated grok footer" empty "$CAPS_STYLED_NOID" "$grok"
+  assert_screen "blank-separated rounded-box footer" empty "$CAPS_STYLED_NOID" "$rounded"
   assert_screen "blank-separated kimi footer" empty "$CAPS_PLAIN" "$kimi"
   assert_screen "left-bar floor and blank-separated footer" empty "$CAPS_STYLED_NOID" "$opencode"
   pass "fm_composer_classify_screen: cursorless containers reject only contiguous unclaimed activity"
@@ -1519,7 +1384,7 @@ test_incomplete_lower_box_invalidates_stale_candidate() {
 
 test_titled_bottom_requires_matching_width() {
   local screen out
-  screen=$'╭────────────────────────╮\n│ ❯                      │\n╰─ Grok ─╯'
+  screen=$'╭────────────────────────╮\n│ ❯                      │\n╰─ Title ─╯'
   out=$(fm_composer_classify_screen "$CAPS_TMUX" "$screen" 1)
   [ "$out" = unknown ] \
     || fail "a short titled bottom must not prove an empty box, got '$out'"
@@ -1669,7 +1534,7 @@ test_composer_widening_is_kiro_only() {
     | FM_COMPOSER_HARNESS=kiro FM_COMPOSER_GHOST_LUMA_MAX=0 fm_composer_strip_ghost)
   [ -z "${out//[[:space:]]/}" ] \
     || fail "fixture drift: the kiro scope must strip grey 112 at FM_COMPOSER_GHOST_LUMA_MAX=0, or the Claude case is vacuous, got '$out'"
-  for h in '' claude codex rovo grok; do
+  for h in '' claude codex rovo; do
     out=$(printf '%s' "${ESC}[38;2;112;112;112m/exit${ESC}[0m" \
       | FM_COMPOSER_HARNESS=$h FM_COMPOSER_GHOST_LUMA_MAX=0 fm_composer_strip_ghost)
     [ "$out" = '/exit' ] \
@@ -1729,10 +1594,7 @@ test_matrix_pi_dollar_status_footer_is_empty
 test_matrix_opencode_leftbar_signals
 test_matrix_opencode_leftbar_cwd_furniture
 test_matrix_opencode_leftbar_abs_cwd_furniture
-test_matrix_grok_titled_bottom_border
 test_matrix_claude_titled_top_rule
-test_matrix_grok_144_approval_titled_bottom_border
-test_matrix_grok_1077_fast_model_title
 test_matrix_kimi_bordered_shell_glyph_box
 test_matrix_claude_inside_zellij_ansi_dump
 test_strict_blank_row_divergence

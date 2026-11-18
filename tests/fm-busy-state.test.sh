@@ -5,7 +5,7 @@
 # Covers the captain-approved redesign invariants: busy/idle/unknown/dead with
 # explicit source attribution; missing, malformed, stale (gen-mismatch), and
 # untrusted (source-mismatch) semantic data classify unknown - never idle;
-# adapter isolation (one adapter's writer or Grok's regex can never classify
+# adapter isolation (one adapter's writer or regex fallback can never classify
 # another adapter); endpoint death is the only process-level override and
 # yields dead, never busy; converted adapters never classify from rendered
 # footer text. All hermetic over temp dirs; no real agent session is invoked.
@@ -374,8 +374,8 @@ test_source_mismatch_cross_adapter() {
   [ "$out" = "unknown source-mismatch" ] || fail "pi-ext record on a claude task must be untrusted, got '$out'"
   out=$(fm_busy_classify tmux w1 pi t1 "$state")
   [ "$out" = "busy pi-ext" ] || fail "pi-ext record on a pi task must classify, got '$out'"
-  out=$(fm_busy_classify tmux w1 grok t1 "$state")
-  [ "$out" = "unknown source-mismatch" ] || fail "grok trusts no semantic source, got '$out'"
+  out=$(fm_busy_classify tmux w1 muse t1 "$state")
+  [ "$out" = "unknown source-mismatch" ] || fail "muse trusts no semantic source, got '$out'"
   pass "a record is trusted only by the adapter whose source wrote it"
 }
 
@@ -530,19 +530,18 @@ test_launch_prompt_requires_a_captured_tail() {
   pass "the launch-prompt backstop never runs without a captured tail"
 }
 
-test_grok_regex_isolated() {
+test_unknown_grok_harness_reads_no_rendered_tail() {
   local state out
-  state=$(new_state_dir grok-arm)
+  state=$(new_state_dir unknown-grok)
+  # grok is no longer a supported harness: a task recorded with it has no
+  # trusted source and no rendered-tail fallback, so no tail can classify it.
   out=$(fm_busy_classify tmux w1 grok t1 "$state" 'thinking hard
 Ctrl+c:cancel')
-  [ "$out" = "busy grok-regex" ] || fail "grok busy tail must classify 'busy grok-regex', got '$out'"
+  [ "$out" = "unknown missing" ] || fail "an unknown grok harness must not classify from a busy-looking tail, got '$out'"
   out=$(fm_busy_classify tmux w1 grok t1 "$state" 'done.
 > ')
-  [ "$out" = "idle grok-regex" ] || fail "grok idle tail must classify 'idle grok-regex', got '$out'"
-  # Another adapter's footer never makes grok busy either.
-  out=$(fm_busy_classify tmux w1 grok t1 "$state" '• Working (6s • esc to interrupt)')
-  [ "$out" = "idle grok-regex" ] || fail "a claude footer must not classify grok busy, got '$out'"
-  pass "the grok fallback is regex-scoped to grok and classifies only grok tasks"
+  [ "$out" = "unknown missing" ] || fail "an unknown grok harness must not classify idle from a tail, got '$out'"
+  pass "a task recorded with the unknown grok harness classifies unknown, never from its tail"
 }
 
 # --- kimi verification gate -----------------------------------------------------
@@ -847,7 +846,7 @@ test_launch_prompt_never_shortens_a_working_launch
 test_launch_prompt_scoped_to_armed_harnesses
 test_launch_prompt_never_reclassifies_an_advanced_record
 test_launch_prompt_requires_a_captured_tail
-test_grok_regex_isolated
+test_unknown_grok_harness_reads_no_rendered_tail
 test_codex_unverified_gate
 test_kimi_unverified_gate
 test_pi_stream_version_floor_accepts_verified_rejects_unverified

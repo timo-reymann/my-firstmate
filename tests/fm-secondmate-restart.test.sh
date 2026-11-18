@@ -583,7 +583,7 @@ test_remote_restart_with_a_legacy_pin_file_uses_the_first_line() {
   dir=$(new_case matelegacypin)
   setup_remote_case "$dir" sm2 ok
   export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
-  printf 'codex big-model high extra\ngrok other-model low\n' > "$dir/home/config/secondmate-harness"
+  printf 'codex big-model high extra\nkimi other-model low\n' > "$dir/home/config/secondmate-harness"
 
   out=$(run_restart "$dir" sm2); rc=$?
   unset FM_FAKE_ANSWER_STATUS

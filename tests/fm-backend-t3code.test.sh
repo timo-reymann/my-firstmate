@@ -846,7 +846,7 @@ test_harness_admission_and_typing_refusals() {
   [ ! -s "$LOG" ] || fail 'refused typing must not dispatch or read a thread'
   t3_run 'fm_backend_send_key t3code thread-live Enter' || fail 'runtime Enter remains a no-op'
   t3_run 'fm_backend_validate_harness t3code claude; fm_backend_validate_harness t3code codex' || fail 'T3 supported harnesses changed'
-  for op in opencode pi pi-signed grok kimi cursor gemini muse rovo omp agy devin; do
+  for op in opencode pi pi-signed kimi cursor gemini muse rovo omp agy devin; do
     if out=$(t3_run 'fm_backend_validate_harness t3code "$1"' "$op" 2>&1); then fail "T3 must refuse harness $op"; fi
     assert_contains "$out" "not '$op'" 'harness refusal must name the unsupported adapter'
   done
@@ -896,7 +896,7 @@ test_native_restart_rearms_undelivered_stale_warning() {
     printf 'working: waiting for results\n' > "$state/worker.status"
     (
       export FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_CONFIG_OVERRIDE="$CONFIG"
-      export FM_TEST_HARNESS=grok
+      export FM_TEST_HARNESS=codex
       export FM_ESCALATE_BATCH_SECS=999999 FM_STALE_ESCALATE_SECS=5 FM_MAX_DEFER_SECS=0
       "$ROOT/bin/fm-afk-launch.sh" enter --words 'supervise pending work' >/dev/null \
         && "$ROOT/bin/fm-afk-launch.sh" start-native || exit 1

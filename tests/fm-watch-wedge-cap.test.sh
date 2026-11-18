@@ -215,7 +215,7 @@ inventory_calls() {  # <log>
 # recorded hash, with the idle timer planted <timer-age-secs> old against a
 # <stale-secs> threshold, so a case can place a window just under or well past
 # that threshold and watch what each poll costs it. The endpoint reads live
-# (FM_FAKE_TMUX_CURRENT_COMMAND=grok), so nothing here reports a death;
+# (FM_FAKE_TMUX_CURRENT_COMMAND=kimi), so nothing here reports a death;
 # <env> overrides the pane's verdict instead. Returns non-zero unless every
 # cycle settles with the watcher still running - which is what a silenced window
 # does - leaving <dir>/watch.out for the caller to read.
@@ -230,7 +230,7 @@ hold_capped_polls() {  # <dir> <max> <stale-secs> <timer-age-secs> <cycles> [ext
   : > "$out"
   # shellcheck disable=SC2086
   env FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok FM_WATCH_HANDLING_SUCCESSOR=1 \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi FM_WATCH_HANDLING_SUCCESSOR=1 \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
     FM_STALE_ESCALATE_SECS=$stale_secs FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 FM_WEDGE_MAX_ESCALATIONS=$max \
@@ -1342,7 +1342,7 @@ test_wedge_cap_reports_gone_endpoint_while_capped() {
 
   # The endpoint is a live agent for this round, so the pane is escalated rather
   # than reported gone and the ceiling fires while the worker is provably here.
-  poll_wedge_round "$dir" "$max" "FM_FAKE_TMUX_CURRENT_COMMAND=grok"
+  poll_wedge_round "$dir" "$max" "FM_FAKE_TMUX_CURRENT_COMMAND=kimi"
   grep -F "PERMANENTLY-WEDGED" "$out" >/dev/null \
     || fail "the cap did not fire against a live endpoint: $(cat "$out")"
   [ -e "$state/.wedge-permanent-$key" ] || fail "the window-scoped cap marker is missing after the cap fired"
@@ -1473,7 +1473,7 @@ test_wedge_cap_probe_keeps_its_cadence_while_capped() {
   # The cap fires against a live agent, so the window it silences is one whose
   # endpoint the probe keeps answering `alive` - the case that must not become
   # a per-poll backend read.
-  poll_wedge_round "$dir" "$max" "FM_FAKE_TMUX_CURRENT_COMMAND=grok"
+  poll_wedge_round "$dir" "$max" "FM_FAKE_TMUX_CURRENT_COMMAND=kimi"
   grep -F "PERMANENTLY-WEDGED" "$out" >/dev/null \
     || fail "the cap did not fire against a live endpoint: $(cat "$out")"
   [ -e "$state/.wedge-permanent-$key" ] || fail "the cap marker is missing after the cap fired"

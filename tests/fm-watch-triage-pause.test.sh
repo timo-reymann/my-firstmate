@@ -138,7 +138,7 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
     out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/own-work.status"
     window="test:fm-own-work"; key=$(watch_window_key "$window")
     printf 'idle worker awaiting its own %s\n' "$wait_kind" > "$capture_file"
-    printf 'window=%s\nkind=scout\nharness=grok\nbackend=tmux\n' "$window" > "$state/own-work.meta"
+    printf 'window=%s\nkind=scout\nharness=kimi\nbackend=tmux\n' "$window" > "$state/own-work.meta"
     printf 'paused: waiting for my %s to finish; resume on completion\n' "$wait_kind" > "$statusf"
     # Age before the first observation: backdating later can change the birth
     # time on macOS and accidentally turn this into a replacement declaration.
@@ -148,7 +148,7 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
     printf '1\n' > "$state/.count-$key"
 
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-      FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+      FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
       FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting for own work' \
       watch_bg "$state" "$fakebin" "$out" env FM_PAUSE_RESURFACE_SECS=999
     pid=$!
@@ -161,7 +161,7 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
     for round in 1 2; do
       printf '%s\n' $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
       PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-        FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+        FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
         FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting for own work' \
         watch_bg "$state" "$fakebin" "$dir/recheck.out" env \
           FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999
@@ -178,7 +178,7 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
     # the 240s cadence for a forgotten wait to get its bounded recheck.
     set_mtime "$(( $(date +%s) - 500 ))" "$state/.paused-resurfaced-$key"
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-      FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+      FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
       FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting for own work' \
       watch_bg "$state" "$fakebin" "$dir/long-cadence.out" env \
         FM_STALE_ESCALATE_SECS=1 FM_PAUSE_RESURFACE_SECS=240
@@ -191,13 +191,13 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
   dir=$(make_case own-work-undeclared); state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/own-work.status"
   printf 'idle worker without a declared wait\n' > "$capture_file"
-  printf 'window=%s\nkind=scout\nharness=grok\nbackend=tmux\n' "$window" > "$state/own-work.meta"
+  printf 'window=%s\nkind=scout\nharness=kimi\nbackend=tmux\n' "$window" > "$state/own-work.meta"
   printf 'working: implementing\n' > "$statusf"
   sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-own-work_status"
   printf '%s' "$(hash_text "$(cat "$capture_file")")" > "$state/.hash-$key"
   printf '1\n' > "$state/.count-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
     FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
     watch_bg "$state" "$fakebin" "$out" env FM_STALE_ESCALATE_SECS=999
   pid=$!
@@ -220,7 +220,7 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held.status"
   window="test:fm-held"
   printf 'idle bare shell after agent exit\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held.meta"
   printf 'paused: held per captain while an external decision is pending\n' > "$statusf"
   back=$(( $(date +%s) - 500 ))
   if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
@@ -266,7 +266,7 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held.status"
   window="test:fm-held"
   printf 'idle bare shell after captain-held transfer\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held.meta"
   printf 'captain-held [key=route]: tracked by held-decision-route\n' > "$statusf"
   back=$(( $(date +%s) - 500 ))
   if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
@@ -291,7 +291,7 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/gate.status"
   window="test:fm-gate"
   printf 'idle external-decision gate\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/gate.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/gate.meta"
   printf 'paused: waiting at an active external-decision gate\n' > "$statusf"
   sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-gate_status"
   key=$(watch_window_key "$window")
@@ -302,7 +302,7 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   # First sight must surface promptly so a live external-decision gate is not
   # hidden behind the pause cadence.
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting at an active external-decision gate' \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting at an active external-decision gate' \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" >> "$out" &
   pid=$!
@@ -315,7 +315,7 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   # a second possible-wedge wake.
   printf '%s\n' $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting at an active external-decision gate' \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting at an active external-decision gate' \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" >> "$out" &
   pid=$!
@@ -351,7 +351,7 @@ test_absorbed_replacement_wait_does_not_inherit_the_old_throttle() {
     out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held.status"
     window="test:fm-held"
     printf 'idle after agent exit\n' > "$capture_file"
-    printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held.meta"
+    printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held.meta"
     printf '%s\n' "$initial" > "$statusf"
     back=$(( $(date +%s) - 500 ))
     if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
@@ -406,7 +406,7 @@ test_absorbed_replacement_wait_does_not_inherit_the_old_throttle() {
 parked_watch_round() {  # <state> <fakebin> <out> <capture> <window> <exit|absorb>
   local state=$1 fakebin=$2 out=$3 capture=$4 window=$5 mode=$6 pid cycles=0
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
     FM_FAKE_CREW_STATE='state: paused · source: status-log · parked' \
     FM_WATCH_HANDLING_SUCCESSOR=1 \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
@@ -449,7 +449,7 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
     dir=$(make_case "$name"); state="$dir/state"; fakebin="$dir/fakebin"
     out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/parked.status"
     window="test:fm-parked"
-    printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/parked.meta"
+    printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/parked.meta"
     printf '%s\n' "$status_line" > "$statusf"
     sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-parked_status"
     key=$(watch_window_key "$window")
@@ -530,7 +530,7 @@ test_live_paused_until_controls_recheck_time() {
   dir=$(make_case live-paused-until); state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/parked.status"
   window="test:fm-parked"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/parked.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/parked.meta"
   future=$(iso_utc_at "$(( $(date +%s) + 7200 ))")
   printf 'paused: rate limit until %s\n' "$future" > "$statusf"
   sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-parked_status"
@@ -608,7 +608,7 @@ make_hold_home() {  # <name> <status-line> <hold|nohold>
   if [ "$hold" = hold ]; then
     run_hold "$dir" hold held-merge --reason 'awaiting the captain on the merge' || return 1
   fi
-  printf 'window=test:fm-held-merge\nkind=ship\nharness=grok\nbackend=tmux\n' \
+  printf 'window=test:fm-held-merge\nkind=ship\nharness=kimi\nbackend=tmux\n' \
     > "$state/held-merge.meta"
   printf '%s\n' "$line" > "$state/held-merge.status"
   printf '%s' "$(seen_sig "$state/held-merge.status")" > "$state/.seen-held-merge_status"
@@ -1184,7 +1184,7 @@ test_captain_held_rechecked_under_a_quiet_record() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-afk.status"
   window="test:fm-held-afk"
   printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
   printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
   printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-held-afk_status"
   key=$(watch_window_key "$window")
@@ -1207,7 +1207,7 @@ test_live_captain_held_first_sight_silenced_by_away_record() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-live.status"
   window="test:fm-held-live"
   printf 'parked at the decision gate\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-live.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held-live.meta"
   printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
   sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-held-live_status"
   key=$(watch_window_key "$window")
@@ -1216,7 +1216,7 @@ test_live_captain_held_first_sight_silenced_by_away_record() {
   # and the first sight surfaces (test_exited_declared_pause_is_bounded_but_live_gate_surfaces).
   export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_FAKE_TMUX_CURRENT_COMMAND=kimi \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   pid=$!
@@ -1254,7 +1254,7 @@ test_afk_one_shot_never_hands_off_captain_held_under_away_record() {
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-afk.status"
   window="test:fm-held-afk"
   printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
+  printf 'window=%s\nkind=ship\nharness=kimi\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
   printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
   sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-held-afk_status"
   key=$(watch_window_key "$window")
@@ -1717,8 +1717,8 @@ test_silent_recheck_flag_on_wakes_for_a_changed_declaration() {
 test_silent_recheck_flag_on_absorbs_unchanged_pause_for_a_live_ship_agent() {
   local dir state
   dir=$(silent_recheck_case silent-live-ship on 'paused: rate limit resets, until 2999-01-01T00:00Z, then resuming'); state="$dir/state"
-  printf 'window=test:fm-until\nkind=ship\nharness=grok\nbackend=tmux\n' > "$state/until.meta"
-  FM_FAKE_TMUX_CURRENT_COMMAND=grok until_watch "$dir" 240
+  printf 'window=test:fm-until\nkind=ship\nharness=kimi\nbackend=tmux\n' > "$state/until.meta"
+  FM_FAKE_TMUX_CURRENT_COMMAND=kimi until_watch "$dir" 240
   if ! wait_poll_cycle "$state" "$UNTIL_PID" || ! wait_poll_cycle "$state" "$UNTIL_PID"; then
     reap "$UNTIL_PID"; fail "an unchanged paused recheck woke the supervisor for a live ship agent with the flag on: $(cat "$dir/watch.out")"
   fi
@@ -1729,10 +1729,10 @@ test_silent_recheck_flag_on_absorbs_unchanged_pause_for_a_live_ship_agent() {
 test_silent_recheck_flag_on_absorbs_a_ticking_pane_for_a_live_ship_agent() {
   local dir state
   dir=$(silent_recheck_case silent-ticking on 'paused: waiting on the vendor reply'); state="$dir/state"
-  printf 'window=test:fm-until\nkind=ship\nharness=grok\nbackend=tmux\n' > "$state/until.meta"
+  printf 'window=test:fm-until\nkind=ship\nharness=kimi\nbackend=tmux\n' > "$state/until.meta"
   printf 'idle, waiting for the reset 12:01\n' > "$dir/pane.txt"
   printf '%s' "$(hash_text 'idle, waiting for the reset 12:01')" > "$state/.hash-$(watch_window_key test:fm-until)"
-  FM_FAKE_TMUX_CURRENT_COMMAND=grok until_watch "$dir" 240
+  FM_FAKE_TMUX_CURRENT_COMMAND=kimi until_watch "$dir" 240
   if ! wait_poll_cycle "$state" "$UNTIL_PID" || ! wait_poll_cycle "$state" "$UNTIL_PID"; then
     reap "$UNTIL_PID"; fail "a changed pane on an unchanged paused declaration woke the supervisor with the flag on: $(cat "$dir/watch.out")"
   fi
@@ -1743,7 +1743,7 @@ test_silent_recheck_flag_on_absorbs_a_ticking_pane_for_a_live_ship_agent() {
 test_silent_recheck_flag_on_wakes_when_the_agent_exited() {
   local dir state
   dir=$(silent_recheck_case silent-dead on 'paused: rate limit resets, until 2999-01-01T00:00Z, then resuming'); state="$dir/state"
-  printf 'window=test:fm-until\nkind=ship\nharness=grok\nbackend=tmux\n' > "$state/until.meta"
+  printf 'window=test:fm-until\nkind=ship\nharness=kimi\nbackend=tmux\n' > "$state/until.meta"
   FM_FAKE_TMUX_CURRENT_COMMAND=zsh until_watch "$dir" 240
   wait_for_exit "$UNTIL_PID" 100 || { reap "$UNTIL_PID"; fail "a paused recheck for an exited agent did not wake with the flag on"; }
   grep -F 'stale: test:fm-until' "$dir/watch.out" >/dev/null || fail "the exited-agent recheck wake was not printed: $(cat "$dir/watch.out")"
@@ -1771,7 +1771,7 @@ test_silent_recheck_flag_on_wakes_when_declared_time_is_due() {
 bg_job_paused_case() {  # <name> <status-line> -> dir
   local dir state window key
   dir=$(make_case "$1"); state="$dir/state"; window="test:fm-parked"
-  printf 'window=%s\nkind=scout\nharness=grok\nbackend=tmux\n' "$window" > "$state/parked.meta"
+  printf 'window=%s\nkind=scout\nharness=kimi\nbackend=tmux\n' "$window" > "$state/parked.meta"
   printf '%s\n' "$2" > "$state/parked.status"
   printf '%s' "$(seen_sig "$state/parked.status")" > "$state/.seen-parked_status"
   key=$(watch_window_key "$window")
@@ -1872,7 +1872,7 @@ make_superseded_pause_case() {  # <name> <status-line> [armed|unarmed]
   mkdir -p "$dir/config"
   [ "$arm" = unarmed ] || : > "$dir/config/paused-wait-supersession"
   printf 'idle at declared wait\n' > "$dir/pane.txt"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/paused.meta"
+  printf 'window=%s\nkind=ship\nharness=rovo\nbackend=tmux\n' "$window" > "$state/paused.meta"
   printf '%s\n' "$status_line" > "$state/paused.status"
   sig=$(seen_sig "$state/paused.status"); printf '%s' "$sig" > "$state/.seen-paused_status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
@@ -1885,7 +1885,7 @@ superseded_pause_round() {  # <dir> <crew-state-line> <exit|absorb> [busy]
   local dir=$1 crew_state=$2 mode=$3 busy=${4:-no} state="$1/state" out="$1/watch.out" pid
   local command=zsh busy_max=999999
   case "$busy" in
-    yes|recent) command=grok; [ "$busy" = yes ] && busy_max=1; printf 'working\nCtrl+c:cancel\n' > "$dir/pane.txt" ;;
+    yes|recent) command=rovo; [ "$busy" = yes ] && busy_max=1; printf 'working\nRovo is thinking\n' > "$dir/pane.txt" ;;
   esac
   PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW=test:fm-superseded \
     FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" FM_FAKE_TMUX_CURRENT_COMMAND="$command" \
