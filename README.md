@@ -38,6 +38,11 @@ This fork removes the following.
 - The vendor auth probe, which had Grok as its only probe.
 - The header image and the star history chart in this README.
 
+This fork adds the following.
+
+- The `lavish` skill, for visual plans and reviews through `lavish-axi`.
+  It is versioned in `.agents/skills/lavish/`, with its source pinned in `skills-lock.json`.
+
 The supervision host dispatch code, which decides which wake rows the away session may take, moved out of the Pi extension folder into a neutral module (`bin/lib/fm-host-dispatch.ts`, run through `bin/fm-host-dispatch.mjs`).
 Its behavior is unchanged.
 The branch contract doc is now [docs/supervision-branch.md](docs/supervision-branch.md).
