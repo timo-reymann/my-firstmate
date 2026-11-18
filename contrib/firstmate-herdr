@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One command for firstmate in Herdr: the first mate pane on the left, the fleet view on the right.
-# Env overrides: FIRSTMATE_DIR, FIRSTMATE_BIN, FLEET_BIN, HERDR_BIN, FM_HERDR_SESSION (named session; default if unset).
+# Env overrides: FIRSTMATE_DIR, FIRSTMATE_BIN, FLEET_BIN, TUI_BIN, FIRSTMATE_FLEET_VIEW (tui or bash), HERDR_BIN,
+# FM_HERDR_SESSION (named session; default if unset).
 set -u
 
 usage() {
@@ -17,6 +18,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 dir="${FIRSTMATE_DIR:-$HOME/workspace/firstmate}"
 firstmate_bin="${FIRSTMATE_BIN:-$here/firstmate}"
 fleet_bin="${FLEET_BIN:-$here/firstmate-fleet}"
+tui_bin="${TUI_BIN:-$here/firstmate-tui}"
+view="${FIRSTMATE_FLEET_VIEW:-}"
 herdr_bin="${HERDR_BIN:-herdr}"
 session="${FM_HERDR_SESSION:-}"
 ratio=0.72
@@ -40,6 +43,17 @@ command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v "$herdr_bin" >/dev/null 2>&1 || die "herdr is not installed (https://herdr.dev)"
 [ -d "$dir" ] || die "firstmate folder not found: $dir"
 
+# An explicit FLEET_BIN keeps the bash view it names unless FIRSTMATE_FLEET_VIEW asks for the TUI.
+uv_bin=$(command -v uv 2>/dev/null || true)
+case "$view" in
+  '')
+    if [ -z "${FLEET_BIN:-}" ] && [ -n "$uv_bin" ] && [ -f "$tui_bin" ]; then view=tui; else view=bash; fi
+    ;;
+  tui) [ -n "$uv_bin" ] || die "FIRSTMATE_FLEET_VIEW=tui needs uv on PATH (https://docs.astral.sh/uv/)" ;;
+  bash) ;;
+  *) die "FIRSTMATE_FLEET_VIEW must be tui or bash, not '$view'" ;;
+esac
+
 protocol=$("$herdr_bin" status client 2>/dev/null | awk '/protocol:/ {print $2; exit}')
 case "${protocol:-0}" in
   '' | *[!0-9]*) protocol=0 ;;
@@ -56,7 +70,12 @@ fi
 
 hr() { "$herdr_bin" "$@" ${sflag[@]+"${sflag[@]}"}; }
 
-fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$fleet_bin")"
+if [ "$view" = tui ]; then
+  # The pane shell may have another PATH, so the TUI runs through the uv found here.
+  fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$uv_bin") run --script $(printf '%q' "$tui_bin")"
+else
+  fleet_cmd="FIRSTMATE_DIR=$(printf '%q' "$dir") exec $(printf '%q' "$fleet_bin")"
+fi
 mate_cmd="exec $(printf '%q' "$firstmate_bin")"
 for a in "$@"; do mate_cmd="$mate_cmd $(printf '%q' "$a")"; done
 
