@@ -369,9 +369,9 @@ SH
 test_unprovable_runtime_falls_back() {
   local dir out rc
   dir=$(new_case unprovable)
-  # zellij has no recovery-grade agent-state classifier, so "the old agent
+  # orca has no recovery-grade agent-state classifier, so "the old agent
   # stopped and the replacement came up" can never be established there.
-  add_local_mate "$dir" sm1 claude zellij
+  add_local_mate "$dir" sm1 claude orca
 
   out=$(run_restart "$dir" sm1); rc=$?
 
@@ -876,8 +876,8 @@ test_already_current_mate_restarts_end_to_end() {
 test_already_current_unprovable_mate_stays_on_the_nudge_path() {
   local dir out rc restart_line nudge_line before
   dir=$(new_case already-current-unprovable)
-  # zellij can never establish "the old agent stopped and the replacement came up".
-  add_repo_backed_mate "$dir" sm1 claude zellij
+  # orca can never establish "the old agent stopped and the replacement came up".
+  add_repo_backed_mate "$dir" sm1 claude orca
   arm_answer "$dir" sm1
   before=$(cat "$dir/fake/command")
 

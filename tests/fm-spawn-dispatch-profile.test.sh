@@ -750,7 +750,7 @@ SH
     printf 'onn\n' > "$HOME_DIR/config/osc7501-status"
     # Config warnings apply only after the writable, known-aware tty gates.
     : > "$CASE_DIR/no-tty"
-    result=$(cd "$CASE_DIR" && isolated_pane_env REX_BLOCK=b1 PATH="$agentbin:$PATH" FM_OSC7501_TTY=no-tty \
+    result=$(cd "$CASE_DIR" && isolated_pane_env TERM_PROGRAM=ghostty PATH="$agentbin:$PATH" FM_OSC7501_TTY=no-tty \
       /bin/sh -c "$launch" 2>&1)
     status=$?
     expect_code 0 "$status" "staged launch for raw '$raw' failed: $result"
@@ -800,7 +800,7 @@ SH
     expect_code 0 "$status" "raw launch '$raw' should spawn: $out"
     launch=$(cat "$LAUNCH_LOG")
     : > "$CASE_DIR/tty"
-    result=$(cd "$CASE_DIR" && isolated_pane_env REX_BLOCK=b1 \
+    result=$(cd "$CASE_DIR" && isolated_pane_env TERM_PROGRAM=ghostty \
       PATH="$oldbin:$PATH" FM_OSC7501_TTY="$CASE_DIR/tty" /bin/sh -c "$launch" 2>&1)
     status=$?
     expect_code 0 "$status" "staged launch for raw '$raw' failed: $result"

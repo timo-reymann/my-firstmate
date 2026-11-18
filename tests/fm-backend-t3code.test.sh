@@ -464,19 +464,19 @@ w.threads = {
 test_explicit_t3_selection_and_precedence() {
   local out
   t3_case autodetect running
-  # Disable host cmux ancestry while retaining all explicit marker precedence.
+  # Keep every explicit marker's precedence over T3 discovery.
   detect() {
-    t3_run 'FM_HOME="$1"; unset TMUX HERDR_ENV CMUX_WORKSPACE_ID FM_BACKEND; fm_backend_detect_cmux_fallback() { return 1; }; eval "$2"; fm_backend_name' "$REPO" "$1"
+    t3_run 'FM_HOME="$1"; unset TMUX HERDR_ENV FM_BACKEND; eval "$2"; fm_backend_name' "$REPO" "$1"
   }
   out=$(detect '' 2>"$CASE_DIR/notice")
   [ "$out" = tmux ] || fail "T3 must require explicit selection, got $out"
   [ ! -s "$LOG" ] || fail "implicit backend detection must make no T3 request"
-  for pair in 'TMUX=socket:tmux' 'HERDR_ENV=1:herdr' 'CMUX_WORKSPACE_ID=workspace:cmux' 'FM_BACKEND=tmux:tmux'; do
+  for pair in 'TMUX=socket:tmux' 'HERDR_ENV=1:herdr' 'FM_BACKEND=tmux:tmux'; do
     out=$(detect "${pair%:*}" 2>/dev/null)
     [ "$out" = "${pair##*:}" ] || fail "${pair%:*} must select ${pair##*:} over T3 discovery, got '$out'"
   done
-  printf 'zellij\n' > "$CONFIG/backend"
-  [ "$(detect '' 2>/dev/null)" = zellij ] || fail 'explicit config/backend must win'
+  printf 'orca\n' > "$CONFIG/backend"
+  [ "$(detect '' 2>/dev/null)" = orca ] || fail 'explicit config/backend must win'
   rm "$CONFIG/backend"
   rm "$CONFIG/t3code-token"
   : > "$LOG"

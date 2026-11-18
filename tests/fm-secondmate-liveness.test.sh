@@ -192,12 +192,15 @@ test_agent_state_dispatcher_and_compatibility() {
   out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_source herdr; fm_backend_herdr_pane_agent_state() { printf "live"; }; fm_backend_agent_state herdr sess:p1' "$ROOT")
   [ "$out" = alive ] || fail "detailed dispatcher should route Herdr, got '$out'"
 
-  out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state zellij sess:7' "$ROOT")
-  [ "$out" = unverified ] || fail "Zellij should remain unverified, got '$out'"
-  out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive zellij sess:7' "$ROOT")
-  [ "$out" = unknown ] || fail "the compatibility dispatcher should map unverified to unknown, got '$out'"
+  local removed
+  for removed in zellij cmux paseo rex tern hc; do
+    out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state "$1" sess:7' "$ROOT" "$removed")
+    [ "$out" = unverified ] || fail "the removed $removed backend should stay unverified, got '$out'"
+    out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive "$1" sess:7' "$ROOT" "$removed")
+    [ "$out" = unknown ] || fail "the compatibility dispatcher should map the removed $removed backend to unknown, got '$out'"
+  done
 
-  pass "fm_backend_agent_state: routes tmux/Herdr and keeps Zellij unverified"
+  pass "fm_backend_agent_state: routes tmux/Herdr and keeps a removed backend unverified"
 }
 
 # --- sweep level: bin/fm-bootstrap.sh's secondmate_liveness_sweep -----------
@@ -413,14 +416,14 @@ test_sweep_respawns_on_the_recorded_backend() {
   fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
   log="$w/calls.log"; : > "$log"
 
-  # The home now selects hc for new spawns; the dead mate is recorded on tmux.
-  out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log" FM_BACKEND=hc)
+  # The home now selects herdr for new spawns; the dead mate is recorded on tmux.
+  out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log" FM_BACKEND=herdr)
 
   assert_not_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1:" \
     "the respawn should succeed on the recorded backend: $out"
   assert_contains "$(cat "$log")" "new-window" \
     "the respawn must land on the backend the mate is recorded on, not the configured default"
-  assert_no_grep 'backend=hc' "$w/home/state/sm1.meta" \
+  assert_no_grep 'backend=herdr' "$w/home/state/sm1.meta" \
     "the respawned record must stay on its recorded backend"
   pass "sweep: a dead secondmate respawns on its recorded backend, not a changed default"
 }
@@ -859,10 +862,10 @@ test_remote_poll_probe_unreachable_preserves_route() {
   pass "poll probe: unreachable or inconclusive remote reads preserve the route"
 }
 
-# make_remote_probe_world_rex <name>: the same remote probe world on a rex
+# make_remote_probe_world <name>: the same remote probe world on a herdr
 # route, whose fake ssh answers the doctor, the state verb, and the route verb
 # separately so a full-mode probe exercises readiness plus the route re-check.
-make_remote_probe_world_rex() {
+make_remote_probe_world() {
   local name=$1 w fakebin
   w="$TMP_ROOT/$name"
   fakebin=$(fm_fakebin "$w")
@@ -872,10 +875,9 @@ window=remote:rsm1
 kind=secondmate
 harness=claude
 remote_host=lab-host
-remote_backend=rex
-remote_rex_session_id=session:00000001-0000-7000-8000-000000000002
-remote_rex_server=unix:///remote/rex.sock
-remote_target=00000001-0000-7000-8000-000000000002:00000003-0000-7000-8000-000000000004
+remote_backend=herdr
+remote_herdr_session=fm-remote
+remote_target=fm-remote:w1:p1
 home=/remote/rsm1-home
 EOF
   cat > "$w/home/data/secondmates.md" <<EOF
@@ -909,10 +911,8 @@ case "$command_name:$_command_action" in
   fm-remote-secondmate-control.sh:route)
     [ "${FM_FAKE_REMOTE_RC:-0}" -eq 0 ] || exit "$FM_FAKE_REMOTE_RC"
     printf 'schema=fm-remote-secondmate-control.v1\n'
-    printf 'backend=%s\n' "${FM_FAKE_ROUTE_BACKEND:-rex}"
-    printf 'target=%s\n' "${FM_FAKE_ROUTE_TARGET:-00000001-0000-7000-8000-000000000002:00000003-0000-7000-8000-000000000004}"
-    printf 'rex_session_id=session:00000001-0000-7000-8000-000000000002\n'
-    printf 'rex_server=unix:///remote/rex.sock\n'
+    printf 'backend=%s\n' "${FM_FAKE_ROUTE_BACKEND:-herdr}"
+    printf 'target=%s\n' "${FM_FAKE_ROUTE_TARGET:-fm-remote:w1:p1}"
     printf 'harness=claude\n'
     exit 0
     ;;
@@ -927,62 +927,77 @@ SH
   printf '%s\n' "$w"
 }
 
-test_remote_full_probe_rex_route() {
+test_remote_full_probe_herdr_route() {
   local w out
-  w=$(make_remote_probe_world_rex probe-rex)
+  w=$(make_remote_probe_world probe-herdr)
 
-  # A green readiness gate, an alive rex endpoint, and a matching route keep
-  # the recorded rex backend live.
+  # A green readiness gate, an alive herdr endpoint, and a matching route keep
+  # the recorded herdr backend live.
   out=$(probe_remote "$w" full)
-  [ "$out" = 'alive|alive|0|||' ] || fail "a live rex route should stay a quiet no-op, got: $out"
-  grep -q -- '--backend rex' "$w/ssh.log" \
-    || fail "the readiness gate did not ask the remote doctor about rex: $(cat "$w/ssh.log")"
-  pass "full probe: a live rex route stays alive through the rex readiness gate"
+  [ "$out" = 'alive|alive|0|||' ] || fail "a live herdr route should stay a quiet no-op, got: $out"
+  grep -q -- '--backend herdr' "$w/ssh.log" \
+    || fail "the readiness gate did not ask the remote doctor about herdr: $(cat "$w/ssh.log")"
+  pass "full probe: a live herdr route stays alive through the herdr readiness gate"
 }
 
-test_remote_full_probe_rex_backend_drift() {
-  local w out
-  w=$(make_remote_probe_world_rex probe-rex-drift)
+test_remote_full_probe_backend_drift() {
+  local w out removed
+  w=$(make_remote_probe_world probe-drift)
 
-  # The remote reports a different backend than this home recorded: a skip,
-  # never a silent migration.
-  out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=herdr)
-  [ "$out" = "skipped|alive|0|||alive remote endpoint runs on backend 'herdr', but this home recorded 'rex'; migrate or retire it explicitly" ] \
-    || fail "a herdr route under a rex record must be reported, got: $out"
-
-  out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=tmux)
-  [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend 'tmux'; migrate or retire it explicitly" ] \
-    || fail "an unsupported remote backend must be reported, got: $out"
-  pass "full probe: remote backend drift is reported, never migrated"
+  # The remote reports a backend this home never recorded, removed backends
+  # included: a skip, never a silent migration.
+  for removed in tmux rex cmux zellij hc tern paseo; do
+    out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND="$removed")
+    [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend '$removed'; migrate or retire it explicitly" ] \
+      || fail "a $removed route must be reported, got: $out"
+  done
+  pass "full probe: a route on any backend but herdr is reported, never migrated"
 }
 
-test_remote_full_probe_rex_readiness_verdicts() {
+test_remote_full_probe_recorded_removed_backend() {
+  local w out removed
+  w=$(make_remote_probe_world probe-recorded-removed)
+
+  # A record that still names a removed backend is preserved and reported,
+  # never relaunched or probed as a live endpoint.
+  for removed in rex cmux zellij hc tern paseo; do
+    sed -i.bak "s/^remote_backend=.*/remote_backend=$removed/" "$w/home/state/rsm1.meta"
+    rm -f "$w/home/state/rsm1.meta.bak"
+    out=$(probe_remote "$w" full)
+    case "$out" in
+      skipped\|*) ;;
+      *) fail "a record on removed backend $removed must be skipped, got: $out" ;;
+    esac
+  done
+  pass "full probe: a record naming a removed backend is skipped and preserved"
+}
+
+test_remote_full_probe_readiness_verdicts() {
   local w out
-  w=$(make_remote_probe_world_rex probe-rex-readiness)
+  w=$(make_remote_probe_world probe-herdr-readiness)
 
   out=$(probe_remote "$w" full FM_FAKE_DOCTOR_RC=1 \
-    FM_FAKE_DOCTOR_OUT='check rex-server=fixable: no persistent rex server answers')
+    FM_FAKE_DOCTOR_OUT='check herdr-server=fixable: no herdr server answers')
   case "$out" in
-    'skipped|unknown|0|||remote readiness failed on lab-host: check rex-server=fixable:'*) : ;;
-    *) fail "a rex readiness gap must be reported, got: $out" ;;
+    'skipped|unknown|0|||remote readiness failed on lab-host: check herdr-server=fixable:'*) : ;;
+    *) fail "a herdr readiness gap must be reported, got: $out" ;;
   esac
 
   out=$(probe_remote "$w" full FM_FAKE_DOCTOR_RC=255)
   [ "$out" = 'skipped|unknown|0|||remote host unavailable or endpoint state unknown; route preserved on lab-host' ] \
-    || fail "an unreachable rex readiness probe must preserve the route, got: $out"
-  pass "full probe: rex readiness gaps and unreachable hosts stay explicit"
+    || fail "an unreachable herdr readiness probe must preserve the route, got: $out"
+  pass "full probe: herdr readiness gaps and unreachable hosts stay explicit"
 }
 
 test_remote_full_probe_legacy_record_defaults_herdr() {
   local w out
-  w=$(make_remote_probe_world_rex probe-legacy)
+  w=$(make_remote_probe_world probe-legacy)
 
-  # A record written before rex existed carries no remote_backend; it is a
-  # herdr route, so the gate asks the doctor about herdr and a herdr route
+  # A record written before remote_backend existed carries no such field; it
+  # is a herdr route, so the gate asks the doctor about herdr and a herdr route
   # reply keeps it alive.
-  sed -i.bak '/^remote_backend=/d;/^remote_rex_/d' "$w/home/state/rsm1.meta"
+  sed -i.bak '/^remote_backend=/d' "$w/home/state/rsm1.meta"
   rm -f "$w/home/state/rsm1.meta.bak"
-  printf 'remote_herdr_session=fm-remote\nremote_target=fm-remote:w1:p1\n' >> "$w/home/state/rsm1.meta"
   out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=herdr)
   [ "$out" = 'alive|alive|0|||' ] || fail "a legacy route should stay alive on herdr, got: $out"
   grep -q -- '--backend herdr' "$w/ssh.log" \
@@ -1014,9 +1029,10 @@ test_relaunch_waits_for_other_mates_relaunch_lock
 test_sweep_refuses_relaunch_on_ledger_errors
 test_remote_poll_probe_maps_states
 test_remote_poll_probe_unreachable_preserves_route
-test_remote_full_probe_rex_route
-test_remote_full_probe_rex_backend_drift
-test_remote_full_probe_rex_readiness_verdicts
+test_remote_full_probe_herdr_route
+test_remote_full_probe_backend_drift
+test_remote_full_probe_recorded_removed_backend
+test_remote_full_probe_readiness_verdicts
 test_remote_full_probe_legacy_record_defaults_herdr
 
 echo "# all fm-secondmate-liveness tests passed"

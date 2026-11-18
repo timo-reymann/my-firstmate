@@ -225,8 +225,10 @@ cat > "$fakebin/orca" <<'EOF'
 #!/bin/sh
 printf '%s\n' '{"ok":true,"result":{"runtime":{"reachable":true,"state":"ready"}}}'
 EOF
-chmod +x "$fakebin/orca"
-for backend in zellij cmux orca; do
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/node"
+chmod +x "$fakebin/orca" "$fakebin/node"
+# shellcheck disable=SC2043 # orca is the only spawn-capable backend left to refuse
+for backend in orca; do
   fm_test_spawn_brief "$home" "cortex-$backend"
   if out=$(FM_FAKE_LAUNCH_LOG="$case_dir/cortex-$backend.launch" fm_test_run_spawn "$home" "$wt" "$fakebin" "cortex-$backend" "$proj" \
     --scout --harness cortex --backend "$backend" 2>&1)
@@ -236,4 +238,4 @@ for backend in zellij cmux orca; do
   assert_absent "$home/state/cortex-$backend.meta" "refused $backend spawn left a task record"
   assert_absent "$home/state/cortex-$backend.busy-gen" "refused $backend spawn armed busy state"
 done
-pass "Cortex launches are refused on zellij, cmux, and orca"
+pass "Cortex launches are refused on orca"

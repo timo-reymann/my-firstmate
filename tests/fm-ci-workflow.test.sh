@@ -332,7 +332,7 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # one-off number the policy removed.
 FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate full-suite'
 NORMAL_TIER_JOBS='lint tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial macos-stock-bash'
-HEAVY_TIER_JOBS='tests-herdr tests-hc'
+HEAVY_TIER_JOBS='tests-herdr'
 
 # Print the one timeout every listed job shares; fail on any disagreement.
 tier_timeout() {  # <tier> <job>...
@@ -627,7 +627,6 @@ puts steps[index].fetch("timeout-minutes", "none")
       || fail "the $lane step tripwire ($step) must stay below the job backstop ($heavy)"
   done <<'LANES'
 tests-herdr run-real-herdr-family cleanup-herdr-lab-sessions
-tests-hc run-real-hc-family cleanup-hc-lab-sessions
 LANES
   pass "each heavy lane keeps a 20 minute step tripwire under a $heavy minute job backstop"
 }

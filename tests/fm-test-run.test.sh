@@ -115,8 +115,6 @@ init_changed_fixture_repo() {
     fm-guard-stale-banner.test.sh \
     fm-afk-return.test.sh \
     fm-bearings-snapshot.test.sh \
-    fm-backend-cmux.test.sh \
-    fm-backend-zellij.test.sh \
     fm-control-herdr-smoke.test.sh \
     fm-backend-orca.test.sh; do
     printf '#!/usr/bin/env bash\n# tests/lib.sh\n' >"$repo/tests/$script"
@@ -1003,19 +1001,21 @@ test_exclude_family() {
   pass "exclude-family drops the named primary family after selection"
 }
 
-test_tern_family_selection() {
-  local listed families
+test_removed_backend_families_are_unknown() {
+  local families removed
   families=$("$RUNNER" --list-families)
-  printf '%s\n' "$families" | grep -qx tern || fail "--list-families must name the tern family"
-  listed=$("$RUNNER" --list --family tern)
-  assert_contains "$listed" "tests/fm-backend-tern.test.sh" "family tern must select the fake-CLI suite"
-  assert_contains "$listed" "tests/fm-backend-tern-smoke.test.sh" "family tern must select the real-binary smoke test"
-  assert_not_contains "$listed" "tests/tern-test-safety.sh" "the safety helper is a shared library, not a runnable suite"
-  assert_not_contains "$listed" "tests/fm-backend-cmux.test.sh" "family tern must not absorb the cmux suite"
-  # The scripts are real members of the portable lanes, so the coverage guard
-  # (every tests/*.test.sh belongs to exactly one lane) sees them.
-  "$RUNNER" --list-lanes >/dev/null || fail "--list-lanes failed with the tern scripts present"
-  pass "fm-test-run: family tern selects the tern suite and smoke test, and the lane coverage guard accepts them"
+  printf '%s\n' "$families" | grep -qx orca || fail "--list-families must still name the orca family"
+  for removed in cmux zellij paseo rex tern hc; do
+    if printf '%s\n' "$families" | grep -qx "$removed"; then
+      fail "--list-families must not name the removed $removed family"
+    fi
+    if "$RUNNER" --list --family "$removed" >/dev/null 2>&1; then
+      fail "--family $removed must be refused like any unmapped family"
+    fi
+  done
+  # The remaining suites are still members of the portable lanes.
+  "$RUNNER" --list-lanes >/dev/null || fail "--list-lanes failed after the removed backend suites went away"
+  pass "fm-test-run: the removed backend families are unknown and the lane coverage guard still passes"
 }
 
 test_list_scheduled_proven_isolated_uses_serial_weights() {
@@ -1929,7 +1929,7 @@ test_a_run_that_ran_records_no_skip_reason
 test_live_guards_expect_a_capability_skip_class
 test_fail_on_gate_skip_token
 test_exclude_family
-test_tern_family_selection
+test_removed_backend_families_are_unknown
 test_list_scheduled_proven_isolated_uses_serial_weights
 test_list_scheduled_non_lane_selections_use_serial_weights
 test_portable_shard_union_and_coverage_guard

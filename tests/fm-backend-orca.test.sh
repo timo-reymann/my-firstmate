@@ -237,7 +237,7 @@ test_composer_state_popup_placeholder_fill_is_pending() {
 # Dead-shell injection safety (task fm-composer-shellglyph-safety): a pane whose
 # agent has exited to a bare login shell has no bordered composer row, so the
 # classifier finds nothing and reports `unknown` - NOT a safe (empty) injection
-# target. Covers the same guarantee herdr/cmux/tmux tests pin for their backends.
+# target. Covers the same guarantee herdr/tmux tests pin for their backends.
 test_composer_state_bare_shell_prompt_is_unknown() {
   local out
   orca_case composer-bare-shell

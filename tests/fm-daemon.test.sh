@@ -26,13 +26,6 @@ TMP_ROOT=$(fm_test_tmproot fm-daemon-tests)
 FM_DAEMON_PRIMARY_HARNESS=claude
 export FM_DAEMON_PRIMARY_HARNESS
 
-# Ambient hc (herdr-core) terminal markers are scrubbed for the whole suite:
-# discover_supervisor_target/discover_supervisor_backend read HC_TERMINAL_ID
-# and HC_TERMINAL_SOCKET now, so running these tests inside a real hc
-# terminal would leak an hc resolution into the tmux/herdr/fallback
-# expectations below. Per-case fixtures set their own HC_* claims.
-unset HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE HC_SESSION HC_SOCKET
-
 # What the pinned claude primary received: each typed line, with every
 # record-backed doorbell followed by the envelope its record holds.
 delivered_digest() {  # <sent-log>
@@ -76,20 +69,20 @@ test_afk_start_ignores_stale_pidfile_without_lock() {
   pass "fm-afk-start.sh ignores stale pidfile-only live pids"
 }
 
-test_afk_start_refuses_tern_supervisor_backend() {
-  local dir state out status
-  dir=$(make_supercase afk-start-tern-unsupported)
-  state="$dir/state"
+test_afk_start_refuses_removed_supervisor_backends() {
+  local dir state out status removed
+  for removed in cmux paseo rex tern hc zellij; do
+    dir=$(make_supercase "afk-start-$removed-removed")
+    state="$dir/state"
 
-  out=$(FM_STATE_OVERRIDE="$state" FM_SUPERVISOR_BACKEND=tern "$AFK_START" 2>&1)
-  status=$?
+    out=$(FM_STATE_OVERRIDE="$state" FM_SUPERVISOR_BACKEND="$removed" "$AFK_START" 2>&1)
+    status=$?
 
-  [ "$status" -ne 0 ] || fail "fm-afk-start.sh should refuse a tern supervisor backend (away mode supports only tmux, herdr, and rex)"
-  case "$out" in
-    *"does not support supervisor backend 'tern'"*|*"no non-visible daemon-launch primitive for backend 'tern'"*) : ;;
-    *) fail "away mode did not name tern as an unsupported supervisor backend: $out" ;;
-  esac
-  pass "fm-afk-start.sh refuses tern as an away-mode supervisor backend (unsupported; documented in docs/tern-backend.md)"
+    [ "$status" -ne 0 ] || fail "fm-afk-start.sh should refuse the removed $removed supervisor backend"
+    assert_contains "$out" "does not support supervisor backend '$removed'" \
+      "away mode did not treat $removed like any other unsupported supervisor backend"
+  done
+  pass "fm-afk-start.sh refuses every removed backend as an away-mode supervisor backend"
 }
 
 test_afk_start_reclaims_stale_daemon_lock_reused_pid() {
@@ -3190,27 +3183,6 @@ test_wedge_alarm_herdr_channel_selected() {
   pass "herdr channel routes through the notifier seam with the summary (never a real notification)"
 }
 
-test_wedge_alarm_rex_channel_selected() {
-  local dir log
-  dir=$(make_wedge_case wedge-rex); log="$dir/alert.log"
-  FM_WEDGE_ALARM_LOG="$log" FM_WEDGE_ALARM_CHANNEL=rex FM_SUPERVISOR_BACKEND=rex \
-    wedge_alarm_notify "away-mode escalations WEDGED 700s undelivered - see /s/.marker" "/s/.marker"
-  grep -F 'rex' "$log" >/dev/null || fail "rex channel not routed through the notifier seam: $(cat "$log")"
-  grep -F 'WEDGED 700s undelivered' "$log" >/dev/null || fail "rex channel did not carry the summary"
-  grep -F 'osascript' "$log" >/dev/null && fail "rex-only config also selected osascript"
-  pass "rex channel routes through the notifier seam with the summary (never a real pane write)"
-}
-
-test_wedge_alarm_auto_never_selects_rex() {
-  local dir log
-  dir=$(make_wedge_case wedge-auto-rex); log="$dir/alert.log"
-  PATH="$dir/fakebin:$PATH" FM_WEDGE_ALARM_LOG="$log" FM_FAKE_UNAME=Darwin FM_WEDGE_ALARM_CHANNEL=auto \
-    FM_SUPERVISOR_BACKEND=rex wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
-  grep -F 'osascript' "$log" >/dev/null || fail "auto on Darwin did not select osascript: $(cat "$log")"
-  grep -E '^rex' "$log" >/dev/null && fail "auto selected the opt-in rex channel on a Rex supervisor: $(cat "$log")"
-  pass "auto never adds the opt-in rex channel, even on a Rex supervisor pane"
-}
-
 test_wedge_alarm_command_channel_receives_summary() {
   local dir out_argv out_stdin chan
   dir=$(make_wedge_case wedge-command)
@@ -3537,55 +3509,34 @@ test_discover_supervisor_target_herdr() {
   pass "discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate:0 fallback"
 }
 
-# --- hc supervisor discovery (fm-herdr-core-s3-app) --------------------------
-# A firstmate inside an hc terminal - including a Herdr.app terminal, which
-# carries the same core markers - must resolve its own terminal as the
-# supervisor target and hc as the backend, so the away daemon's supported-
-# backend check refuses loudly instead of silently steering firstmate:0 tmux.
-test_discover_supervisor_hc() {
+# --- removed-backend supervisor discovery ------------------------------------
+# A removed backend's terminal markers (the herdr-core HC_* pair) are no longer
+# a supervisor signal: discovery keeps the tmux, herdr, and fallback verdicts.
+test_discover_supervisor_ignores_removed_backend_markers() {
   local out
-  out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
+  if out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock HC_SESSION='' \
-    FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-t3" discover_supervisor_target)
-  [ "$out" = "default:t9" ] || fail "hc target should default HC_SESSION to 'default': $out"
-
-  out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
-    HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock HC_SESSION=iso1 \
-    FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-t3" discover_supervisor_target)
-  [ "$out" = "iso1:t9" ] || fail "hc target should use an explicit HC_SESSION: $out"
+    FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-t3" discover_supervisor_target); then
+    fail "removed-backend markers must not resolve a supervisor target"
+  fi
+  [ "$out" = "firstmate:0" ] || fail "removed-backend markers must keep the tmux fallback: $out"
 
   out=$(FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock \
     FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-t3" discover_supervisor_backend)
-  [ "$out" = hc ] || fail "hc markers should resolve the hc backend: $out"
-
-  # The pair is required: a bare HC_TERMINAL_ID without a socket keeps the
-  # fallback, and the earlier innermost markers still win.
-  if out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
-    HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET='' HC_SESSION='' \
-    FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-t3" discover_supervisor_target); then
-    fail "a bare HC_TERMINAL_ID must not resolve a supervisor target"
-  fi
-  [ "$out" = "firstmate:0" ] || fail "a bare HC_TERMINAL_ID must keep the tmux fallback: $out"
+  [ "$out" = tmux ] || fail "removed-backend markers must keep the tmux fallback backend: $out"
 
   out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='%3' HERDR_ENV='' HERDR_PANE_ID='' \
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock discover_supervisor_target)
-  [ "$out" = '%3' ] || fail "TMUX_PANE nested in an hc terminal must keep tmux: $out"
+  [ "$out" = '%3' ] || fail "TMUX_PANE beside removed-backend markers must keep tmux: $out"
   out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV=1 HERDR_PANE_ID=w1:p9 HERDR_SESSION='' \
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock discover_supervisor_target)
-  [ "$out" = "default:w1:p9" ] || fail "herdr markers nested in an hc terminal must keep herdr: $out"
+  [ "$out" = "default:w1:p9" ] || fail "herdr markers beside removed-backend markers must keep herdr: $out"
   out=$(FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV=1 HERDR_PANE_ID=w1:p9 \
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock discover_supervisor_backend)
-  [ "$out" = herdr ] || fail "herdr markers nested in an hc terminal must keep herdr: $out"
+  [ "$out" = herdr ] || fail "herdr markers beside removed-backend markers must keep herdr: $out"
 
-  # The resolution is deliberately fail-closed: the away daemon's supported
-  # list does not name hc, so it refuses at startup with the supported set
-  # rather than silently steering the tmux fallback.
-  if fm_backend_list_contains "$FM_SUPERVISOR_SUPPORTED_BACKENDS" hc; then
-    fail "the away daemon must not list hc as a supported supervisor backend"
-  fi
-
-  pass "discover_supervisor_{target,backend}: hc markers resolve <session>:<address> + hc; bare id, nested tmux/herdr keep their verdicts; supported list stays closed to hc"
+  pass "discover_supervisor_{target,backend}: a removed backend's terminal markers are ignored"
 }
 
 # --- t3code supervisor discovery and busy verdict --------------------------
@@ -3875,7 +3826,7 @@ fi
 
 test_afk_start_refuses_when_flag_cannot_be_written
 test_afk_start_ignores_stale_pidfile_without_lock
-test_afk_start_refuses_tern_supervisor_backend
+test_afk_start_refuses_removed_supervisor_backends
 test_afk_start_reclaims_stale_daemon_lock_reused_pid
 test_daemon_state_root_uses_fm_home
 test_classify_routine_signal_self
@@ -4001,8 +3952,6 @@ test_wedge_alarm_discard_seam_fires_nothing
 test_wedge_alarm_direct_notifiers_honor_discard_seam
 test_wedge_alarm_osascript_channel_selected
 test_wedge_alarm_herdr_channel_selected
-test_wedge_alarm_rex_channel_selected
-test_wedge_alarm_auto_never_selects_rex
 test_wedge_alarm_command_channel_receives_summary
 test_wedge_alarm_command_failure_hides_configured_command
 test_wedge_alarm_unknown_channel_hides_configured_directive
@@ -4022,7 +3971,7 @@ test_fm_send_exits_nonzero_on_initial_send_failure
 test_fm_send_exits_nonzero_on_unproven_submit
 test_discover_supervisor_backend_precedence
 test_discover_supervisor_target_herdr
-test_discover_supervisor_hc
+test_discover_supervisor_ignores_removed_backend_markers
 test_discover_supervisor_t3code_after_env_tmux_and_herdr
 test_pane_is_busy_t3code_trusts_native_verdict_without_capture
 test_pane_is_busy_herdr_native_busy_state

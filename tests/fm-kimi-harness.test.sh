@@ -883,12 +883,12 @@ test_kimi_refuses_a_backend_without_a_viewport_capture() {
   id=kimi-no-viewport-y8
   rec=$(make_spawn_case no-viewport "$id")
   read_spawn_record "$rec"
-  fm_fake_exit0 "$FAKEBIN_DIR" cmux
+  fm_fake_exit0 "$FAKEBIN_DIR" orca node
   rc=0
-  out=$(FM_BACKEND=cmux run_spawn \
+  out=$(FM_BACKEND=orca run_spawn \
     "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "a Kimi spawn on a backend without a viewport capture should refuse"
-  assert_contains "$out" "backend 'cmux' has no verified viewport-bounded capture" \
+  assert_contains "$out" "backend 'orca' has no verified viewport-bounded capture" \
     "Kimi refusal did not name the backend and the missing viewport capability"
   [ ! -s "$CASE_DIR/trust-enter.log" ] \
     || fail "Kimi pressed Enter on a backend it cannot read the viewport of"

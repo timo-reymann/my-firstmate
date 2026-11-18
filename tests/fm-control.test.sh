@@ -568,7 +568,7 @@ test_unverified_harness_is_refused() {
 
 test_backend_key_capability_matrix() {
   local backend key
-  for backend in tmux herdr zellij cmux paseo rex tern; do
+  for backend in tmux herdr; do
     # C-u is the composer clear muse's interrupt needs; every session provider
     # but Orca normalizes it (bin/backends/*.sh).
     for key in Escape Enter C-c C-u; do
@@ -628,46 +628,25 @@ test_orca_refuses_an_escape_harness_interrupt() {
   pass "fm-control interrupt: a backend that cannot deliver the harness's key refuses instead of sending another"
 }
 
-test_unverified_state_backends_refuse_stop_verbs() {
+test_removed_backend_records_refuse_stop_verbs() {
   local dir out rc backend
-  for backend in zellij cmux tern; do
-    dir=$(new_case "nostate-$backend")
-    case "$backend" in
-      zellij)
-        add_task "$dir" t1 claude ship zellij "sess:7"
-        {
-          echo "zellij_session=sess"
-          echo "zellij_tab_id=1"
-          echo "zellij_pane_id=7"
-        } >> "$dir/home/state/t1.meta"
-        ;;
-      cmux)
-        add_task "$dir" t1 claude ship cmux "ws1:surface1"
-        {
-          echo "cmux_workspace_id=ws1"
-          echo "cmux_surface_id=surface1"
-        } >> "$dir/home/state/t1.meta"
-        ;;
-      tern)
-        add_task "$dir" t1 claude ship tern "9007199254740993:9223372036854775807"
-        {
-          echo "tern_session_id=9007199254740993"
-          echo "tern_tab_id=9007199254740995"
-          echo "tern_block_id=9223372036854775807"
-        } >> "$dir/home/state/t1.meta"
-        ;;
-    esac
+  # A task record that still names a removed backend is treated like one that
+  # names an unknown backend: every stop-proving verb refuses and nothing is
+  # sent to the running agent.
+  for backend in zellij cmux paseo rex tern hc; do
+    dir=$(new_case "removed-$backend")
+    add_task "$dir" t1 claude ship "$backend" "sess:7"
     out=$(run_control "$dir" t1 exit); rc=$?
-    expect_code 1 "$rc" "exit on $backend should refuse"$'\n'"$out"
-    assert_contains "$out" "no recovery-grade agent-state classifier" \
-      "the $backend refusal should name the missing stop proof"
-    [ -z "$(literals "$dir")" ] || fail "$backend must receive no exit command"
+    expect_code 1 "$rc" "exit on a $backend record should refuse"$'\n'"$out"
+    [ -z "$(literals "$dir")$(keys_sent "$dir")" ] || fail "a $backend record must receive no exit command"
     out=$(run_control "$dir" t1 relaunch --note x); rc=$?
-    expect_code 1 "$rc" "relaunch on $backend should refuse"$'\n'"$out"
-    assert_contains "$out" "no recovery-grade agent-state classifier" \
-      "the $backend relaunch refusal should name the missing stop proof"
+    expect_code 1 "$rc" "relaunch on a $backend record should refuse"$'\n'"$out"
+    [ -z "$(literals "$dir")$(keys_sent "$dir")" ] || fail "a $backend record must receive no relaunch bytes"
+    out=$(run_control "$dir" t1 interrupt); rc=$?
+    expect_code 1 "$rc" "interrupt on a $backend record should refuse"$'\n'"$out"
+    [ -z "$(literals "$dir")$(keys_sent "$dir")" ] || fail "a $backend record must receive no interrupt key"
   done
-  pass "fm-control: a backend that cannot prove an agent stopped refuses exit and relaunch"
+  pass "fm-control: a task record naming a removed backend refuses exit, relaunch, and interrupt"
 }
 
 # bin/fm-spawn.sh refuses a Command Code launch off tmux and herdr, but only
@@ -675,21 +654,10 @@ test_unverified_state_backends_refuse_stop_verbs() {
 # relaunch onto commandcode there while the running agent is untouched.
 test_commandcode_relaunch_off_tmux_and_herdr_refuses_before_stopping() {
   local dir out rc backend meta_before
-  for backend in zellij cmux orca tern; do
+  # shellcheck disable=SC2043 # orca is the only backend left to exercise here
+  for backend in orca; do
     dir=$(new_case "cc-relaunch-$backend")
     case "$backend" in
-      zellij)
-        add_task "$dir" t1 claude ship zellij "sess:7"
-        printf 'zellij_session=sess\nzellij_tab_id=1\nzellij_pane_id=7\n' >> "$dir/home/state/t1.meta"
-        ;;
-      cmux)
-        add_task "$dir" t1 claude ship cmux "ws1:surface1"
-        printf 'cmux_workspace_id=ws1\ncmux_surface_id=surface1\n' >> "$dir/home/state/t1.meta"
-        ;;
-      tern)
-        add_task "$dir" t1 claude ship tern "9007199254740993:9223372036854775807"
-        printf 'tern_session_id=9007199254740993\ntern_tab_id=9007199254740995\ntern_block_id=9223372036854775807\n' >> "$dir/home/state/t1.meta"
-        ;;
       orca)
         add_task "$dir" t1 claude ship orca "term-1"
         sed 's|^window=.*|window=fm-t1|' "$dir/home/state/t1.meta" > "$dir/home/state/t1.meta.new"
@@ -735,12 +703,12 @@ test_hermes_profile_refusals_preserve_running_worker() {
   pass 'fm-control relaunch: Hermes profile model and gateway refusals preserve the current worker'
 }
 
-test_state_verified_backends_are_exactly_tmux_herdr_and_rex() {
+test_state_verified_backends_are_exactly_tmux_herdr_and_t3code() {
   fm_control_backend_state_verified tmux || fail "tmux has a recovery-grade classifier"
   fm_control_backend_state_verified herdr || fail "herdr has a recovery-grade classifier"
-  fm_control_backend_state_verified rex || fail "rex has a recovery-grade classifier"
+  fm_control_backend_state_verified t3code || fail "t3code has a recovery-grade classifier"
   local backend
-  for backend in zellij orca cmux paseo tern; do
+  for backend in orca zellij cmux paseo rex tern hc; do
     fm_control_backend_state_verified "$backend" \
       && fail "$backend has no recovery-grade classifier and must not claim one"
   done
@@ -1266,10 +1234,10 @@ test_prefixed_recorded_harness_reaches_each_control_verb
 test_backend_key_capability_matrix
 test_harness_kind_capability
 test_orca_refuses_an_escape_harness_interrupt
-test_unverified_state_backends_refuse_stop_verbs
+test_removed_backend_records_refuse_stop_verbs
 test_commandcode_relaunch_off_tmux_and_herdr_refuses_before_stopping
 test_hermes_profile_refusals_preserve_running_worker
-test_state_verified_backends_are_exactly_tmux_herdr_and_rex
+test_state_verified_backends_are_exactly_tmux_herdr_and_t3code
 test_window_label_is_refused_with_the_exact_id
 test_explicit_endpoint_is_refused
 test_unknown_task_is_refused

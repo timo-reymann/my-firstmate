@@ -358,12 +358,6 @@ test_supported_backend_endpoint_records_validate() {
     "backend=herdr" "herdr_session=lab" "herdr_workspace_id=w1" "herdr_tab_id=w1:t2" "herdr_pane_id=w1:p2"
   fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid Herdr endpoint refused"
 
-  id=zellij-task
-  fm_write_meta "$dir/home/state/$id.meta" \
-    "window=lab:7" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
-    "backend=zellij" "zellij_session=lab" "zellij_tab_id=3" "zellij_pane_id=7"
-  fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid Zellij endpoint refused"
-
   id=orca-task
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" "endpoint_task_id=$id" "terminal=term-7" \
@@ -371,65 +365,26 @@ test_supported_backend_endpoint_records_validate() {
   fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid Orca endpoint refused"
   [ "$FM_BACKEND_VALIDATED_TARGET" = term-7 ] || fail "Orca validation did not select its terminal"
 
-  id=cmux-task
-  fm_write_meta "$dir/home/state/$id.meta" \
-    "window=workspace-1:surface-2" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
-    "backend=cmux" "cmux_workspace_id=workspace-1" "cmux_surface_id=surface-2"
-  fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid cmux endpoint refused"
-
-  id=paseo-task
-  fm_write_meta "$dir/home/state/$id.meta" \
-    "window=terminal-1:wks_1" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
-    "backend=paseo" "paseo_terminal_id=terminal-1" "paseo_workspace_id=wks_1"
-  fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid paseo endpoint refused"
-
-  id=rex-task
-  rex_meta() {  # <window> <session-id> <window-id> <block-id> <server>
+  # A record naming a removed backend is refused like any unknown backend,
+  # whatever endpoint fields it still carries.
+  for backend in zellij cmux paseo rex tern hc; do
+    id=$backend-task
     fm_write_meta "$dir/home/state/$id.meta" \
-      "window=$1" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
-      "backend=rex" "rex_server=$5" "rex_session_id=$2" "rex_window_id=$3" "rex_block_id=$4"
-  }
-  rex_meta "01a161f8-ca97-7d13-9f71-de705f5dc343:01a161fb-16e2-7124-835e-e6c8a35bbf9e" \
-    session:01a161f8-ca97-7d13-9f71-de705f5dc343 window:01a161fb-16ed-782d-a616-6a21af27ebe8 \
-    block:01a161fb-16e2-7124-835e-e6c8a35bbf9e "unix:///tmp/rex%20server.sock"
-  fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid rex endpoint refused"
-  [ "$FM_BACKEND_VALIDATED_BACKEND:$FM_BACKEND_VALIDATED_TARGET" = \
-    "rex:01a161f8-ca97-7d13-9f71-de705f5dc343:01a161fb-16e2-7124-835e-e6c8a35bbf9e" ] \
-    || fail "rex endpoint validation returned wrong identity"
-  rex_meta "01a161f8-ca97-7d13-9f71-de705f5dc343:01a161fb-16e2-7124-835e-e6c8a35bbf9e" \
-    session:01a161f8-ca97-7d13-9f71-de705f5dc343 window:01a161fb-16ed-782d-a616-6a21af27ebe8 \
-    block:01a10000-0000-7000-8000-000000000000 "unix:///tmp/rex.sock"
-  if fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" 2>/dev/null; then
-    fail "a rex window= that names a different block than rex_block_id must refuse"
-  fi
-  rex_meta "session:01a161f8-ca97-7d13-9f71-de705f5dc343:block:01a161fb-16e2-7124-835e-e6c8a35bbf9e" \
-    session:01a161f8-ca97-7d13-9f71-de705f5dc343 window:01a161fb-16ed-782d-a616-6a21af27ebe8 \
-    block:01a161fb-16e2-7124-835e-e6c8a35bbf9e "unix:///tmp/rex.sock"
-  if fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" 2>/dev/null; then
-    fail "a rex window= that keeps the colon-carrying id prefixes must refuse"
-  fi
-  rex_meta "01a161f8-ca97-7d13-9f71-de705f5dc343:01a161fb-16e2-7124-835e-e6c8a35bbf9e" \
-    session:01a161f8-ca97-7d13-9f71-de705f5dc343 window:01a161fb-16ed-782d-a616-6a21af27ebe8 \
-    block:01a161fb-16e2-7124-835e-e6c8a35bbf9e ""
-  if fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" 2>/dev/null; then
-    fail "a rex record with no rex_server must refuse"
-  fi
+      "window=lab:w1:p2" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
+      "backend=$backend" "${backend}_session=lab" "${backend}_session_id=lab" "${backend}_pane_id=7"
+    if fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" 2>/dev/null; then
+      fail "a task record on the removed $backend backend validated"
+    fi
+  done
 
-  id=tern-task
-  fm_write_meta "$dir/home/state/$id.meta" \
-    "window=9007199254740993:9223372036854775807" "endpoint_task_id=$id" "worktree=$dir/worktree" "project=$dir/project" \
-    "backend=tern" "tern_session_id=9007199254740993" "tern_tab_id=9007199254740995" "tern_block_id=9223372036854775807"
-  fm_backend_validate_task_endpoint "$dir/home/state/$id.meta" "$id" || fail "valid tern endpoint refused"
-  [ "$FM_BACKEND_VALIDATED_TARGET" = "9007199254740993:9223372036854775807" ] || fail "tern endpoint validation changed the 64-bit ids"
-
-  for backend in tmux herdr zellij orca cmux paseo rex tern; do
+  for backend in tmux herdr orca zellij cmux paseo rex tern hc; do
     set +e
     fm_backend_kill "$backend" "" >/dev/null 2>&1
     target=$?
     set -e
     [ "$target" -ne 0 ] || fail "$backend generic kill accepted an empty target"
   done
-  pass "cleanup identity: valid tmux, Herdr, Zellij, Orca, cmux, Paseo, Rex, and tern records validate, inconsistent Rex records refuse, and every empty backend target refuses"
+  pass "cleanup identity: valid tmux, Herdr, and Orca records validate, removed-backend records refuse, and every empty backend target refuses"
 }
 
 test_orca_composite_worktree_id_validates() {

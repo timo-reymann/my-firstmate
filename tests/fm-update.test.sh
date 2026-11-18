@@ -222,9 +222,9 @@ test_bin_only_advance_restarts() {
 test_unprovable_runtime_gets_fallback_nudge() {
   local w out
   w=$(new_world t3c)
-  # zellij has no recovery-grade agent-state classifier, so no restart there can
+  # orca has no recovery-grade agent-state classifier, so no restart there can
   # ever prove the old agent stopped and the replacement came up.
-  add_sm "$w" sm1 claude zellij
+  add_sm "$w" sm1 claude orca
   bump_origin "$w" instr
 
   out=$(run_update "$w")
@@ -414,7 +414,7 @@ test_already_current_secondmate_still_restarts() {
 test_already_current_unprovable_mate_is_nudged() {
   local w out restart_line nudge_line
   w=$(new_world t6b)
-  add_sm "$w" sm1 claude zellij
+  add_sm "$w" sm1 claude orca
   bump_origin "$w" instr
   run_update "$w" >/dev/null   # first run advances both
 

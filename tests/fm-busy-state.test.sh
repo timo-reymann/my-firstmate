@@ -605,27 +605,18 @@ test_herdr_native_busy_only() {
   pass "herdr's native verdict is trusted for busy only, and records outrank it"
 }
 
-test_tern_native_busy_only() {
-  local state out gen verdict
-  state=$(new_state_dir tern-native)
+test_removed_backend_native_busy_is_ignored() {
+  local state out backend
+  state=$(new_state_dir removed-native)
   # shellcheck disable=SC2329 # invoked indirectly through fm_busy_classify
-  fm_backend_busy_state() { printf '%s' "$FAKE_NATIVE"; }
-  FAKE_NATIVE=busy
-  out=$(fm_busy_classify tern 7:9 claude t1 "$state")
-  [ "$out" = "busy tern-native" ] || fail "tern native busy with no record must classify busy, got '$out'"
-  for verdict in idle blocked unknown; do
-    FAKE_NATIVE=$verdict
-    out=$(fm_busy_classify tern 7:9 claude t1 "$state")
-    [ "$out" = "unknown missing" ] || fail "tern native '$verdict' must NOT classify as a verdict, got '$out'"
+  fm_backend_busy_state() { printf 'busy'; }
+  for backend in tern rex cmux paseo zellij hc; do
+    out=$(fm_busy_classify "$backend" 7:9 claude t1 "$state")
+    [ "$out" = "unknown missing" ] \
+      || fail "a native busy verdict on the removed $backend backend must not classify, got '$out'"
   done
-  # A valid record outranks the native verdict.
-  gen=$("$EV" arm "$state" t1)
-  "$EV" apply "$state" t1 idle --gen "$gen" --source claude-hook --event stop
-  FAKE_NATIVE=busy
-  out=$(fm_busy_classify tern 7:9 claude t1 "$state")
-  [ "$out" = "idle claude-hook" ] || fail "the adapter record must outrank tern's native verdict, got '$out'"
   unset -f fm_backend_busy_state
-  pass "tern's native verdict is trusted for busy only (source tern-native), and records outrank it"
+  pass "a native busy verdict is trusted only on the supported backends, never on a removed one"
 }
 
 # The record parser runs inside sourcing callers (the watcher, the daemon, the
@@ -721,7 +712,7 @@ test_kimi_unverified_gate
 test_cursor_ignores_rendered_and_native_signals
 test_dead_endpoint_overrides
 test_herdr_native_busy_only
-test_tern_native_busy_only
+test_removed_backend_native_busy_is_ignored
 test_record_read_leaves_caller_shell_intact
 test_boolean_view_never_promotes_unknown
 

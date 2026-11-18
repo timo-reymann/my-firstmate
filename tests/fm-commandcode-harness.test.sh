@@ -188,8 +188,10 @@ cat > "$fakebin/orca" <<'EOF'
 #!/bin/sh
 printf '%s\n' '{"ok":true,"result":{"runtime":{"reachable":true,"state":"ready"}}}'
 EOF
-chmod +x "$fakebin/orca"
-for backend in zellij cmux orca; do
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/node"
+chmod +x "$fakebin/orca" "$fakebin/node"
+# shellcheck disable=SC2043 # orca is the only spawn-capable backend left to refuse
+for backend in orca; do
   fm_test_spawn_brief "$home" "cc-$backend"
   if out=$(FM_FAKE_LAUNCH_LOG="$case_dir/cc-$backend.launch" fm_test_run_spawn "$home" "$wt" "$fakebin" "cc-$backend" "$proj" \
     --scout --harness commandcode --backend "$backend" 2>&1)
@@ -199,4 +201,4 @@ for backend in zellij cmux orca; do
   assert_absent "$home/state/cc-$backend.meta" "refused $backend spawn left a task record"
   assert_absent "$home/state/cc-$backend.busy-gen" "refused $backend spawn armed busy state"
 done
-pass "Command Code launches are refused on zellij, cmux, and orca"
+pass "Command Code launches are refused on orca"

@@ -2549,12 +2549,6 @@ test_windowless_record_outside_the_leftover_class_still_refuses() {
   seed_backlog_in_flight "$case_dir"
   assert_windowless_record_refuses "$case_dir" windowless-herdr-identity "no spawn_gen that identifies one exact incarnation"
 
-  case_dir=$(make_case windowless-cmux-identity)
-  write_windowless_legacy_meta "$case_dir" no-mistakes ship "$case_dir/missing-wt"
-  printf '%s\n' 'cmux_surface_id=surface-1' >> "$case_dir/state/task-x1.meta"
-  seed_backlog_in_flight "$case_dir"
-  assert_windowless_record_refuses "$case_dir" windowless-cmux-identity "no spawn_gen that identifies one exact incarnation"
-
   case_dir=$(make_case windowless-control-char)
   write_windowless_legacy_meta "$case_dir" no-mistakes ship "$case_dir/missing"$'\t'"wt"
   seed_backlog_in_flight "$case_dir"
@@ -5874,16 +5868,17 @@ test_forced_secondmate_own_missing_adapter_sibling_refuses_before_child_cleanup(
   local case_dir home rc
   case_dir=$(make_case missing-own-adapter-sibling)
   fm_write_meta "$case_dir/state/task-x1.meta" \
-    "window=zs:3" \
+    "window=zs:w1:p3" \
     "endpoint_task_id=task-x1" \
     "worktree=$case_dir/wt" \
     "project=$case_dir/project" \
     "kind=secondmate" \
     "mode=local-only" \
-    "backend=zellij" \
-    "zellij_session=zs" \
-    "zellij_tab_id=1" \
-    "zellij_pane_id=3" \
+    "backend=herdr" \
+    "herdr_session=zs" \
+    "herdr_workspace_id=w1" \
+    "herdr_tab_id=w1:t1" \
+    "herdr_pane_id=w1:p3" \
     "spawn_gen=teardown-test-task-x1"
   home="$case_dir/secondmate-home"
   mkdir -p "$home/state" "$home/data" "$home/config" "$home/projects"
@@ -5905,10 +5900,10 @@ exit 0
 SH
   chmod +x "$case_dir/fakebin/tmux"
   : > "$case_dir/tmux.log"
-  rm -f "$case_dir/test-root/bin/fm-backend-hometag-lib.sh"
+  rm -f "$case_dir/test-root/bin/fm-transition-lib.sh"
   rc=0
   run_copied_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-  assert_source_refusal_preserved_state "$case_dir" "missing-own-source" "required zellij source"
+  assert_source_refusal_preserved_state "$case_dir" "missing-own-source" "required herdr source"
   [ -e "$home/state/child-tmux.meta" ] || fail "missing-own-source: the refusal erased the child record"
   [ -e "$home/state/child-tmux.status" ] || fail "missing-own-source: the refusal erased the child status"
   [ -d "$home" ] || fail "missing-own-source: the refusal removed the secondmate home"

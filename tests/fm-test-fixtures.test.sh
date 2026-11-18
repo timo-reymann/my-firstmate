@@ -373,12 +373,12 @@ test_inherited_launcher_env_is_cleared() (
   local dir="$TMP_ROOT/launcher-env" decoy out rc=0
   decoy="$dir/decoy-home"
   mkdir -p "$decoy/config" "$dir/own-home" "$dir/empty-config"
-  printf 'paseo\n' > "$decoy/config/backend"
+  printf 'orca\n' > "$decoy/config/backend"
   # shellcheck disable=SC2016 # expanded by the child bash
-  out=$(env -u TMUX -u CMUX_WORKSPACE_ID -u __CFBundleIdentifier \
+  out=$(env -u TMUX \
     HERDR_ENV=1 HERDR_PANE_ID=w1:p1 HERDR_TAB_ID=w1:t1 HERDR_WORKSPACE_ID=w1 \
     HERDR_SOCKET_PATH="$decoy/herdr.sock" HERDR_SESSION=host \
-    HERDR_BIN_PATH="$decoy/herdr" TERM_PROGRAM=rex FM_BACKEND=paseo \
+    HERDR_BIN_PATH="$decoy/herdr" TERM_PROGRAM=hostterm FM_BACKEND=orca \
     FM_HOME="$decoy" FM_ROOT="$decoy" FM_ROOT_OVERRIDE="$decoy" \
     FM_STATE_OVERRIDE="$decoy/state" FM_DATA_OVERRIDE="$decoy/data" \
     FM_CONFIG_OVERRIDE="$decoy/config" FM_PROJECTS_OVERRIDE="$decoy/projects" \
@@ -397,11 +397,11 @@ test_inherited_launcher_env_is_cleared() (
         || { echo "cleared home still resolves config at $FM_BACKEND_CONFIG_DIR"; exit 1; }
     ) || exit 1
     (
-      export FM_CONFIG_OVERRIDE="$2/empty-config" REX_BLOCK=block
+      export FM_CONFIG_OVERRIDE="$2/empty-config"
       . "$ROOT/bin/fm-backend.sh"
       backend=$(fm_backend_name)
       case "$backend" in
-        herdr|rex|paseo) echo "inherited launcher still selects $backend"; exit 1 ;;
+        herdr|orca) echo "inherited launcher still selects $backend"; exit 1 ;;
       esac
     ) || exit 1
     (
@@ -411,9 +411,9 @@ test_inherited_launcher_env_is_cleared() (
         || { echo "a launcher identity exported after sourcing was ignored"; exit 1; }
     ) || exit 1
     (
-      export FM_CONFIG_OVERRIDE="$2/empty-config" FM_BACKEND=paseo
+      export FM_CONFIG_OVERRIDE="$2/empty-config" FM_BACKEND=orca
       . "$ROOT/bin/fm-backend.sh"
-      [ "$(fm_backend_name)" = paseo ] \
+      [ "$(fm_backend_name)" = orca ] \
         || { echo "a backend exported after sourcing was ignored"; exit 1; }
     ) || exit 1
     (
