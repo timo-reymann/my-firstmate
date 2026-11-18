@@ -1,0 +1,680 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["textual==8.2.8"]
+# ///
+"""Read-only fleet view for firstmate, with an activity feed.
+
+Usage: firstmate-tui [--once] [--interval SECONDS] [--width COLUMNS]
+
+It shows the home name and refresh time, a "Needs you" strip (PRs ready for
+review, workers waiting on a decision, blocked workers), a task table from the
+fleet snapshot, and the last 30 events of the fleet activity ledger.
+It costs no model tokens, never writes to the home, and never steers a worker.
+
+Options:
+  --once              print one plain frame to stdout and exit; needs no TTY
+                      and no Textual
+  --interval SECONDS  refresh period of the live view (default 6)
+  --width COLUMNS     frame width for --once (default: terminal width, or 80)
+  -h, --help          show this help
+
+Keys: j/k or arrows move, enter jumps to the task tab in Herdr, r refreshes,
+f cycles the state filter, q quits.
+
+Environment:
+  FIRSTMATE_DIR          the firstmate home (default $HOME/workspace/firstmate)
+  FM_FLEET_SNAPSHOT_CMD  shell command that prints the snapshot JSON instead of
+                         bin/fm-fleet-snapshot.sh --json in FIRSTMATE_DIR
+  HERDR_BIN              herdr binary for the enter jump (default herdr)
+
+Data sources: the snapshot schema is owned by bin/fm-fleet-snapshot.sh and the
+ledger contract by docs/fleet-ledger.md. The ledger is optional; while
+config/fleet-ledger is absent the feed shows a one-line hint instead.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import textwrap
+import time
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+LEDGER_EVENTS = (
+    "task.dispatched",
+    "task.status",
+    "task.pr_ready",
+    "task.merged",
+    "task.cleaned_up",
+)
+FEED_SIZE = 30
+LEDGER_TAIL_BYTES = 512 * 1024
+SNAPSHOT_TIMEOUT_SECONDS = 120
+DEFAULT_INTERVAL = 6.0
+LEDGER_HINT = (
+    "Activity feed is off: create config/fleet-ledger in the home to turn it on."
+)
+
+# Rank orders the task table: attention first, then working, paused, others, done.
+RANK_ATTENTION, RANK_WORKING, RANK_PAUSED, RANK_OTHER, RANK_DONE = range(5)
+
+
+# --- pure functions: ledger -------------------------------------------------
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def parse_ledger_lines(lines: Iterable[str]) -> List[Dict[str, Any]]:
+    """Return the known ledger records in file order.
+
+    Blank lines, lines that are not a JSON object, unknown events and records
+    without a numeric ts or a task are skipped. Repeated records (the ledger
+    delivers at least once) are kept once, keyed on (ts, event, task, text).
+    """
+    events: List[Dict[str, Any]] = []
+    seen = set()
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        event = record.get("event")
+        task = record.get("task")
+        if event not in LEDGER_EVENTS or not isinstance(task, str) or not task:
+            continue
+        if not _is_number(record.get("ts")):
+            continue
+        text = record.get("text")
+        key = (record["ts"], event, task, text if isinstance(text, str) else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(record)
+    return events
+
+
+def complete_lines(data: bytes, from_start: bool) -> List[str]:
+    """Split ledger bytes into complete lines.
+
+    A last line without its newline is still being written and is dropped.
+    When the bytes do not start at the beginning of the file, the first line
+    is a fragment and is dropped too.
+    """
+    text = data.decode("utf-8", errors="replace")
+    parts = text.split("\n")
+    parts.pop()  # the text after the last newline: empty, or a partial line
+    if not from_start and parts:
+        parts.pop(0)
+    return parts
+
+
+def read_ledger(
+    path: str, tail_bytes: int = LEDGER_TAIL_BYTES
+) -> Tuple[List[Dict[str, Any]], bool]:
+    """Read the ledger tail. Returns (records, present); a missing file is ([], False)."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            start = max(0, size - tail_bytes)
+            handle.seek(start)
+            data = handle.read()
+    except FileNotFoundError:
+        return [], False
+    except OSError:
+        return [], True
+    return parse_ledger_lines(complete_lines(data, start == 0)), True
+
+
+def format_event(record: Dict[str, Any]) -> str:
+    """One-line description of a ledger record; PR URLs stay whole."""
+    event = record.get("event")
+    if event == "task.dispatched":
+        words = ["dispatched"]
+        for member in ("kind", "project"):
+            value = record.get(member)
+            if isinstance(value, str) and value:
+                words.append(value)
+        harness = record.get("harness")
+        if isinstance(harness, str) and harness:
+            words.append("(%s)" % harness)
+        return " ".join(words)
+    if event == "task.status":
+        state = record.get("state")
+        text = record.get("text")
+        text = text.strip() if isinstance(text, str) else ""
+        if isinstance(state, str) and state:
+            return "%s: %s" % (state, text) if text else state
+        return text or "status"
+    if event == "task.pr_ready":
+        pr = record.get("pr")
+        return "PR ready %s" % pr if isinstance(pr, str) and pr else "PR ready"
+    if event == "task.merged":
+        pr = record.get("pr")
+        if record.get("via") == "local":
+            return "merged locally"
+        return "merged %s" % pr if isinstance(pr, str) and pr else "merged"
+    if event == "task.cleaned_up":
+        return "cleaned up"
+    return str(event)
+
+
+def format_clock(ts: float, now: float) -> str:
+    """HH:MM for today, MM-DD HH:MM for older records."""
+    stamp = time.localtime(ts)
+    if time.strftime("%Y-%m-%d", stamp) == time.strftime(
+        "%Y-%m-%d", time.localtime(now)
+    ):
+        return time.strftime("%H:%M", stamp)
+    return time.strftime("%m-%d %H:%M", stamp)
+
+
+def feed_lines(
+    records: List[Dict[str, Any]], now: float, size: int = FEED_SIZE
+) -> List[str]:
+    """The newest `size` records, newest first, as display lines."""
+    newest = records[-size:] if size > 0 else []
+    return [
+        "%s %s %s" % (format_clock(r["ts"], now), r["task"], format_event(r))
+        for r in reversed(newest)
+    ]
+
+
+# --- pure functions: snapshot -----------------------------------------------
+
+
+def _dig(value: Any, *keys: str) -> Any:
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def parse_snapshot(text: str) -> Dict[str, Any]:
+    """Parse fm-fleet-snapshot JSON into {home, state_dir, config_dir, tasks}.
+
+    Raises ValueError when the text is not a JSON object.
+    """
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("snapshot is not a JSON object")
+    tasks = []
+    for row in data.get("tasks") or []:
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+            continue
+        hints = row.get("hints") if isinstance(row.get("hints"), dict) else {}
+        state = _dig(row, "current_state", "state")
+        age = _dig(row, "paths", "status_log", "last_event", "age_seconds")
+        project = row.get("project")
+        pr = _dig(row, "pr", "url")
+        target = _dig(row, "endpoint", "target")
+        tasks.append(
+            {
+                "id": row["id"],
+                "kind": row.get("kind") if isinstance(row.get("kind"), str) else "task",
+                "project": project if isinstance(project, str) else "",
+                "state": state if isinstance(state, str) and state else "unknown",
+                "age": age if _is_number(age) else None,
+                "pr": pr if isinstance(pr, str) else "",
+                "target": target if isinstance(target, str) else "",
+                "decision": hints.get("pending_decision") is True,
+                "blocked": hints.get("blocked_event") is True or state == "blocked",
+            }
+        )
+    for task in tasks:
+        task["rank"] = task_rank(task)
+    tasks.sort(key=lambda t: (t["rank"], t["id"]))
+    home = data.get("fm_home") if isinstance(data.get("fm_home"), str) else ""
+    roots = data.get("roots") if isinstance(data.get("roots"), dict) else {}
+    return {
+        "home": home,
+        "state_dir": roots.get("state") if isinstance(roots.get("state"), str) else "",
+        "config_dir": roots.get("config")
+        if isinstance(roots.get("config"), str)
+        else "",
+        "tasks": tasks,
+    }
+
+
+def task_rank(task: Dict[str, Any]) -> int:
+    if task["decision"] or task["blocked"]:
+        return RANK_ATTENTION
+    return {"working": RANK_WORKING, "paused": RANK_PAUSED, "done": RANK_DONE}.get(
+        task["state"], RANK_OTHER
+    )
+
+
+def display_state(task: Dict[str, Any]) -> str:
+    if task["decision"]:
+        return "needs-decision"
+    if task["blocked"]:
+        return "blocked"
+    return task["state"]
+
+
+def needs_you(tasks: List[Dict[str, Any]]) -> List[Tuple[str, str, str]]:
+    """(label, task, detail) for PRs ready for review, decisions and blocked workers."""
+    items = []
+    for task in tasks:
+        if task["pr"]:
+            items.append(("PR ready", task["id"], task["pr"]))
+    for task in tasks:
+        if task["decision"]:
+            items.append(("decision", task["id"], ""))
+    for task in tasks:
+        if task["blocked"] and not task["decision"]:
+            items.append(("blocked", task["id"], ""))
+    return items
+
+
+def format_age(seconds: Optional[float]) -> str:
+    if seconds is None or seconds < 0:
+        return "-"
+    seconds = int(seconds)
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= size:
+            return "%d%s" % (seconds // size, unit)
+    return "%ds" % seconds
+
+
+FILTER_ALL = "all"
+FILTER_NEEDS_YOU = "needs you"
+
+
+def filter_choices(tasks: List[Dict[str, Any]]) -> List[str]:
+    """The filter cycle: all, needs you, then each state present."""
+    states = sorted({display_state(t) for t in tasks})
+    return [FILTER_ALL, FILTER_NEEDS_YOU] + states
+
+
+def filter_tasks(tasks: List[Dict[str, Any]], choice: str) -> List[Dict[str, Any]]:
+    if choice == FILTER_ALL:
+        return list(tasks)
+    if choice == FILTER_NEEDS_YOU:
+        return [t for t in tasks if t["pr"] or t["decision"] or t["blocked"]]
+    return [t for t in tasks if display_state(t) == choice]
+
+
+def cut(text: str, width: int) -> str:
+    if width <= 0:
+        return ""
+    return text if len(text) <= width else text[: width - 1] + "~"
+
+
+def column_widths(width: int) -> Dict[str, int]:
+    """Cell widths for the task table, so 80 columns and narrower panes stay readable."""
+    fixed = {"kind": 10, "state": 14, "age": 4}
+    rest = max(16, width - sum(fixed.values()) - 5)
+    task_width = max(10, (rest * 3) // 5)
+    return dict(fixed, task=task_width, project=max(6, rest - task_width))
+
+
+def table_rows(
+    tasks: List[Dict[str, Any]], width: int
+) -> List[Tuple[str, str, str, str, str]]:
+    cols = column_widths(width)
+    return [
+        (
+            cut(t["id"], cols["task"]),
+            cut(t["kind"], cols["kind"]),
+            cut(t["project"] or "-", cols["project"]),
+            cut(display_state(t), cols["state"]),
+            format_age(t["age"]),
+        )
+        for t in tasks
+    ]
+
+
+def home_name(home: str, fallback: str) -> str:
+    return os.path.basename(os.path.normpath(home or fallback)) or "firstmate"
+
+
+def wrap(text: str, width: int, indent: str = "  ") -> List[str]:
+    """Wrap without breaking words, so a PR URL is never split or cut."""
+    return textwrap.wrap(
+        text,
+        width=max(20, width),
+        subsequent_indent=indent + "  ",
+        initial_indent=indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [indent]
+
+
+def render_plain(
+    snapshot: Dict[str, Any],
+    records: List[Dict[str, Any]],
+    ledger_present: bool,
+    width: int,
+    now: float,
+    fallback_home: str = "",
+) -> str:
+    """The --once frame."""
+    out = [
+        cut(
+            "firstmate fleet - %s - refreshed %s"
+            % (
+                home_name(snapshot["home"], fallback_home),
+                time.strftime("%H:%M:%S", time.localtime(now)),
+            ),
+            width,
+        ),
+        "-" * width,
+    ]
+    attention = needs_you(snapshot["tasks"])
+    out.append("NEEDS YOU" if attention else "NEEDS YOU: nothing")
+    for label, task, detail in attention:
+        out.extend(
+            wrap("! %s %s%s" % (label, task, " " + detail if detail else ""), width)
+        )
+    out.append("")
+    tasks = snapshot["tasks"]
+    out.append("TASKS (%d)" % len(tasks))
+    if tasks:
+        cols = column_widths(width)
+        header = ("task", "kind", "project", "state", "age")
+        rows = [header] + table_rows(tasks, width)
+        order = ("task", "kind", "project", "state", "age")
+        for row in rows:
+            out.append(
+                cut(
+                    "  "
+                    + " ".join(
+                        cell.ljust(cols[name]) for cell, name in zip(row, order)
+                    ).rstrip(),
+                    width,
+                )
+            )
+    else:
+        out.append("  no tasks")
+    out.append("")
+    if not ledger_present:
+        out.append("ACTIVITY")
+        out.extend(wrap(LEDGER_HINT, width))
+    else:
+        lines = feed_lines(records, now)
+        out.append(
+            "ACTIVITY (last %d)" % len(lines) if lines else "ACTIVITY: no events yet"
+        )
+        for line in lines:
+            out.extend(wrap(line, width))
+    return "\n".join(out) + "\n"
+
+
+# --- side effects: snapshot, ledger path, herdr jump ------------------------
+
+
+def firstmate_dir(env: Dict[str, str]) -> str:
+    return env.get("FIRSTMATE_DIR") or os.path.join(
+        env.get("HOME", ""), "workspace", "firstmate"
+    )
+
+
+def run_snapshot(home: str, env: Dict[str, str]) -> str:
+    """Run the snapshot command firstmate-fleet uses and return its stdout."""
+    command = env.get("FM_FLEET_SNAPSHOT_CMD")
+    if command:
+        argv, cwd = ["bash", "-c", command], None
+    else:
+        argv, cwd = [os.path.join(home, "bin", "fm-fleet-snapshot.sh"), "--json"], home
+    result = subprocess.run(
+        argv,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=SNAPSHOT_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("snapshot exited %d" % result.returncode)
+    return result.stdout.decode("utf-8", errors="replace")
+
+
+def ledger_path(snapshot: Dict[str, Any], home: str) -> str:
+    return os.path.join(
+        snapshot["state_dir"] or os.path.join(home, "state"), "fleet-ledger.jsonl"
+    )
+
+
+def jump_to(target: str, herdr_bin: str) -> None:
+    """Focus the Herdr tab of a task endpoint ("session:pane"); quiet on any failure."""
+    if not target or ":" not in target:
+        return
+    session, pane = target.split(":", 1)
+    flag = [] if session == "default" else ["--session", session]
+    try:
+        got = subprocess.run(
+            [herdr_bin, "pane", "get", pane] + flag,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+        tab = _dig(json.loads(got.stdout or b"{}"), "result", "pane", "tab_id")
+        if isinstance(tab, str) and tab:
+            subprocess.run(
+                [herdr_bin, "tab", "focus", tab] + flag,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return
+
+
+# --- the live view ------------------------------------------------------------
+
+
+def build_app(home: str, env: Dict[str, str], interval: float) -> Any:
+    """Build the Textual app; Textual is imported only here, so --once and the pure functions need none."""
+    from rich.text import Text
+    from textual import work
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.widgets import DataTable, Footer, RichLog, Static
+
+    herdr_bin = env.get("HERDR_BIN") or "herdr"
+
+    class FleetApp(App):
+        TITLE = "firstmate"
+        CSS = """
+        #head { height: 1; background: $primary-background; padding: 0 1; }
+        #needs { height: auto; max-height: 8; padding: 0 1; color: $warning; }
+        #tasks { height: 1fr; min-height: 4; }
+        #feed-title { height: 1; padding: 0 1; background: $boost; }
+        #feed { height: 1fr; min-height: 4; padding: 0 1; }
+        """
+        BINDINGS = [
+            Binding("j", "down", "down", show=False),
+            Binding("k", "up", "up", show=False),
+            Binding("r", "refresh", "refresh"),
+            Binding("f", "filter", "filter"),
+            Binding("q", "quit", "quit"),
+        ]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.snapshot: Optional[Dict[str, Any]] = None
+            self.records: List[Dict[str, Any]] = []
+            self.ledger_present = True
+            self.stale = False
+            self.updated = "--:--:--"
+            self.choice = FILTER_ALL
+            self.shown: List[Dict[str, Any]] = []
+
+        def compose(self) -> ComposeResult:
+            yield Static("firstmate - loading", id="head")
+            yield Static("", id="needs")
+            yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
+            yield Static("ACTIVITY", id="feed-title")
+            yield RichLog(id="feed", wrap=True, markup=False, auto_scroll=False)
+            yield Footer()
+
+        def on_mount(self) -> None:
+            self.query_one(DataTable).add_columns(
+                "task", "kind", "project", "state", "age"
+            )
+            self.query_one(DataTable).focus()
+            self.action_refresh()
+            self.set_interval(interval, self.action_refresh)
+
+        @work(thread=True, exclusive=True)
+        def action_refresh(self) -> None:
+            try:
+                snapshot = parse_snapshot(run_snapshot(home, env))
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                self.call_from_thread(self.show, None, [], self.ledger_present)
+                return
+            records, present = read_ledger(ledger_path(snapshot, home))
+            self.call_from_thread(self.show, snapshot, records, present)
+
+        def show(
+            self,
+            snapshot: Optional[Dict[str, Any]],
+            records: List[Dict[str, Any]],
+            present: bool,
+        ) -> None:
+            if snapshot is None:
+                self.stale = True
+            else:
+                self.snapshot, self.records, self.ledger_present = (
+                    snapshot,
+                    records,
+                    present,
+                )
+                self.stale = False
+                self.updated = time.strftime("%H:%M:%S")
+            self.redraw()
+
+        def on_resize(self) -> None:
+            self.redraw()
+
+        def redraw(self) -> None:
+            width = self.size.width
+            snapshot = self.snapshot or {"home": "", "tasks": []}
+            tasks = snapshot["tasks"]
+            head = "firstmate - %s - %s" % (
+                home_name(snapshot["home"], home),
+                self.updated,
+            )
+            if self.choice != FILTER_ALL:
+                head += " - filter: %s" % self.choice
+            if self.stale:
+                head += " - STALE"
+            self.query_one("#head", Static).update(cut(head, max(10, width - 2)))
+            attention = needs_you(tasks)
+            needs = Text()
+            for index, (label, task, detail) in enumerate(attention):
+                if index:
+                    needs.append("\n")
+                needs.append("! %s " % label, style="bold")
+                needs.append(task)
+                if detail:
+                    needs.append(" " + detail)
+            needs_widget = self.query_one("#needs", Static)
+            needs_widget.update(needs)
+            needs_widget.display = bool(attention)
+            if self.choice not in filter_choices(tasks):
+                self.choice = FILTER_ALL
+            self.shown = filter_tasks(tasks, self.choice)
+            table = self.query_one(DataTable)
+            row = table.cursor_row
+            table.clear()
+            for index, cells in enumerate(table_rows(self.shown, width)):
+                table.add_row(*cells, key=str(index))
+            if self.shown:
+                table.move_cursor(row=min(row, len(self.shown) - 1))
+            feed = self.query_one(RichLog)
+            feed.clear()
+            title = self.query_one("#feed-title", Static)
+            if not self.ledger_present:
+                title.update("ACTIVITY")
+                feed.write(LEDGER_HINT)
+                return
+            lines = feed_lines(self.records, time.time())
+            title.update(
+                "ACTIVITY (last %d)" % len(lines)
+                if lines
+                else "ACTIVITY: no events yet"
+            )
+            for line in lines:
+                feed.write(line)
+
+        def action_down(self) -> None:
+            self.query_one(DataTable).action_cursor_down()
+
+        def action_up(self) -> None:
+            self.query_one(DataTable).action_cursor_up()
+
+        def action_filter(self) -> None:
+            choices = filter_choices((self.snapshot or {"tasks": []})["tasks"])
+            index = choices.index(self.choice) if self.choice in choices else 0
+            self.choice = choices[(index + 1) % len(choices)]
+            self.redraw()
+
+        def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+            index = event.cursor_row
+            if 0 <= index < len(self.shown):
+                jump_to(self.shown[index]["target"], herdr_bin)
+
+    return FleetApp()
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    # The module docstring is the help text, so --help and the file header never drift.
+    parser = argparse.ArgumentParser(prog="firstmate-tui", add_help=False)
+    parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL)
+    parser.add_argument("--width", type=int, default=0)
+    args = parser.parse_args(argv)
+    if args.help:
+        sys.stdout.write(__doc__)
+        return 0
+    if args.interval <= 0:
+        parser.error("--interval must be positive")
+    env = dict(os.environ)
+    home = firstmate_dir(env)
+    if args.once:
+        try:
+            snapshot = parse_snapshot(run_snapshot(home, env))
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            print("firstmate-tui: snapshot failed", file=sys.stderr)
+            return 1
+        except ValueError:
+            print("firstmate-tui: snapshot is not valid JSON", file=sys.stderr)
+            return 1
+        records, present = read_ledger(ledger_path(snapshot, home))
+        width = args.width or shutil.get_terminal_size((80, 24)).columns
+        sys.stdout.write(
+            render_plain(snapshot, records, present, max(20, width), time.time(), home)
+        )
+        return 0
+    if not sys.stdout.isatty():
+        print(
+            "firstmate-tui: no terminal; use --once for a plain frame", file=sys.stderr
+        )
+        return 2
+    build_app(home, env, args.interval).run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
