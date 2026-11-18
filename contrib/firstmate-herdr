@@ -86,7 +86,9 @@ run_when_ready() {
   for i in $(seq 1 25); do
     # shellcheck disable=SC2016
     hr pane run "$pane" 'echo FM_READY_$((40+2))' >/dev/null
-    hr wait output "$pane" --match FM_READY_42 --timeout 800 >/dev/null 2>&1 && break
+    # Herdr 0.9 names the wait "pane wait-output"; older releases call it "wait output".
+    { hr pane wait-output "$pane" --match FM_READY_42 --timeout 800 >/dev/null 2>&1 ||
+      hr wait output "$pane" --match FM_READY_42 --timeout 800 >/dev/null 2>&1; } && break
     [ "$i" -lt 25 ] || die "the shell in pane $pane did not become ready"
   done
   hr pane run "$pane" "clear; $cmd" >/dev/null
