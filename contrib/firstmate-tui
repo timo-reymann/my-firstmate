@@ -3,34 +3,58 @@
 # requires-python = ">=3.9"
 # dependencies = ["textual==8.2.8"]
 # ///
-"""Read-only fleet view for firstmate, with an activity feed.
+"""Read-only firstmate screen: the fleet activity and the workers, with a live view.
 
-Usage: firstmate-tui [--once] [--interval SECONDS] [--width COLUMNS]
+Usage: firstmate-tui [--pane all|activity|workers] [--once] [--interval SECONDS]
+                     [--width COLUMNS] [--height ROWS]
 
-It shows the home name and refresh time, a "Needs you" strip (PRs ready for
-review, workers waiting on a decision, blocked workers), a task table from the
-fleet snapshot, and the last 30 events of the fleet activity ledger.
-It costs no model tokens, never writes to the home, and never steers a worker.
+firstmate-herdr runs two of these next to the first mate in one Herdr tab:
+--pane activity across the top (the last 8 fleet events as full lines) and
+--pane workers on the right (the workers, needs-you first, over a read-only live
+view of the selected worker's screen). --pane all, the default, stacks both.
+It costs no model tokens and never steers a worker. The only file it writes is
+state/firstmate-tui.json in the home, which holds the selected worker, the
+activity filter and the needs-you items marked read, shared by both panes.
 
 Options:
-  --once              print one plain frame to stdout and exit; needs no TTY
-                      and no Textual
-  --interval SECONDS  refresh period of the live view (default 6)
+  --pane NAME         activity, workers or all (default all)
+  --once              print one plain frame of the pane to stdout and exit;
+                      needs no TTY and no Textual, and writes nothing
+  --interval SECONDS  refresh period of the fleet data (default 6)
   --width COLUMNS     frame width for --once (default: terminal width, or 80)
+  --height ROWS       frame height for --once (default: 9 for activity, else
+                      the terminal height, or 24)
   -h, --help          show this help
 
-Keys: j/k or arrows move, enter jumps to the task tab in Herdr, r refreshes,
-f cycles the state filter, q quits.
+Keys:
+  up/down, j/k  select a worker
+  enter         open the worker's real Herdr tab
+  tab           select the next worker
+  1-9           select worker 1 to 9
+  l             full activity log
+  n             needs-you events only; select the next worker that needs you
+  a             events of all tasks
+  t             events of the selected task only
+  y             copy the selected worker's PR URL
+  m             mark the selected worker's needs-you item read
+  ?             this key list
+  r             refresh now
+  q             quit; escape closes an overlay
 
 Environment:
   FIRSTMATE_DIR          the firstmate home (default $HOME/workspace/firstmate)
   FM_FLEET_SNAPSHOT_CMD  shell command that prints the snapshot JSON instead of
                          bin/fm-fleet-snapshot.sh --json in FIRSTMATE_DIR
-  HERDR_BIN              herdr binary for the enter jump (default herdr)
+  HERDR_BIN              herdr binary for the live view and the jump (default herdr)
+  FIRSTMATE_TUI_COLORS   truecolor, 256, 16 or 8 (default: detected)
+  FIRSTMATE_TUI_THEME    dark or light, for truecolor and 256 colours
+                         (default: light when COLORFGBG names a light
+                         background, else dark)
 
-Data sources: the snapshot schema is owned by bin/fm-fleet-snapshot.sh and the
-ledger contract by docs/fleet-ledger.md. The ledger is optional; while
-config/fleet-ledger is absent the feed shows a one-line hint instead.
+Data sources: the snapshot schema is owned by bin/fm-fleet-snapshot.sh, whose
+current state comes from bin/fm-crew-state.sh, and the ledger contract by
+docs/fleet-ledger.md. The ledger is optional; while config/fleet-ledger is
+absent the activity shows a one-line hint instead.
 """
 
 from __future__ import annotations
@@ -38,11 +62,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import time
+import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 LEDGER_EVENTS = (
@@ -52,19 +77,300 @@ LEDGER_EVENTS = (
     "task.merged",
     "task.cleaned_up",
 )
-FEED_SIZE = 30
+ACTIVITY_SIZE = 8
+ACTIVITY_HEIGHT = ACTIVITY_SIZE + 2
 LEDGER_TAIL_BYTES = 512 * 1024
 SNAPSHOT_TIMEOUT_SECONDS = 120
+HERDR_TIMEOUT_SECONDS = 5
 DEFAULT_INTERVAL = 6.0
-LEDGER_HINT = (
-    "Activity feed is off: create config/fleet-ledger in the home to turn it on."
+LIVE_INTERVAL = 1.0
+QUIET_SECONDS = 3600
+RAIL_WIDTH = 34
+ROW_FIXED = 22
+KIND_WORD = 6
+SHARED_FILE = "firstmate-tui.json"
+LEDGER_HINT = "Activity is off: create config/fleet-ledger in the home to turn it on."
+PANES = ("all", "activity", "workers")
+FILTER_ALL, FILTER_NEEDS, FILTER_TASK = "all", "needs", "task"
+FILTERS = (FILTER_ALL, FILTER_NEEDS, FILTER_TASK)
+
+
+# --- palette and labels (pure) ----------------------------------------------
+
+# On 256 colours Rich maps the hex values to the nearest palette entry.
+# state: (symbol, word, badge role for needs-you states or None)
+STATES: Dict[str, Tuple[str, str, Optional[str]]] = {
+    "decision": ("?", "decision", "badge_decision"),
+    "blocked": ("✖", "blocked", "badge_blocked"),
+    "failed": ("✖", "failed", "badge_blocked"),
+    "pr": ("⇡", "PR ready", "badge_pr"),
+    "working": ("●", "working", None),
+    "paused": ("‖", "paused", None),
+    "parked": ("‖", "parked", None),
+    "done": ("✓", "done", None),
+    "note": ("·", "", None),
+}
+STATE_ROLES = {"failed": "blocked", "parked": "paused", "note": "dim"}
+NEEDS_YOU = ("decision", "blocked", "failed", "pr")
+# kind: (glyph, word, palette role)
+KINDS: Dict[str, Tuple[str, str, str]] = {
+    "ship": ("▲", "ship", "ship"),
+    "scout": ("◇", "scout", "scout"),
+    "secondmate": ("◆", "mate", "mate"),
+}
+OTHER_KIND = ("·", "task", "fg")
+NEEDS_BAR = "▌"
+ELLIPSIS = "…"
+
+# role: (dark, light, 16-colour, 8-colour)
+PALETTE: Dict[str, Tuple[str, str, str, str]] = {
+    "fg": ("#d8dee6", "#24292f", "", ""),
+    "dim": ("#8b95a3", "#59636e", "color(8)", "dim color(7)"),
+    "title": ("bold #39c5cf", "bold #0a6871", "bold color(6)", "bold color(6)"),
+    "key": ("bold #39c5cf", "bold #0a6871", "bold color(6)", "bold color(6)"),
+    "working": ("bold #4cc764", "bold #146c2e", "bold color(2)", "bold color(2)"),
+    "working_text": ("#4cc764", "#146c2e", "color(10)", "color(2)"),
+    "paused": ("#c9d1d9", "#3d444d", "color(7)", "color(7)"),
+    "decision": ("bold #f2cc60", "bold #7d5700", "bold color(11)", "bold color(3)"),
+    "blocked": ("bold #ff7b72", "bold #c62828", "bold color(9)", "bold color(1)"),
+    "done": ("#8b95a3", "#59636e", "color(8)", "dim color(7)"),
+    "pr": ("bold #f778ba", "bold #a8126a", "bold color(13)", "bold color(5)"),
+    "ship": ("#39c5cf", "#0a6871", "color(6)", "color(6)"),
+    "scout": ("#7aa7ff", "#1f5fbf", "color(12)", "bold color(4)"),
+    "mate": ("bold #ffffff", "bold #111111", "bold color(15)", "bold color(7)"),
+    "selected": (
+        "bold #ffffff on #1f4fa8",
+        "bold #ffffff on #1f5fbf",
+        "bold color(15) on color(4)",
+        "bold color(7) on color(4)",
+    ),
+    "bar": ("#f2cc60", "#f2cc60", "color(11)", "bold color(3)"),
+    "badge_needs": (
+        "bold #1b1300 on #f2cc60",
+        "bold #1b1300 on #f2cc60",
+        "bold color(0) on color(3)",
+        "bold color(0) on color(3)",
+    ),
+    "badge_decision": (
+        "bold #1b1300 on #f2cc60",
+        "bold #1b1300 on #f2cc60",
+        "bold color(0) on color(3)",
+        "bold color(0) on color(3)",
+    ),
+    "badge_blocked": (
+        "bold #ffffff on #c62828",
+        "bold #ffffff on #c62828",
+        "bold color(15) on color(1)",
+        "bold color(7) on color(1)",
+    ),
+    "badge_pr": (
+        "bold #1a0010 on #f778ba",
+        "bold #1a0010 on #f778ba",
+        "bold color(0) on color(5)",
+        "bold color(0) on color(5)",
+    ),
+}
+# Background layers. The panel and key-bar tints exist only on truecolor and
+# 256 colours; on 16 and 8 colours the terminal background shows through.
+LAYERS: Dict[str, Tuple[str, str]] = {
+    "base": ("#0e1116", "#fbfaf7"),
+    "panel": ("#131a23", "#f0ece2"),
+    "bar": ("#1b2230", "#e6e1d6"),
+}
+DEPTHS = ("truecolor", "256", "16", "8")
+THEMES = ("dark", "light")
+
+
+def color_depth(env: Dict[str, str], terminal_colors: Optional[int] = None) -> str:
+    """The colour depth: FIRSTMATE_TUI_COLORS, else COLORTERM, TERM and the terminfo count."""
+    forced = (env.get("FIRSTMATE_TUI_COLORS") or "").strip().lower()
+    if forced in ("24bit", "truecolour"):
+        forced = "truecolor"
+    if forced in DEPTHS:
+        return forced
+    if (env.get("COLORTERM") or "").lower() in ("truecolor", "24bit"):
+        return "truecolor"
+    if "256color" in (env.get("TERM") or ""):
+        return "256"
+    if terminal_colors is not None:
+        if terminal_colors >= 256:
+            return "256"
+        if 0 < terminal_colors <= 8:
+            return "8"
+    return "16"
+
+
+def color_theme(env: Dict[str, str]) -> str:
+    """dark or light: FIRSTMATE_TUI_THEME, else the background index in COLORFGBG."""
+    forced = (env.get("FIRSTMATE_TUI_THEME") or "").strip().lower()
+    if forced in THEMES:
+        return forced
+    background = (env.get("COLORFGBG") or "").split(";")[-1]
+    if background.isdigit() and int(background) in (7, 15):
+        return "light"
+    return "dark"
+
+
+def style_for(
+    role: str, depth: str, theme: str = "dark", layer: Optional[str] = None
+) -> str:
+    """The Rich style of a palette role, with the background of a layer when it has none."""
+    bold = role.endswith("+bold")
+    base = role[: -len("+bold")] if bold else role
+    dark, light, c16, c8 = PALETTE.get(base, PALETTE["fg"])
+    hex_mode = depth in ("truecolor", "256")
+    if hex_mode:
+        style = dark if theme == "dark" else light
+    else:
+        style = c16 if depth == "16" else c8
+    if bold and "bold" not in style.split():
+        style = ("bold " + style).strip()
+    if hex_mode and " on " not in style:
+        shade = LAYERS.get(layer or "base", LAYERS["base"])
+        style = "%s on %s" % (style, shade[0] if theme == "dark" else shade[1])
+    return style.strip()
+
+
+def state_role(state: str) -> str:
+    return STATE_ROLES.get(state, state if state in PALETTE else "dim")
+
+
+def kind_info(kind: str) -> Tuple[str, str, str]:
+    return KINDS.get(kind, OTHER_KIND)
+
+
+def cell_width(text: str) -> int:
+    """Terminal cells a string takes: wide East Asian characters count two."""
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+    return width
+
+
+def fit(text: str, width: int, pad: bool = True) -> str:
+    """Cut to width cells with an ellipsis, then pad with spaces."""
+    if width <= 0:
+        return ""
+    if cell_width(text) > width:
+        out, used = [], 0
+        for char in text:
+            size = cell_width(char)
+            if used + size > width - 1:
+                break
+            out.append(char)
+            used += size
+        text = "".join(out) + ELLIPSIS
+    return text + " " * (width - cell_width(text)) if pad else text
+
+
+# --- frame lines (pure) ------------------------------------------------------
+
+
+class Line:
+    """One frame row: (text, role) spans, an optional live-view slot, and a background layer."""
+
+    __slots__ = ("spans", "layer", "selected")
+
+    def __init__(self, layer: Optional[str] = None, selected: bool = False) -> None:
+        self.spans: List[Tuple[str, str, int]] = []
+        self.layer = layer
+        self.selected = selected
+
+    def add(self, text: str, role: str = "fg") -> "Line":
+        if text:
+            self.spans.append((text, role, -1))
+        return self
+
+    def live(self, raw: str, width: int) -> "Line":
+        """A slot of width cells that shows one ANSI line of a worker screen."""
+        if width > 0:
+            self.spans.append((raw, "live", width))
+        return self
+
+    def width(self) -> int:
+        return sum(
+            size if size >= 0 else cell_width(text) for text, _, size in self.spans
+        )
+
+    def plain(self) -> str:
+        """The text alone; the selection mark shows as "›" because plain text has no fill."""
+        return "".join(
+            fit(strip_ansi(text), size)
+            if size >= 0
+            else ("›" if role == "mark" else text)
+            for text, role, size in self.spans
+        )
+
+
+ANSI_RE = re.compile(
+    r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]"
 )
 
-# Rank orders the task table: attention first, then working, paused, others, done.
-RANK_ATTENTION, RANK_WORKING, RANK_PAUSED, RANK_OTHER, RANK_DONE = range(5)
+
+def strip_ansi(text: str) -> str:
+    return ANSI_RE.sub("", text).replace("\r", "")
 
 
-# --- pure functions: ledger -------------------------------------------------
+def box(
+    width: int,
+    height: int,
+    title: List[Tuple[str, str]],
+    right: List[Tuple[str, str]],
+    body: List[Line],
+    layer: Optional[str] = None,
+) -> List[Line]:
+    """A rounded box of width x height; body lines are already inner width (width - 2)."""
+    if width < 4 or height < 2:
+        return []
+    top = Line(layer=layer).add("╭─", "dim")
+    used = 2
+    for text, role in title:
+        text = fit(text, max(0, width - 3 - used), pad=False)
+        top.add(text, role)
+        used += cell_width(text)
+    right_width = sum(cell_width(text) for text, _ in right)
+    if used + right_width + 2 > width:
+        right, right_width = [], 0
+    top.add("─" * (width - 1 - used - right_width), "dim")
+    for text, role in right:
+        top.add(text, role)
+    top.add("╮", "dim")
+    lines = [top]
+    for index in range(height - 2):
+        inner = body[index] if index < len(body) else Line()
+        # A selected row fills only the inside of the box; the border keeps its colour.
+        row = Line(layer=layer).add("│", "dim")
+        fill = "selected" if inner.selected else "fg"
+        for text, role, size in inner.spans:
+            keep = role in ("mark", "live") or not inner.selected
+            row.spans.append((text, role if keep else fill, size))
+        row.add(" " * max(0, width - 2 - inner.width()), fill)
+        row.add("│", "dim")
+        lines.append(row)
+    lines.append(Line(layer=layer).add("╰" + "─" * (width - 2) + "╯", "dim"))
+    return lines
+
+
+def key_bar(width: int, items: List[Tuple[str, str]]) -> Line:
+    """The key bar; items that do not fit drop from the end, but the last item always stays."""
+
+    def size(item: Tuple[str, str]) -> int:
+        return cell_width(item[0]) + 1 + cell_width(item[1]) + 2
+
+    keep = list(items[:-1])
+    while keep and 1 + sum(size(item) for item in keep) + size(items[-1]) > width:
+        keep.pop()
+    line = Line(layer="bar").add(" ")
+    for key, label in keep + list(items[-1:]):
+        if line.width() + size((key, label)) - 2 > width:
+            break
+        line.add(key, "key").add(" " + label + "  ")
+    return line
+
+
+# --- pure functions: ledger --------------------------------------------------
 
 
 def _is_number(value: Any) -> bool:
@@ -171,6 +477,28 @@ def format_event(record: Dict[str, Any]) -> str:
     return str(event)
 
 
+STATUS_WORDS = {
+    "needs-decision": "decision",
+    "blocked": "blocked",
+    "failed": "failed",
+    "working": "working",
+    "paused": "paused",
+    "done": "done",
+}
+
+
+def event_state(record: Dict[str, Any]) -> str:
+    """The state symbol a ledger record shows with."""
+    event = record.get("event")
+    if event == "task.status":
+        return STATUS_WORDS.get(record.get("state") or "", "note")
+    if event == "task.pr_ready":
+        return "pr"
+    if event in ("task.merged", "task.cleaned_up"):
+        return "done"
+    return "working"
+
+
 def format_clock(ts: float, now: float) -> str:
     """HH:MM for today, MM-DD HH:MM for older records."""
     stamp = time.localtime(ts)
@@ -181,18 +509,36 @@ def format_clock(ts: float, now: float) -> str:
     return time.strftime("%m-%d %H:%M", stamp)
 
 
-def feed_lines(
-    records: List[Dict[str, Any]], now: float, size: int = FEED_SIZE
-) -> List[str]:
-    """The newest `size` records, newest first, as display lines."""
-    newest = records[-size:] if size > 0 else []
-    return [
-        "%s %s %s" % (format_clock(r["ts"], now), r["task"], format_event(r))
-        for r in reversed(newest)
-    ]
+def ledger_kinds(records: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Task kinds from the dispatch records, for tasks the snapshot no longer lists."""
+    kinds = {}
+    for record in records:
+        kind = record.get("kind")
+        if record.get("event") == "task.dispatched" and isinstance(kind, str):
+            kinds[record["task"]] = kind
+    return kinds
 
 
-# --- pure functions: snapshot -----------------------------------------------
+def merged_tasks(records: List[Dict[str, Any]]) -> set:
+    """Tasks whose latest PR record is a merge, so a lingering PR URL is not shown as ready."""
+    latest: Dict[str, str] = {}
+    for record in records:
+        if record.get("event") in ("task.pr_ready", "task.merged"):
+            latest[record["task"]] = record["event"]
+    return {task for task, event in latest.items() if event == "task.merged"}
+
+
+def filter_events(
+    records: List[Dict[str, Any]], choice: str, selected: Optional[str]
+) -> List[Dict[str, Any]]:
+    if choice == FILTER_NEEDS:
+        return [r for r in records if event_state(r) in NEEDS_YOU]
+    if choice == FILTER_TASK and selected:
+        return [r for r in records if r["task"] == selected]
+    return list(records)
+
+
+# --- pure functions: snapshot and workers ------------------------------------
 
 
 def _dig(value: Any, *keys: str) -> Any:
@@ -201,6 +547,10 @@ def _dig(value: Any, *keys: str) -> Any:
             return None
         value = value.get(key)
     return value
+
+
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else ""
 
 
 def parse_snapshot(text: str) -> Dict[str, Any]:
@@ -218,66 +568,86 @@ def parse_snapshot(text: str) -> Dict[str, Any]:
         hints = row.get("hints") if isinstance(row.get("hints"), dict) else {}
         state = _dig(row, "current_state", "state")
         age = _dig(row, "paths", "status_log", "last_event", "age_seconds")
-        project = row.get("project")
-        pr = _dig(row, "pr", "url")
-        target = _dig(row, "endpoint", "target")
+        decisions = hints.get("open_decisions")
         tasks.append(
             {
                 "id": row["id"],
-                "kind": row.get("kind") if isinstance(row.get("kind"), str) else "task",
-                "project": project if isinstance(project, str) else "",
-                "state": state if isinstance(state, str) and state else "unknown",
+                "kind": _text(row.get("kind")) or "task",
+                "project": _text(row.get("project")),
+                "raw_state": state if isinstance(state, str) and state else "unknown",
                 "age": age if _is_number(age) else None,
-                "pr": pr if isinstance(pr, str) else "",
-                "target": target if isinstance(target, str) else "",
-                "decision": hints.get("pending_decision") is True,
+                "pr": _text(_dig(row, "pr", "url")),
+                "target": _text(_dig(row, "endpoint", "target")),
+                "note": _text(hints.get("last_event_text")),
+                "decision": hints.get("pending_decision") is True
+                or (isinstance(decisions, list) and bool(decisions)),
                 "blocked": hints.get("blocked_event") is True or state == "blocked",
             }
         )
-    for task in tasks:
-        task["rank"] = task_rank(task)
-    tasks.sort(key=lambda t: (t["rank"], t["id"]))
-    home = data.get("fm_home") if isinstance(data.get("fm_home"), str) else ""
+    home = _text(data.get("fm_home"))
     roots = data.get("roots") if isinstance(data.get("roots"), dict) else {}
     return {
         "home": home,
-        "state_dir": roots.get("state") if isinstance(roots.get("state"), str) else "",
-        "config_dir": roots.get("config")
-        if isinstance(roots.get("config"), str)
-        else "",
+        "state_dir": _text(roots.get("state")),
+        "config_dir": _text(roots.get("config")),
         "tasks": tasks,
     }
 
 
-def task_rank(task: Dict[str, Any]) -> int:
-    if task["decision"] or task["blocked"]:
-        return RANK_ATTENTION
-    return {"working": RANK_WORKING, "paused": RANK_PAUSED, "done": RANK_DONE}.get(
-        task["state"], RANK_OTHER
-    )
-
-
-def display_state(task: Dict[str, Any]) -> str:
+def worker_state(task: Dict[str, Any], merged: Iterable[str] = ()) -> str:
+    """The displayed state: decision, blocked, failed, PR ready, then the current state."""
     if task["decision"]:
-        return "needs-decision"
+        return "decision"
     if task["blocked"]:
         return "blocked"
-    return task["state"]
+    raw = task["raw_state"]
+    if raw == "failed":
+        return "failed"
+    if task["pr"] and task["id"] not in merged:
+        return "pr"
+    return raw if raw in ("working", "paused", "parked", "done") else "note"
 
 
-def needs_you(tasks: List[Dict[str, Any]]) -> List[Tuple[str, str, str]]:
-    """(label, task, detail) for PRs ready for review, decisions and blocked workers."""
-    items = []
+def attention_key(worker: Dict[str, Any]) -> str:
+    """What a "read" mark remembers; a new state, report or PR makes the item unread again."""
+    return "%s|%s|%s" % (worker["state"], worker["note"], worker["pr"])
+
+
+RANKS = {"decision": 0, "blocked": 1, "failed": 1, "pr": 2}
+LATER_RANKS = {"working": 10, "paused": 11, "parked": 11, "note": 12, "done": 13}
+
+
+def build_workers(
+    tasks: List[Dict[str, Any]],
+    records: List[Dict[str, Any]],
+    read: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    """Snapshot tasks as worker rows, sorted needs-you first (unread before read)."""
+    merged = merged_tasks(records)
+    workers = []
     for task in tasks:
-        if task["pr"]:
-            items.append(("PR ready", task["id"], task["pr"]))
-    for task in tasks:
-        if task["decision"]:
-            items.append(("decision", task["id"], ""))
-    for task in tasks:
-        if task["blocked"] and not task["decision"]:
-            items.append(("blocked", task["id"], ""))
-    return items
+        worker = dict(task)
+        worker["state"] = worker_state(task, merged)
+        worker["needs"] = worker["state"] in NEEDS_YOU
+        worker["unread"] = worker["needs"] and read.get(task["id"]) != attention_key(
+            worker
+        )
+        worker["quiet"] = (
+            worker["state"] == "working"
+            and worker["age"] is not None
+            and worker["age"] > QUIET_SECONDS
+        )
+        if worker["needs"]:
+            worker["rank"] = RANKS[worker["state"]] + (0 if worker["unread"] else 5)
+        else:
+            worker["rank"] = LATER_RANKS[worker["state"]]
+        workers.append(worker)
+    workers.sort(key=lambda w: (w["rank"], w["id"]))
+    return workers
+
+
+def unread_count(workers: List[Dict[str, Any]]) -> int:
+    return sum(1 for w in workers if w["unread"])
 
 
 def format_age(seconds: Optional[float]) -> str:
@@ -290,131 +660,462 @@ def format_age(seconds: Optional[float]) -> str:
     return "%ds" % seconds
 
 
-FILTER_ALL = "all"
-FILTER_NEEDS_YOU = "needs you"
-
-
-def filter_choices(tasks: List[Dict[str, Any]]) -> List[str]:
-    """The filter cycle: all, needs you, then each state present."""
-    states = sorted({display_state(t) for t in tasks})
-    return [FILTER_ALL, FILTER_NEEDS_YOU] + states
-
-
-def filter_tasks(tasks: List[Dict[str, Any]], choice: str) -> List[Dict[str, Any]]:
-    if choice == FILTER_ALL:
-        return list(tasks)
-    if choice == FILTER_NEEDS_YOU:
-        return [t for t in tasks if t["pr"] or t["decision"] or t["blocked"]]
-    return [t for t in tasks if display_state(t) == choice]
-
-
-def cut(text: str, width: int) -> str:
-    if width <= 0:
-        return ""
-    return text if len(text) <= width else text[: width - 1] + "~"
-
-
-def column_widths(width: int) -> Dict[str, int]:
-    """Cell widths for the task table, so 80 columns and narrower panes stay readable."""
-    fixed = {"kind": 10, "state": 14, "age": 4}
-    rest = max(16, width - sum(fixed.values()) - 5)
-    task_width = max(10, (rest * 3) // 5)
-    return dict(fixed, task=task_width, project=max(6, rest - task_width))
-
-
-def table_rows(
-    tasks: List[Dict[str, Any]], width: int
-) -> List[Tuple[str, str, str, str, str]]:
-    cols = column_widths(width)
-    return [
-        (
-            cut(t["id"], cols["task"]),
-            cut(t["kind"], cols["kind"]),
-            cut(t["project"] or "-", cols["project"]),
-            cut(display_state(t), cols["state"]),
-            format_age(t["age"]),
-        )
-        for t in tasks
-    ]
-
-
 def home_name(home: str, fallback: str) -> str:
     return os.path.basename(os.path.normpath(home or fallback)) or "firstmate"
 
 
-def wrap(text: str, width: int, indent: str = "  ") -> List[str]:
-    """Wrap without breaking words, so a PR URL is never split or cut."""
-    return textwrap.wrap(
-        text,
-        width=max(20, width),
-        subsequent_indent=indent + "  ",
-        initial_indent=indent,
-        break_long_words=False,
-        break_on_hyphens=False,
-    ) or [indent]
+def select_index(workers: List[Dict[str, Any]], selected: Optional[str]) -> int:
+    for index, worker in enumerate(workers):
+        if worker["id"] == selected:
+            return index
+    return 0
 
 
-def render_plain(
+def next_needs(workers: List[Dict[str, Any]], current: int) -> Optional[int]:
+    """The next worker after current that needs you (unread first), wrapping around."""
+    count = len(workers)
+    for want_unread in (True, False):
+        for step in range(1, count + 1):
+            index = (current + step) % count
+            worker = workers[index]
+            if worker["needs"] and (worker["unread"] or not want_unread):
+                return index
+    return None
+
+
+# --- pure functions: the shared selection file ------------------------------
+
+
+def parse_shared(text: str) -> Dict[str, Any]:
+    """The shared file's members; anything unreadable falls back to the defaults."""
+    shared: Dict[str, Any] = {"selected": None, "filter": FILTER_ALL, "read": {}}
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return shared
+    if not isinstance(data, dict):
+        return shared
+    if isinstance(data.get("selected"), str) and data["selected"]:
+        shared["selected"] = data["selected"]
+    if data.get("filter") in FILTERS:
+        shared["filter"] = data["filter"]
+    read = data.get("read")
+    if isinstance(read, dict):
+        shared["read"] = {
+            k: v for k, v in read.items() if isinstance(k, str) and isinstance(v, str)
+        }
+    return shared
+
+
+def load_shared(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return parse_shared(handle.read())
+    except (OSError, UnicodeDecodeError):
+        return parse_shared("")
+
+
+def save_shared(path: str, changes: Dict[str, Any], live_ids: Iterable[str]) -> None:
+    """Merge changes into the shared file and replace it atomically.
+
+    Read marks of tasks that left the fleet are dropped, so the file stays small.
+    """
+    shared = load_shared(path)
+    shared.update(changes)
+    keep = set(live_ids)
+    shared["read"] = {k: v for k, v in shared["read"].items() if k in keep}
+    shared["v"] = 1
+    temp = os.path.join(
+        os.path.dirname(path), ".%s.%d.tmp" % (os.path.basename(path), os.getpid())
+    )
+    with open(temp, "w", encoding="utf-8") as handle:
+        json.dump(shared, handle, sort_keys=True)
+        handle.write("\n")
+    os.replace(temp, path)
+
+
+# --- render: activity --------------------------------------------------------
+
+
+def activity_head(choice: str, selected: Optional[str], stale: bool) -> str:
+    head = "ACTIVITY · last %d" % ACTIVITY_SIZE
+    if choice == FILTER_NEEDS:
+        head += " · needs-you"
+    elif choice == FILTER_TASK and selected:
+        head += " · " + selected
+    if stale:
+        head += " · stale"
+    return head
+
+
+def needs_badge(width: int, needs: int) -> str:
+    if not needs:
+        return ""
+    return (" NEEDS YOU %d " if width >= 60 else " NEEDS %d ") % needs
+
+
+def activity_title(
+    width: int, choice: str, selected: Optional[str], needs: int, stale: bool
+) -> Line:
+    """The title as a bare row, for a pane too low for the box."""
+    line = Line(layer="panel").add(" ")
+    head = activity_head(choice, selected, stale)
+    hint = " l full log "
+    badge = needs_badge(width, needs)
+    room = width - 1 - cell_width(badge) - (cell_width(hint) if width >= 60 else 0) - 1
+    line.add(fit(head, max(0, room), pad=False), "title")
+    if badge and line.width() + 1 + cell_width(badge) <= width:
+        line.add(" ").add(badge, "badge_needs")
+    if width >= 60 and line.width() + cell_width(hint) <= width:
+        line.add(" " * (width - line.width() - cell_width(hint)))
+        line.add(" l", "key").add(" full log ", "dim")
+    return line
+
+
+def event_line(
+    record: Dict[str, Any],
+    width: int,
+    now: float,
+    kinds: Dict[str, str],
+    clock_width: int,
+    task_width: int,
+) -> Line:
+    state = event_state(record)
+    symbol, _, badge = STATES[state]
+    needs = state in NEEDS_YOU
+    line = Line(layer="panel")
+    line.add(NEEDS_BAR if needs else " ", "bar")
+    line.add(fit(format_clock(record["ts"], now), clock_width), "dim").add(" ")
+    line.add(symbol, badge or state_role(state)).add(" ")
+    line.add(
+        fit(record["task"], task_width),
+        kind_info(kinds.get(record["task"], ""))[2] + "+bold",
+    )
+    line.add(" ")
+    rest = width - line.width()
+    line.add(fit(format_event(record), rest, pad=False))
+    return line
+
+
+def render_activity(
+    width: int,
+    height: int,
+    records: List[Dict[str, Any]],
+    ledger_present: bool,
+    workers: List[Dict[str, Any]],
+    shared: Dict[str, Any],
+    now: float,
+    kinds: Optional[Dict[str, str]] = None,
+    stale: bool = False,
+) -> List[Line]:
+    """The activity pane: a box with the title and the newest events, newest first.
+
+    The box fills the pane height; a pane under 3 rows gets a bare title row instead.
+    """
+    if width < 1 or height < 1:
+        return []
+    choice = shared.get("filter", FILTER_ALL)
+    selected = shared.get("selected") or (workers[0]["id"] if workers else None)
+    needs = unread_count(workers)
+    boxed = height >= 3 and width >= 20
+    inner = width - 2 if boxed else width
+    rows = min(ACTIVITY_SIZE, height - 2 if boxed else height - 1)
+    body: List[Line] = []
+    if rows > 0 and not ledger_present:
+        body.append(Line(layer="panel").add(" " + fit(LEDGER_HINT, inner - 1), "dim"))
+    elif rows > 0:
+        shown = filter_events(records, choice, selected)[-rows:][::-1]
+        if not shown:
+            body.append(Line(layer="panel").add(fit(" no events yet", inner), "dim"))
+        all_kinds = dict(ledger_kinds(records))
+        all_kinds.update({w["id"]: w["kind"] for w in workers})
+        if kinds:
+            all_kinds.update(kinds)
+        if shown:
+            clock_width = max(cell_width(format_clock(r["ts"], now)) for r in shown)
+            task_width = min(24, max(8, max(cell_width(r["task"]) for r in shown)))
+        for record in shown:
+            body.append(
+                event_line(record, inner, now, all_kinds, clock_width, task_width)
+            )
+    if not boxed:
+        return [activity_title(width, choice, selected, needs, stale)] + body
+    for line in body:
+        line.layer = "panel"
+    title = [(" " + activity_head(choice, selected, stale) + " ", "title")]
+    badge = needs_badge(width, needs)
+    if badge:
+        title += [("─", "dim"), (badge, "badge_needs")]
+    right = [(" l", "key"), (" full log ", "dim"), ("─", "dim")] if width >= 60 else []
+    return box(width, height, title, right, body, layer="panel")
+
+
+def full_log_lines(
+    records: List[Dict[str, Any]], kinds: Dict[str, str], now: float
+) -> List[Line]:
+    """Every event in the ledger tail, newest first, as whole lines for the log overlay."""
+    lines = []
+    for record in reversed(records):
+        state = event_state(record)
+        symbol, _, badge = STATES[state]
+        line = Line()
+        line.add(NEEDS_BAR if state in NEEDS_YOU else " ", "bar")
+        line.add(format_clock(record["ts"], now), "dim").add(" ")
+        line.add(symbol, badge or state_role(state)).add(" ")
+        line.add(record["task"], kind_info(kinds.get(record["task"], ""))[2] + "+bold")
+        line.add(" " + format_event(record))
+        lines.append(line)
+    return lines
+
+
+# --- render: workers ---------------------------------------------------------
+
+
+def row_start(line: Line, worker: Dict[str, Any], selected: bool) -> None:
+    if selected:
+        line.spans.append((" ", "mark", -1))
+    else:
+        line.add(NEEDS_BAR if worker["unread"] else " ", "bar")
+
+
+def task_column(workers: List[Dict[str, Any]], width: int) -> Tuple[int, bool]:
+    """(task column, kind word shown) of the wide list.
+
+    The kind word stays while the task column keeps 12 cells (or the longest
+    task, when shorter); a narrower list drops the word and keeps the glyph.
+    """
+    longest = max([cell_width(w["id"]) for w in workers] or [6])
+    with_word = width - ROW_FIXED - KIND_WORD >= min(longest, 12)
+    fixed = ROW_FIXED + (KIND_WORD if with_word else 0)
+    return max(6, min(longest, width - fixed)), with_word
+
+
+def worker_row(
+    worker: Dict[str, Any],
+    width: int,
+    selected: bool,
+    column: Optional[Tuple[int, bool]] = None,
+) -> Line:
+    """One row of the wide worker list, width cells; the project follows when there is room."""
+    task_width, with_word = column or task_column([worker], width)
+    symbol, word, badge = STATES[worker["state"]]
+    glyph, kind_word, kind_role = kind_info(worker["kind"])
+    line = Line(selected=selected)
+    row_start(line, worker, selected)
+    line.add(" ")
+    line.add(
+        symbol, badge if badge and worker["unread"] else state_role(worker["state"])
+    )
+    line.add(" ").add(glyph, kind_role + "+bold").add(" ")
+    if with_word:
+        line.add(fit(kind_word, KIND_WORD - 1), kind_role).add(" ")
+    line.add(fit(worker["id"], task_width), "fg+bold" if worker["needs"] else "fg")
+    line.add(" ")
+    role = (
+        "working_text" if worker["state"] == "working" else state_role(worker["state"])
+    )
+    line.add(fit(word or worker["raw_state"], 9), role).add(" ")
+    age = format_age(worker["age"]) + (ELLIPSIS if worker["quiet"] else "")
+    line.add(fit(age, 5), "decision" if worker["quiet"] else "dim")
+    project = os.path.basename(worker["project"].rstrip("/"))
+    if project and width - line.width() >= 8:
+        line.add(" ").add(fit(project, width - line.width() - 1, pad=False), "dim")
+    return line
+
+
+def rail_row(worker: Dict[str, Any], width: int, selected: bool) -> Line:
+    """One row of the narrow rail: bar, state symbol, kind glyph, task."""
+    symbol, _, badge = STATES[worker["state"]]
+    glyph, _, kind_role = kind_info(worker["kind"])
+    line = Line(selected=selected)
+    row_start(line, worker, selected)
+    line.add(
+        symbol, badge if badge and worker["unread"] else state_role(worker["state"])
+    )
+    line.add(glyph, kind_role + "+bold").add(" ")
+    task = worker["id"] + (ELLIPSIS if worker["quiet"] else "")
+    line.add(fit(task, width - line.width()), "decision" if worker["quiet"] else "fg")
+    return line
+
+
+def list_window(count: int, rows: int, selected: int) -> range:
+    """The rows of the list that are drawn, keeping the selection in view."""
+    if count <= rows:
+        return range(count)
+    start = min(max(0, selected - rows + 1), count - rows)
+    return range(start, start + rows)
+
+
+def list_title(
+    workers: List[Dict[str, Any]], word: str, stale: bool
+) -> List[Tuple[str, str]]:
+    needs = unread_count(workers)
+    text = " %s %d" % (word, len(workers))
+    if needs and word == "WORKERS":
+        text += " · NEEDS YOU %d" % needs
+    if stale:
+        text += " · stale"
+    return [(text + " ", "decision" if needs else "title")]
+
+
+WIDE_KEYS = [
+    ("↑↓", "select"),
+    ("⏎", "open"),
+    ("l", "log"),
+    ("n", "needs-you"),
+    ("y", "copy PR"),
+    ("?", "keys"),
+]
+RAIL_KEYS = [("?", "keys"), ("1-9", "tab")]
+
+
+def live_box(
+    width: int,
+    height: int,
+    worker: Optional[Dict[str, Any]],
+    live: Optional[List[str]],
+    note: str,
+) -> List[Line]:
+    """The read-only live view of the selected worker's screen."""
+    inner = width - 2
+    if worker is None:
+        body = [Line().add(fit(" no worker selected", inner), "dim")]
+        return box(width, height, [(" live view ", "dim")], [], body)
+    glyph, kind_word, kind_role = kind_info(worker["kind"])
+    title = [(" " + worker["id"] + " ", kind_role + "+bold")]
+    right = [(" live · read-only ", "dim")]
+    rows = height - 2
+    body: List[Line] = []
+    if rows >= 3:
+        head = " %s %s · %s" % (glyph, worker["id"], kind_word)
+        project = os.path.basename(worker["project"].rstrip("/"))
+        if project:
+            head += " · " + project
+        body.append(Line().add(fit(head, inner), kind_role + "+bold"))
+    content = rows - len(body) - (1 if rows >= 2 else 0)
+    if content > 0:
+        if live:
+            for raw in live[-content:]:
+                body.append(Line().add(" ").live(raw, inner - 1))
+        else:
+            body.append(Line().add(fit(" " + note, inner), "dim"))
+        while len(body) < rows - 1:
+            body.append(Line())
+    if rows >= 2:
+        body.append(Line().add(fit(" ⏎ open real tab   ⇥ next tab", inner), "dim"))
+    return box(width, height, title, right, body)
+
+
+def render_workers(
+    width: int,
+    height: int,
+    workers: List[Dict[str, Any]],
+    selected: int,
+    live: Optional[List[str]] = None,
+    note: str = "",
+    stale: bool = False,
+) -> List[Line]:
+    """The workers pane: the worker list, the live view when there is room, and the key bar."""
+    if width < 1 or height < 1:
+        return []
+    rail = width < RAIL_WIDTH
+    if height == 1:
+        title = "".join(text for text, _ in list_title(workers, "WORKERS", stale))
+        return [Line().add(fit(title.strip(), width), "title")]
+    bar = key_bar(width, RAIL_KEYS if rail else WIDE_KEYS)
+    rest = height - 1
+    count = len(workers)
+    if rest < 3 or width < 4:
+        lines = []
+        for index in list_window(count, rest, selected):
+            if rail:
+                lines.append(rail_row(workers[index], width, index == selected))
+            else:
+                column = task_column(workers, width)
+                lines.append(
+                    worker_row(workers[index], width, index == selected, column)
+                )
+        while len(lines) < rest:
+            lines.append(Line())
+        return lines + [bar]
+    # The live view needs a box of at least 5 rows: header, one screen row, footer.
+    list_rows = min(max(1, count), max(3, rest // 3))
+    show_live = not rail and rest - list_rows - 2 >= 5
+    if not show_live:
+        list_rows = min(max(1, count), rest - 2)
+    body = []
+    column = task_column(workers, width - 2)
+    for index in list_window(count, list_rows, selected):
+        if rail:
+            body.append(rail_row(workers[index], width - 2, index == selected))
+        else:
+            body.append(
+                worker_row(workers[index], width - 2, index == selected, column)
+            )
+    if not workers:
+        body.append(Line().add(fit(" no workers", width - 2), "dim"))
+    right = [(" ↑↓ move ", "dim")] if not rail else []
+    title = list_title(workers, "TABS" if rail else "WORKERS", stale)
+    lines = box(width, list_rows + 2, title, right, body)
+    remaining = rest - len(lines)
+    if show_live:
+        worker = workers[selected] if workers else None
+        lines += live_box(width, remaining, worker, live, note)
+    elif rail and remaining >= 3:
+        hints = [
+            Line().add(fit(" worker view hidden", width - 2), "dim"),
+            Line().add(fit(" in a narrow pane", width - 2), "dim"),
+            Line(),
+            Line().add(" ⏎", "key").add(fit(" open real tab", width - 4)),
+            Line().add(" l", "key").add(fit(" full log", width - 4)),
+            Line().add(" n", "key").add(fit(" needs-you", width - 4)),
+        ]
+        lines += box(width, remaining, [], [], hints)
+    while len(lines) < rest:
+        lines.append(Line())
+    return lines[:rest] + [bar]
+
+
+def render_pane(
+    pane: str,
+    width: int,
+    height: int,
     snapshot: Dict[str, Any],
     records: List[Dict[str, Any]],
     ledger_present: bool,
-    width: int,
+    shared: Dict[str, Any],
     now: float,
-    fallback_home: str = "",
-) -> str:
-    """The --once frame."""
-    out = [
-        cut(
-            "firstmate fleet - %s - refreshed %s"
-            % (
-                home_name(snapshot["home"], fallback_home),
-                time.strftime("%H:%M:%S", time.localtime(now)),
-            ),
-            width,
-        ),
-        "-" * width,
-    ]
-    attention = needs_you(snapshot["tasks"])
-    out.append("NEEDS YOU" if attention else "NEEDS YOU: nothing")
-    for label, task, detail in attention:
-        out.extend(
-            wrap("! %s %s%s" % (label, task, " " + detail if detail else ""), width)
+    live: Optional[List[str]] = None,
+    note: str = "",
+    stale: bool = False,
+) -> List[Line]:
+    """One frame of a pane; --pane all stacks the activity over the workers."""
+    workers = build_workers(snapshot["tasks"], records, shared.get("read", {}))
+    selected = select_index(workers, shared.get("selected"))
+    if workers and not shared.get("selected"):
+        shared = dict(shared, selected=workers[selected]["id"])
+    if pane == "activity":
+        return render_activity(
+            width, height, records, ledger_present, workers, shared, now, stale=stale
         )
-    out.append("")
-    tasks = snapshot["tasks"]
-    out.append("TASKS (%d)" % len(tasks))
-    if tasks:
-        cols = column_widths(width)
-        header = ("task", "kind", "project", "state", "age")
-        rows = [header] + table_rows(tasks, width)
-        order = ("task", "kind", "project", "state", "age")
-        for row in rows:
-            out.append(
-                cut(
-                    "  "
-                    + " ".join(
-                        cell.ljust(cols[name]) for cell, name in zip(row, order)
-                    ).rstrip(),
-                    width,
-                )
-            )
-    else:
-        out.append("  no tasks")
-    out.append("")
-    if not ledger_present:
-        out.append("ACTIVITY")
-        out.extend(wrap(LEDGER_HINT, width))
-    else:
-        lines = feed_lines(records, now)
-        out.append(
-            "ACTIVITY (last %d)" % len(lines) if lines else "ACTIVITY: no events yet"
-        )
-        for line in lines:
-            out.extend(wrap(line, width))
-    return "\n".join(out) + "\n"
+    if pane == "workers":
+        return render_workers(width, height, workers, selected, live, note, stale)
+    top = min(ACTIVITY_HEIGHT, max(1, height // 3))
+    lines = render_activity(
+        width, top, records, ledger_present, workers, shared, now, stale=stale
+    )
+    while len(lines) < top:
+        lines.append(Line(layer="panel"))
+    return lines + render_workers(
+        width, height - top, workers, selected, live, note, stale
+    )
 
 
-# --- side effects: snapshot, ledger path, herdr jump ------------------------
+def plain_frame(lines: List[Line]) -> str:
+    return "\n".join(line.plain().rstrip() for line in lines) + "\n"
+
+
+# --- side effects: snapshot, ledger path, herdr -----------------------------
 
 
 def firstmate_dir(env: Dict[str, str]) -> str:
@@ -424,7 +1125,7 @@ def firstmate_dir(env: Dict[str, str]) -> str:
 
 
 def run_snapshot(home: str, env: Dict[str, str]) -> str:
-    """Run the snapshot command firstmate-fleet uses and return its stdout."""
+    """Run the fleet snapshot command and return its stdout."""
     command = env.get("FM_FLEET_SNAPSHOT_CMD")
     if command:
         argv, cwd = ["bash", "-c", command], None
@@ -444,25 +1145,70 @@ def run_snapshot(home: str, env: Dict[str, str]) -> str:
     return result.stdout.decode("utf-8", errors="replace")
 
 
+def state_dir(snapshot: Dict[str, Any], home: str) -> str:
+    return snapshot["state_dir"] or os.path.join(home, "state")
+
+
 def ledger_path(snapshot: Dict[str, Any], home: str) -> str:
-    return os.path.join(
-        snapshot["state_dir"] or os.path.join(home, "state"), "fleet-ledger.jsonl"
-    )
+    return os.path.join(state_dir(snapshot, home), "fleet-ledger.jsonl")
+
+
+def shared_path(snapshot: Dict[str, Any], home: str) -> str:
+    return os.path.join(state_dir(snapshot, home), SHARED_FILE)
+
+
+def herdr_target(target: str) -> Optional[Tuple[str, List[str]]]:
+    """(pane id, session flag) of a task endpoint "session:pane", or None."""
+    if not target or ":" not in target:
+        return None
+    session, pane = target.split(":", 1)
+    if not session or not pane:
+        return None
+    return pane, ([] if session == "default" else ["--session", session])
+
+
+def capture_screen(target: str, herdr_bin: str) -> Tuple[Optional[List[str]], str]:
+    """The visible screen of a worker pane as ANSI lines, or (None, reason)."""
+    parsed = herdr_target(target)
+    if parsed is None:
+        return None, "no live view: the worker has no Herdr pane"
+    pane, flag = parsed
+    try:
+        result = subprocess.run(
+            [herdr_bin, "pane", "read", pane, "--source", "visible", "--format", "ansi"]
+            + flag,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=HERDR_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, "no live view: herdr is not available"
+    if result.returncode != 0:
+        return None, "no live view: herdr could not read the pane"
+    text = result.stdout.decode("utf-8", errors="replace").replace("\r", "")
+    lines = text.split("\n")
+    while lines and not strip_ansi(lines[-1]).strip():
+        lines.pop()
+    if not lines:
+        return None, "the worker screen is empty"
+    return lines, ""
 
 
 def jump_to(target: str, herdr_bin: str) -> None:
     """Focus the Herdr tab of a task endpoint ("session:pane"); quiet on any failure."""
-    if not target or ":" not in target:
+    parsed = herdr_target(target)
+    if parsed is None:
         return
-    session, pane = target.split(":", 1)
-    flag = [] if session == "default" else ["--session", session]
+    pane, flag = parsed
     try:
         got = subprocess.run(
             [herdr_bin, "pane", "get", pane] + flag,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            timeout=5,
+            timeout=HERDR_TIMEOUT_SECONDS,
             check=False,
         )
         tab = _dig(json.loads(got.stdout or b"{}"), "result", "pane", "tab_id")
@@ -472,70 +1218,196 @@ def jump_to(target: str, herdr_bin: str) -> None:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=5,
+                timeout=HERDR_TIMEOUT_SECONDS,
                 check=False,
             )
     except (OSError, ValueError, subprocess.SubprocessError):
         return
 
 
-# --- the live view ------------------------------------------------------------
+CLIPBOARD_COMMANDS = (
+    ["pbcopy"],
+    ["wl-copy"],
+    ["xclip", "-selection", "clipboard"],
+    ["xsel", "--clipboard", "--input"],
+)
 
 
-def build_app(home: str, env: Dict[str, str], interval: float) -> Any:
+def copy_text(text: str) -> bool:
+    """Copy through the first clipboard tool on PATH; False when there is none."""
+    for argv in CLIPBOARD_COMMANDS:
+        if shutil.which(argv[0]) is None:
+            continue
+        try:
+            result = subprocess.run(
+                argv,
+                input=text.encode("utf-8"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=HERDR_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def terminal_colors() -> Optional[int]:
+    try:
+        import curses
+
+        curses.setupterm()
+        return curses.tigetnum("colors")
+    except Exception:  # noqa: BLE001 - any terminfo failure means "unknown"
+        return None
+
+
+# --- the live view -------------------------------------------------------------
+
+
+def to_rich(lines: List[Line], width: int, depth: str, theme: str) -> Any:
+    """Frame lines as one Rich Text, padded to width so the background layers fill."""
+    from rich.text import Text
+
+    out = Text(no_wrap=True, overflow="crop")
+    for number, line in enumerate(lines):
+        if number:
+            out.append("\n")
+        for text, role, size in line.spans:
+            if line.selected or role == "mark":
+                role = "selected"
+            style = style_for(
+                role if role != "live" else "fg", depth, theme, line.layer
+            )
+            if size >= 0:
+                piece = Text.from_ansi(text, no_wrap=True)
+                piece.truncate(size, overflow="crop", pad=True)
+                if line.selected:
+                    piece.stylize(style)
+                out.append_text(piece)
+            else:
+                out.append(text, style=style)
+        pad = width - line.width()
+        if pad > 0:
+            role = "selected" if line.selected else "fg"
+            out.append(" " * pad, style=style_for(role, depth, theme, line.layer))
+    return out
+
+
+def build_app(
+    home: str,
+    env: Dict[str, str],
+    interval: float,
+    pane: str = "all",
+    depth: Optional[str] = None,
+    theme: Optional[str] = None,
+) -> Any:
     """Build the Textual app; Textual is imported only here, so --once and the pure functions need none."""
     from rich.text import Text
     from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
-    from textual.widgets import DataTable, Footer, RichLog, Static
+    from textual.containers import VerticalScroll
+    from textual.screen import ModalScreen
+    from textual.widgets import Static
 
     herdr_bin = env.get("HERDR_BIN") or "herdr"
+    depth = depth or color_depth(env, terminal_colors())
+    theme = theme or color_theme(env)
+    hex_mode = depth in ("truecolor", "256")
+    base = LAYERS["base"][0 if theme == "dark" else 1]
+    background = base if hex_mode else "ansi_default"
+    help_text = __doc__.split("Keys:\n", 1)[1].split("\n\nEnvironment:", 1)[0]
 
-    class FleetApp(App):
-        TITLE = "firstmate"
-        CSS = """
-        #head { height: 1; background: $primary-background; padding: 0 1; }
-        #needs { height: auto; max-height: 8; padding: 0 1; color: $warning; }
-        #tasks { height: 1fr; min-height: 4; }
-        #feed-title { height: 1; padding: 0 1; background: $boost; }
-        #feed { height: 1fr; min-height: 4; padding: 0 1; }
+    class Overlay(ModalScreen):
+        """A full-screen read-only overlay: the full log or the key list."""
+
+        CSS = (
+            """
+        Overlay { align: center middle; background: %s; }
+        #overlay { width: 100%%; height: 100%%; border: round $accent; padding: 0 1; }
         """
+            % background
+        )
         BINDINGS = [
-            Binding("j", "down", "down", show=False),
-            Binding("k", "up", "up", show=False),
-            Binding("r", "refresh", "refresh"),
-            Binding("f", "filter", "filter"),
-            Binding("q", "quit", "quit"),
+            Binding("escape", "close", "close"),
+            Binding("q", "close", show=False),
+            Binding("l", "close", show=False),
+            Binding("question_mark", "close", show=False),
         ]
 
-        def __init__(self) -> None:
+        def __init__(self, title: str, body: Any) -> None:
             super().__init__()
+            self.title_text = title
+            self.body = body
+
+        def compose(self) -> ComposeResult:
+            scroll = VerticalScroll(Static(self.body), id="overlay")
+            scroll.border_title = self.title_text
+            scroll.border_subtitle = "escape closes"
+            yield scroll
+
+        def action_close(self) -> None:
+            self.dismiss()
+
+    class FirstmateApp(App):
+        TITLE = "firstmate"
+        CSS = (
+            """
+        Screen { background: %s; overflow: hidden; }
+        #frame { width: 100%%; height: 100%%; }
+        """
+            % background
+        )
+        BINDINGS = [
+            Binding("up,k", "move(-1)", "up", show=False),
+            Binding("down,j", "move(1)", "down", show=False),
+            Binding("tab", "next", "next", show=False, priority=True),
+            Binding("enter", "open", "open", show=False),
+            Binding("l", "log", "log", show=False),
+            Binding("n", "needs", "needs-you", show=False),
+            Binding("a", "filter('all')", "all", show=False),
+            Binding("t", "filter('task')", "this task", show=False),
+            Binding("y", "copy", "copy PR", show=False),
+            Binding("m", "mark", "mark read", show=False),
+            Binding("question_mark", "help", "keys", show=False),
+            Binding("r", "refresh", "refresh", show=False),
+            Binding("q", "quit", "quit", show=False),
+        ] + [Binding(str(n), "pick(%d)" % n, str(n), show=False) for n in range(1, 10)]
+
+        def __init__(self) -> None:
+            super().__init__(ansi_color=not hex_mode)
+            self.pane = pane
             self.snapshot: Optional[Dict[str, Any]] = None
             self.records: List[Dict[str, Any]] = []
             self.ledger_present = True
             self.stale = False
-            self.updated = "--:--:--"
-            self.choice = FILTER_ALL
-            self.shown: List[Dict[str, Any]] = []
+            self.shared = parse_shared("")
+            self.shared_stamp: Optional[float] = None
+            self.rows: List[Dict[str, Any]] = []
+            self.selected = 0
+            self.live: Optional[List[str]] = None
+            self.live_for = ""
+            self.note = "loading the worker screen"
 
         def compose(self) -> ComposeResult:
-            yield Static("firstmate - loading", id="head")
-            yield Static("", id="needs")
-            yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
-            yield Static("ACTIVITY", id="feed-title")
-            yield RichLog(id="feed", wrap=True, markup=False, auto_scroll=False)
-            yield Footer()
+            yield Static("firstmate - loading", id="frame")
 
         def on_mount(self) -> None:
-            self.query_one(DataTable).add_columns(
-                "task", "kind", "project", "state", "age"
-            )
-            self.query_one(DataTable).focus()
+            if not hex_mode:
+                self.theme = "ansi-light" if theme == "light" else "ansi-dark"
             self.action_refresh()
             self.set_interval(interval, self.action_refresh)
+            self.set_interval(LIVE_INTERVAL, self.tick)
 
-        @work(thread=True, exclusive=True)
+        # data
+
+        def shared_file(self) -> str:
+            return shared_path(self.snapshot or {"state_dir": ""}, home)
+
+        @work(thread=True, exclusive=True, group="snapshot")
         def action_refresh(self) -> None:
             try:
                 snapshot = parse_snapshot(run_snapshot(home, env))
@@ -560,90 +1432,173 @@ def build_app(home: str, env: Dict[str, str], interval: float) -> Any:
                     present,
                 )
                 self.stale = False
-                self.updated = time.strftime("%H:%M:%S")
+                self.reload_shared()
             self.redraw()
+
+        def reload_shared(self) -> bool:
+            path = self.shared_file()
+            try:
+                stamp: Optional[float] = os.stat(path).st_mtime_ns
+            except OSError:
+                stamp = None
+            if stamp == self.shared_stamp:
+                return False
+            self.shared_stamp = stamp
+            self.shared = load_shared(path)
+            return True
+
+        def write_shared(self, **changes: Any) -> None:
+            self.shared.update(changes)
+            if self.snapshot is None:
+                return
+            ids = [t["id"] for t in self.snapshot["tasks"]]
+            try:
+                save_shared(self.shared_file(), changes, ids)
+                self.shared_stamp = os.stat(self.shared_file()).st_mtime_ns
+            except OSError:
+                self.notify(
+                    "could not write %s" % self.shared_file(), severity="warning"
+                )
+
+        def tick(self) -> None:
+            if self.snapshot is not None and self.reload_shared():
+                self.redraw()
+            if self.pane != "activity":
+                self.capture()
+
+        @work(thread=True, exclusive=True, group="live")
+        def capture(self) -> None:
+            worker = self.current()
+            if worker is None or self.size.width < RAIL_WIDTH:
+                return
+            lines, note = capture_screen(worker["target"], herdr_bin)
+            self.call_from_thread(self.show_live, worker["id"], lines, note)
+
+        def show_live(self, task: str, lines: Optional[List[str]], note: str) -> None:
+            self.live, self.note, self.live_for = lines, note, task
+            self.redraw()
+
+        def current(self) -> Optional[Dict[str, Any]]:
+            if not self.rows:
+                return None
+            return self.rows[min(self.selected, len(self.rows) - 1)]
+
+        # drawing
 
         def on_resize(self) -> None:
             self.redraw()
 
         def redraw(self) -> None:
-            width = self.size.width
-            snapshot = self.snapshot or {"home": "", "tasks": []}
-            tasks = snapshot["tasks"]
-            head = "firstmate - %s - %s" % (
-                home_name(snapshot["home"], home),
-                self.updated,
+            width, height = self.size.width, self.size.height
+            snapshot = self.snapshot or {"home": "", "state_dir": "", "tasks": []}
+            self.rows = build_workers(
+                snapshot["tasks"], self.records, self.shared["read"]
             )
-            if self.choice != FILTER_ALL:
-                head += " - filter: %s" % self.choice
-            if self.stale:
-                head += " - STALE"
-            self.query_one("#head", Static).update(cut(head, max(10, width - 2)))
-            attention = needs_you(tasks)
-            needs = Text()
-            for index, (label, task, detail) in enumerate(attention):
-                if index:
-                    needs.append("\n")
-                needs.append("! %s " % label, style="bold")
-                needs.append(task)
-                if detail:
-                    needs.append(" " + detail)
-            needs_widget = self.query_one("#needs", Static)
-            needs_widget.update(needs)
-            needs_widget.display = bool(attention)
-            if self.choice not in filter_choices(tasks):
-                self.choice = FILTER_ALL
-            self.shown = filter_tasks(tasks, self.choice)
-            table = self.query_one(DataTable)
-            row = table.cursor_row
-            table.clear()
-            for index, cells in enumerate(table_rows(self.shown, width)):
-                table.add_row(*cells, key=str(index))
-            if self.shown:
-                table.move_cursor(row=min(row, len(self.shown) - 1))
-            feed = self.query_one(RichLog)
-            feed.clear()
-            title = self.query_one("#feed-title", Static)
-            if not self.ledger_present:
-                title.update("ACTIVITY")
-                feed.write(LEDGER_HINT)
+            self.selected = select_index(self.rows, self.shared.get("selected"))
+            worker = self.current()
+            live, note = self.live, self.note
+            if worker is None or worker["id"] != self.live_for:
+                live, note = None, "loading the worker screen"
+            frame = render_pane(
+                self.pane,
+                width,
+                height,
+                snapshot,
+                self.records,
+                self.ledger_present,
+                self.shared,
+                time.time(),
+                live,
+                note,
+                self.stale,
+            )
+            self.query_one("#frame", Static).update(to_rich(frame, width, depth, theme))
+
+        # keys
+
+        def select(self, index: int) -> None:
+            if not self.rows:
                 return
-            lines = feed_lines(self.records, time.time())
-            title.update(
-                "ACTIVITY (last %d)" % len(lines)
-                if lines
-                else "ACTIVITY: no events yet"
-            )
-            for line in lines:
-                feed.write(line)
+            index = max(0, min(index, len(self.rows) - 1))
+            self.write_shared(selected=self.rows[index]["id"])
+            self.redraw()
+            if self.pane != "activity":
+                self.capture()
 
-        def action_down(self) -> None:
-            self.query_one(DataTable).action_cursor_down()
+        def action_move(self, delta: int) -> None:
+            self.select(self.selected + delta)
 
-        def action_up(self) -> None:
-            self.query_one(DataTable).action_cursor_up()
+        def action_next(self) -> None:
+            if self.rows:
+                self.select((self.selected + 1) % len(self.rows))
 
-        def action_filter(self) -> None:
-            choices = filter_choices((self.snapshot or {"tasks": []})["tasks"])
-            index = choices.index(self.choice) if self.choice in choices else 0
-            self.choice = choices[(index + 1) % len(choices)]
+        def action_pick(self, number: int) -> None:
+            if number <= len(self.rows):
+                self.select(number - 1)
+
+        def action_open(self) -> None:
+            worker = self.current()
+            if worker is not None:
+                jump_to(worker["target"], herdr_bin)
+
+        def action_filter(self, choice: str) -> None:
+            self.write_shared(filter=choice)
             self.redraw()
 
-        def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-            index = event.cursor_row
-            if 0 <= index < len(self.shown):
-                jump_to(self.shown[index]["target"], herdr_bin)
+        def action_needs(self) -> None:
+            self.write_shared(filter=FILTER_NEEDS)
+            index = next_needs(self.rows, self.selected) if self.rows else None
+            if index is not None and self.pane != "activity":
+                self.select(index)
+            else:
+                self.redraw()
 
-    return FleetApp()
+        def action_copy(self) -> None:
+            worker = self.current()
+            if worker is None or not worker["pr"]:
+                self.notify("no PR for the selected worker")
+                return
+            if not copy_text(worker["pr"]):
+                self.copy_to_clipboard(worker["pr"])
+            self.notify("copied " + worker["pr"])
+
+        def action_mark(self) -> None:
+            worker = self.current()
+            if worker is None or not worker["unread"]:
+                return
+            read = dict(self.shared["read"])
+            read[worker["id"]] = attention_key(worker)
+            self.write_shared(read=read)
+            self.redraw()
+
+        def action_log(self) -> None:
+            kinds = ledger_kinds(self.records)
+            kinds.update({w["id"]: w["kind"] for w in self.rows})
+            lines = full_log_lines(self.records, kinds, time.time())
+            if not self.ledger_present:
+                body: Any = Text(LEDGER_HINT)
+            elif not lines:
+                body = Text("no events yet")
+            else:
+                body = to_rich(lines, 0, depth, theme)
+                body.no_wrap = False
+            self.push_screen(Overlay("ACTIVITY · full log", body))
+
+        def action_help(self) -> None:
+            self.push_screen(Overlay("keys", Text(help_text)))
+
+    return FirstmateApp()
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     # The module docstring is the help text, so --help and the file header never drift.
     parser = argparse.ArgumentParser(prog="firstmate-tui", add_help=False)
     parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("--pane", choices=PANES, default="all")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL)
     parser.add_argument("--width", type=int, default=0)
+    parser.add_argument("--height", type=int, default=0)
     args = parser.parse_args(argv)
     if args.help:
         sys.stdout.write(__doc__)
@@ -662,17 +1617,39 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("firstmate-tui: snapshot is not valid JSON", file=sys.stderr)
             return 1
         records, present = read_ledger(ledger_path(snapshot, home))
-        width = args.width or shutil.get_terminal_size((80, 24)).columns
-        sys.stdout.write(
-            render_plain(snapshot, records, present, max(20, width), time.time(), home)
+        shared = load_shared(shared_path(snapshot, home))
+        size = shutil.get_terminal_size((80, 24))
+        width = max(20, args.width or size.columns)
+        default_height = ACTIVITY_HEIGHT if args.pane == "activity" else size.lines
+        height = max(1, args.height or default_height)
+        live, note = None, ""
+        if args.pane != "activity" and width >= RAIL_WIDTH:
+            workers = build_workers(snapshot["tasks"], records, shared["read"])
+            if workers:
+                worker = workers[select_index(workers, shared["selected"])]
+                live, note = capture_screen(
+                    worker["target"], env.get("HERDR_BIN") or "herdr"
+                )
+        frame = render_pane(
+            args.pane,
+            width,
+            height,
+            snapshot,
+            records,
+            present,
+            shared,
+            time.time(),
+            live,
+            note,
         )
+        sys.stdout.write(plain_frame(frame))
         return 0
     if not sys.stdout.isatty():
         print(
             "firstmate-tui: no terminal; use --once for a plain frame", file=sys.stderr
         )
         return 2
-    build_app(home, env, args.interval).run()
+    build_app(home, env, args.interval, args.pane).run()
     return 0
 
 
