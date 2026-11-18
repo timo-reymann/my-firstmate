@@ -44,6 +44,9 @@ This fork adds the following.
   It is versioned in `.agents/skills/lavish/`, with its source pinned in `skills-lock.json`.
 - Guidance in `AGENTS.md` that plans, comparisons, diagrams, and structured reports go to `lavish-axi`, and that a worker, never the first mate, builds a visual plan.
 - Three optional launchers in `contrib/`: `firstmate` (resume or start the session), `firstmate-herdr` (Herdr layout with the fleet view), and `firstmate-fleet` (read-only fleet view); see [contrib/README.md](contrib/README.md).
+- `contrib/firstmate-tui`, a read-only fleet view in Python and Textual, run through `uv`, with a "Needs you" strip and the fleet ledger's activity feed.
+  `firstmate-herdr` runs it in the right pane when `uv` is on `PATH`; `FIRSTMATE_FLEET_VIEW=tui|bash` overrides that choice.
+- An agent setting for the `firstmate` launcher: `FIRSTMATE_AGENT` or `~/.config/firstmate/agent` selects `claude` (the default) or `opencode`.
 - A Claude hook that reminds the agent to update this list when a commit changes user-visible material (`bin/fm-readme-reminder-pretool.sh`, `docs/readme-reminder.md`).
 
 The supervision host dispatch code, which decides which wake rows the away session may take, moved out of the Pi extension folder into a neutral module (`bin/lib/fm-host-dispatch.ts`, run through `bin/fm-host-dispatch.mjs`).
