@@ -3,16 +3,17 @@
 # requires-python = ">=3.9"
 # dependencies = ["textual==8.2.8"]
 # ///
-"""Read-only firstmate screen: the fleet activity and the workers, with a live view.
+"""The firstmate screen: the fleet activity and the workers, with a live view you can type into.
 
 Usage: firstmate-tui [--pane all|activity|workers] [--once] [--interval SECONDS]
                      [--width COLUMNS] [--height ROWS]
 
 firstmate-herdr runs two of these next to the first mate in one Herdr tab:
 --pane activity across the top (the last 8 fleet events as full lines) and
---pane workers on the right (the workers, needs-you first, over a read-only live
-view of the selected worker's screen). --pane all, the default, stacks both.
-It costs no model tokens and never steers a worker. The only file it writes is
+--pane workers on the right (the workers, needs-you first, over a live view of
+the selected worker's screen). --pane all, the default, stacks both.
+It costs no model tokens and never steers a worker on its own: only the keys you
+type in input mode reach a worker. The only file it writes is
 state/firstmate-tui.json in the home, which holds the selected worker, the
 activity filter and the needs-you items marked read, shared by both panes.
 
@@ -28,7 +29,9 @@ Options:
 
 Keys:
   up/down, j/k  select a worker
-  enter         open the worker's real Herdr tab
+  enter         type into the selected worker (input mode, below); where no
+                live view shows, open the worker's real Herdr tab instead
+  o             open the worker's real Herdr tab
   tab           select the next worker
   1-9           select worker 1 to 9
   l             full activity log
@@ -41,11 +44,16 @@ Keys:
   r             refresh now
   q             quit; escape closes an overlay
 
+Input mode (enter in the workers view; the live view title says INPUT):
+  every key, including enter, arrows, ctrl combinations and pasted text, goes
+  to the selected worker's Herdr pane; ctrl+] leaves input mode
+
 Environment:
   FIRSTMATE_DIR          the firstmate home (default $HOME/workspace/firstmate)
   FM_FLEET_SNAPSHOT_CMD  shell command that prints the snapshot JSON instead of
                          bin/fm-fleet-snapshot.sh --json in FIRSTMATE_DIR
-  HERDR_BIN              herdr binary for the live view and the jump (default herdr)
+  HERDR_BIN              herdr binary for the live view, the jump and input mode
+                         (default herdr)
   FIRSTMATE_TUI_COLORS   truecolor, 256, 16 or 8 (default: detected)
   FIRSTMATE_TUI_THEME    dark or light, for truecolor and 256 colours
                          (default: light when COLORFGBG names a light
@@ -84,6 +92,7 @@ SNAPSHOT_TIMEOUT_SECONDS = 120
 HERDR_TIMEOUT_SECONDS = 5
 DEFAULT_INTERVAL = 6.0
 LIVE_INTERVAL = 1.0
+INPUT_INTERVAL = 0.25
 QUIET_SECONDS = 3600
 RAIL_WIDTH = 34
 ROW_FIXED = 22
@@ -93,6 +102,9 @@ LEDGER_HINT = "Activity is off: create config/fleet-ledger in the home to turn i
 PANES = ("all", "activity", "workers")
 FILTER_ALL, FILTER_NEEDS, FILTER_TASK = "all", "needs", "task"
 FILTERS = (FILTER_ALL, FILTER_NEEDS, FILTER_TASK)
+# The one key that input mode keeps for itself: it leaves input mode.
+INPUT_LEAVE = "ctrl+right_square_bracket"
+INPUT_LEAVE_LABEL = "ctrl+]"
 
 
 # --- palette and labels (pure) ----------------------------------------------
@@ -960,13 +972,15 @@ def list_title(
 
 WIDE_KEYS = [
     ("↑↓", "select"),
-    ("⏎", "open"),
+    ("⏎", "type"),
+    ("o", "open"),
     ("l", "log"),
     ("n", "needs-you"),
     ("y", "copy PR"),
     ("?", "keys"),
 ]
 RAIL_KEYS = [("?", "keys"), ("1-9", "tab")]
+INPUT_KEYS = [("keys", "go to the worker"), (INPUT_LEAVE_LABEL, "leave input")]
 
 
 def live_box(
@@ -975,8 +989,9 @@ def live_box(
     worker: Optional[Dict[str, Any]],
     live: Optional[List[str]],
     note: str,
+    typing: bool = False,
 ) -> List[Line]:
-    """The read-only live view of the selected worker's screen."""
+    """The live view of the selected worker's screen; while typing, it says so in the title."""
     inner = width - 2
     if worker is None:
         body = [Line().add(fit(" no worker selected", inner), "dim")]
@@ -984,6 +999,9 @@ def live_box(
     glyph, kind_word, kind_role = kind_info(worker["kind"])
     title = [(" " + worker["id"] + " ", kind_role + "+bold")]
     right = [(" live · read-only ", "dim")]
+    if typing:
+        title = [(" INPUT ", "badge_decision"), (" " + worker["id"] + " ", "decision")]
+        right = [(" %s leaves " % INPUT_LEAVE_LABEL, "decision")]
     rows = height - 2
     body: List[Line] = []
     if rows >= 3:
@@ -1001,9 +1019,34 @@ def live_box(
             body.append(Line().add(fit(" " + note, inner), "dim"))
         while len(body) < rows - 1:
             body.append(Line())
-    if rows >= 2:
-        body.append(Line().add(fit(" ⏎ open real tab   ⇥ next tab", inner), "dim"))
+    if rows >= 2 and typing:
+        footer = " typing into %s · %s leaves input" % (worker["id"], INPUT_LEAVE_LABEL)
+        body.append(Line().add(fit(footer, inner), "decision"))
+    elif rows >= 2:
+        body.append(Line().add(fit(" ⏎ type into it   o open real tab", inner), "dim"))
     return box(width, height, title, right, body)
+
+
+def list_layout(width: int, rest: int, count: int) -> Tuple[int, bool]:
+    """(list rows, live view shown) for a workers pane of rest rows above the key bar."""
+    # The live view needs a box of at least 5 rows: header, one screen row, footer.
+    list_rows = min(max(1, count), max(3, rest // 3))
+    return list_rows, width >= RAIL_WIDTH and rest >= 3 and rest - list_rows - 2 >= 5
+
+
+def workers_height(pane: str, height: int) -> int:
+    """The rows of the workers view in a pane; --pane all gives the top to the activity."""
+    if pane == "workers":
+        return height
+    if pane == "activity":
+        return 0
+    return height - min(ACTIVITY_HEIGHT, max(1, height // 3))
+
+
+def live_view_shown(pane: str, width: int, height: int, count: int) -> bool:
+    """Whether a pane of this size draws the live view, which input mode needs to show the worker."""
+    rows = workers_height(pane, height)
+    return rows > 1 and list_layout(width, rows - 1, count)[1]
 
 
 def render_workers(
@@ -1014,6 +1057,7 @@ def render_workers(
     live: Optional[List[str]] = None,
     note: str = "",
     stale: bool = False,
+    typing: bool = False,
 ) -> List[Line]:
     """The workers pane: the worker list, the live view when there is room, and the key bar."""
     if width < 1 or height < 1:
@@ -1022,7 +1066,7 @@ def render_workers(
     if height == 1:
         title = "".join(text for text, _ in list_title(workers, "WORKERS", stale))
         return [Line().add(fit(title.strip(), width), "title")]
-    bar = key_bar(width, RAIL_KEYS if rail else WIDE_KEYS)
+    bar = key_bar(width, RAIL_KEYS if rail else INPUT_KEYS if typing else WIDE_KEYS)
     rest = height - 1
     count = len(workers)
     if rest < 3 or width < 4:
@@ -1038,9 +1082,7 @@ def render_workers(
         while len(lines) < rest:
             lines.append(Line())
         return lines + [bar]
-    # The live view needs a box of at least 5 rows: header, one screen row, footer.
-    list_rows = min(max(1, count), max(3, rest // 3))
-    show_live = not rail and rest - list_rows - 2 >= 5
+    list_rows, show_live = list_layout(width, rest, count)
     if not show_live:
         list_rows = min(max(1, count), rest - 2)
     body = []
@@ -1060,7 +1102,7 @@ def render_workers(
     remaining = rest - len(lines)
     if show_live:
         worker = workers[selected] if workers else None
-        lines += live_box(width, remaining, worker, live, note)
+        lines += live_box(width, remaining, worker, live, note, typing)
     elif rail and remaining >= 3:
         hints = [
             Line().add(fit(" worker view hidden", width - 2), "dim"),
@@ -1088,6 +1130,7 @@ def render_pane(
     live: Optional[List[str]] = None,
     note: str = "",
     stale: bool = False,
+    typing: bool = False,
 ) -> List[Line]:
     """One frame of a pane; --pane all stacks the activity over the workers."""
     workers = build_workers(snapshot["tasks"], records, shared.get("read", {}))
@@ -1099,20 +1142,78 @@ def render_pane(
             width, height, records, ledger_present, workers, shared, now, stale=stale
         )
     if pane == "workers":
-        return render_workers(width, height, workers, selected, live, note, stale)
-    top = min(ACTIVITY_HEIGHT, max(1, height // 3))
+        return render_workers(
+            width, height, workers, selected, live, note, stale, typing
+        )
+    top = height - workers_height(pane, height)
     lines = render_activity(
         width, top, records, ledger_present, workers, shared, now, stale=stale
     )
     while len(lines) < top:
         lines.append(Line(layer="panel"))
     return lines + render_workers(
-        width, height - top, workers, selected, live, note, stale
+        width, height - top, workers, selected, live, note, stale, typing
     )
 
 
 def plain_frame(lines: List[Line]) -> str:
     return "\n".join(line.plain().rstrip() for line in lines) + "\n"
+
+
+# --- pure functions: input mode ----------------------------------------------
+
+# Textual key names that herdr pane send-keys spells differently.
+HERDR_KEY_NAMES = {
+    "escape": "esc",
+    "ctrl+backslash": "ctrl+\\",
+    "ctrl+circumflex_accent": "ctrl+^",
+    "ctrl+underscore": "ctrl+_",
+}
+# Keys herdr pane send-keys does not name; they go as their xterm sequence through send-text.
+RAW_KEYS = {
+    "home": "\x1b[H",
+    "end": "\x1b[F",
+    "insert": "\x1b[2~",
+    "delete": "\x1b[3~",
+    "pageup": "\x1b[5~",
+    "pagedown": "\x1b[6~",
+}
+KEY_MODIFIERS = ("ctrl", "alt", "meta", "super", "hyper")
+
+
+def input_for_key(key: str, character: Optional[str]) -> Optional[Tuple[str, str]]:
+    """How a key typed in input mode reaches the worker: ("keys", herdr key name),
+    ("text", literal text), or None for the key that leaves input mode."""
+    if key == INPUT_LEAVE:
+        return None
+    parts = key.split("+")
+    modified = len(parts) > 1 and any(part in KEY_MODIFIERS for part in parts[:-1])
+    if character and character.isprintable() and not modified:
+        return "text", character
+    name = HERDR_KEY_NAMES.get(key, key)
+    if name in RAW_KEYS:
+        return "text", RAW_KEYS[name]
+    return "keys", name
+
+
+def input_commands(
+    herdr_bin: str, target: str, kind: str, value: str
+) -> List[List[str]]:
+    """The herdr commands that send keys or text to a task endpoint ("session:pane")."""
+    parsed = herdr_target(target)
+    if parsed is None or not value:
+        return []
+    pane, flag = parsed
+    if kind == "keys":
+        return [[herdr_bin, "pane", "send-keys", pane, value] + flag]
+    # herdr takes "-" as text but no "--" delimiter, so leading hyphens go one at a
+    # time and no text that reaches herdr can read as an option such as --session.
+    chunks = []
+    while value.startswith("-") and len(value) > 1:
+        chunks.append("-")
+        value = value[1:]
+    chunks.append(value)
+    return [[herdr_bin, "pane", "send-text", pane, chunk] + flag for chunk in chunks]
 
 
 # --- side effects: snapshot, ledger path, herdr -----------------------------
@@ -1194,6 +1295,64 @@ def capture_screen(target: str, herdr_bin: str) -> Tuple[Optional[List[str]], st
     if not lines:
         return None, "the worker screen is empty"
     return lines, ""
+
+
+def send_input(herdr_bin: str, target: str, kind: str, value: str) -> bool:
+    """Send keys or text to a worker pane through herdr; False when herdr refused or failed."""
+    commands = input_commands(herdr_bin, target, kind, value)
+    for argv in commands:
+        try:
+            result = subprocess.run(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=HERDR_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if result.returncode != 0:
+            return False
+    return bool(commands)
+
+
+class InputSender:
+    """Sends input mode keys in order on one thread, joining typed text into one send."""
+
+    def __init__(self, herdr_bin: str, done: Any) -> None:
+        import queue
+        import threading
+
+        self.herdr_bin = herdr_bin
+        self.done = done
+        self.queue: Any = queue.Queue()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def put(self, target: str, kind: str, value: str) -> None:
+        self.queue.put((target, kind, value))
+
+    def run(self) -> None:
+        import queue
+
+        held = None
+        while True:
+            item = held or self.queue.get()
+            held = None
+            target, kind, value = item
+            while kind == "text":
+                try:
+                    more = self.queue.get_nowait()
+                except queue.Empty:
+                    break
+                if more[0] == target and more[1] == "text":
+                    value += more[2]
+                else:
+                    held = more
+                    break
+            ok = send_input(self.herdr_bin, target, kind, value)
+            self.done(ok, kind, value)
 
 
 def jump_to(target: str, herdr_bin: str) -> None:
@@ -1306,7 +1465,7 @@ def build_app(
 ) -> Any:
     """Build the Textual app; Textual is imported only here, so --once and the pure functions need none."""
     from rich.text import Text
-    from textual import work
+    from textual import events, work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.containers import VerticalScroll
@@ -1365,7 +1524,8 @@ def build_app(
             Binding("up,k", "move(-1)", "up", show=False),
             Binding("down,j", "move(1)", "down", show=False),
             Binding("tab", "next", "next", show=False, priority=True),
-            Binding("enter", "open", "open", show=False),
+            Binding("enter", "enter", "type", show=False),
+            Binding("o", "open", "open", show=False),
             Binding("l", "log", "log", show=False),
             Binding("n", "needs", "needs-you", show=False),
             Binding("a", "filter('all')", "all", show=False),
@@ -1391,6 +1551,10 @@ def build_app(
             self.live: Optional[List[str]] = None
             self.live_for = ""
             self.note = "loading the worker screen"
+            # Input mode: the id and endpoint of the worker that typed keys go to, or None.
+            self.typing: Optional[str] = None
+            self.typing_target = ""
+            self.sender: Optional[InputSender] = None
 
         def compose(self) -> ComposeResult:
             yield Static("firstmate - loading", id="frame")
@@ -1401,6 +1565,7 @@ def build_app(
             self.action_refresh()
             self.set_interval(interval, self.action_refresh)
             self.set_interval(LIVE_INTERVAL, self.tick)
+            self.set_interval(INPUT_INTERVAL, self.input_tick)
 
         # data
 
@@ -1466,6 +1631,11 @@ def build_app(
             if self.pane != "activity":
                 self.capture()
 
+        def input_tick(self) -> None:
+            # While typing, the live view refreshes faster so the typed keys show up.
+            if self.typing is not None:
+                self.capture()
+
         @work(thread=True, exclusive=True, group="live")
         def capture(self) -> None:
             worker = self.current()
@@ -1496,6 +1666,10 @@ def build_app(
             )
             self.selected = select_index(self.rows, self.shared.get("selected"))
             worker = self.current()
+            if self.typing is not None and (
+                worker is None or worker["id"] != self.typing
+            ):
+                self.leave_input("left input mode: %s is no longer selected" % self.typing)
             live, note = self.live, self.note
             if worker is None or worker["id"] != self.live_for:
                 live, note = None, "loading the worker screen"
@@ -1511,6 +1685,7 @@ def build_app(
                 live,
                 note,
                 self.stale,
+                self.typing is not None,
             )
             self.query_one("#frame", Static).update(to_rich(frame, width, depth, theme))
 
@@ -1540,6 +1715,61 @@ def build_app(
             worker = self.current()
             if worker is not None:
                 jump_to(worker["target"], herdr_bin)
+
+        # input mode
+
+        def action_enter(self) -> None:
+            worker = self.current()
+            if worker is None or len(self.screen_stack) > 1:
+                return
+            width, height = self.size.width, self.size.height
+            if not live_view_shown(self.pane, width, height, len(self.rows)):
+                self.action_open()
+                return
+            if herdr_target(worker["target"]) is None:
+                self.notify("no input: %s has no Herdr pane" % worker["id"])
+                return
+            if self.sender is None:
+                self.sender = InputSender(herdr_bin, self.sent)
+            self.typing, self.typing_target = worker["id"], worker["target"]
+            self.redraw()
+            self.capture()
+
+        def leave_input(self, message: str = "") -> None:
+            self.typing, self.typing_target = None, ""
+            if message:
+                self.notify(message)
+
+        def sent(self, ok: bool, kind: str, value: str) -> None:
+            # Runs on the sender thread.
+            if not ok:
+                self.call_from_thread(
+                    self.notify,
+                    "herdr did not take %s %r" % (kind, value),
+                    severity="warning",
+                )
+            self.call_from_thread(self.capture)
+
+        async def on_event(self, event: events.Event) -> None:
+            # In input mode every key and paste goes to the worker before any binding sees it.
+            if (
+                self.typing is not None
+                and isinstance(event, (events.Key, events.Paste))
+                and not event.is_forwarded
+            ):
+                if isinstance(event, events.Paste):
+                    item: Optional[Tuple[str, str]] = ("text", event.text)
+                else:
+                    item = input_for_key(event.key, event.character)
+                event.stop()
+                event.prevent_default()
+                if item is None:
+                    self.leave_input()
+                    self.redraw()
+                elif item[1] and self.sender is not None:
+                    self.sender.put(self.typing_target, item[0], item[1])
+                return
+            await super().on_event(event)
 
         def action_filter(self, choice: str) -> None:
             self.write_shared(filter=choice)
