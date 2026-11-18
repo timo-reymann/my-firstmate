@@ -11,7 +11,10 @@
 # no-mistakes run-step attributed under bin/fm-nm-run-lib.sh's contract, else
 # the pane busy-signature) and reconciles the possibly-stale log against it.
 # A ship `done:` is current-state done only when bin/fm-dod-lib.sh accepts the
-# named head as reachable outside the worker's disposable copy; otherwise blocked.
+# named head as reachable outside the worker's disposable copy; otherwise blocked,
+# except that a local-only refusal because the head moved past its recorded
+# readiness pin reads stale-head: a ready branch that needs re-approval, not a
+# stuck worker.
 #
 # The determinism lives entirely here - run-step / pane / log reads, fixed
 # mapping logic, and terminal passed-run PR detail from bounded evidence only,
@@ -24,7 +27,7 @@
 # Output is one stable, parseable, token-tight line firstmate can read every
 # heartbeat:
 #
-#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|review-park|none> · <detail>
+#   state: <working|parked|done|blocked|stale-head|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|review-park|none> · <detail>
 #
 # A run-step reading whose run came from inventory selection ends its detail
 # with a `run: <id>` field naming that run, and a terminal one appends
@@ -341,7 +344,7 @@ fi
 # and its reason rather than a wedge-suspect idle.
 # A ship `done:` is not current-state done while bin/fm-dod-lib.sh refuses the
 # named-head reachability gate: that claim is blocked so a disposable copy is
-# not treated as finished-and-safe.
+# not treated as finished-and-safe. The one exception is stale-head, below.
 # This read never refreshes remote-tracking refs: a fetch bounded at 30 seconds
 # per remote does not fit a caller's per-task bound (bin/fm-fleet-snapshot.sh
 # defaults to 10 seconds) and would repeat on every read. bin/fm-pr-check.sh,
@@ -349,9 +352,17 @@ fi
 # config/pr-register-scan is on, refreshes the same copy before it refuses, so
 # a read after it sees the fetched head.
 emit_ship_status_done() {  # [extra-detail]
-  local extra=${1:-} reason
+  local extra=${1:-} reason pinned head
   if reason=$(fm_dod_accept_ship_done "$KIND" "$(meta_value mode)" "$WT" "$(meta_value project)" "$LOG_LINE" "$STATE" "$ID" "$META"); then
     emit "done" status-log "$(status_line_note "$LOG_LINE")${extra:+${SEP}$extra}"
+  fi
+  # The gate's local-only pin refusal also covers a failed record write, so
+  # only a valid pin that differs from the current head is the changed-head case.
+  if [ "$reason" = "$FM_DOD_LOCAL_HEAD_REFUSAL" ] \
+    && pinned=$(fm_dod_local_done_head "$META") \
+    && head=$(git -C "$WT" rev-parse --verify HEAD 2>/dev/null) \
+    && [ "$pinned" != "$head" ]; then
+    emit stale-head status-log "ready, head changed after approval (recorded ${pinned:0:12}, now ${head:0:12}); needs re-approval or a fresh task"
   fi
   emit blocked status-log "$reason"
 }

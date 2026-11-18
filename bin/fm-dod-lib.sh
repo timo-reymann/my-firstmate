@@ -858,6 +858,10 @@ fm_dod_meta_value() {  # <meta> <key>
   grep "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2-
 }
 
+# The one refusal text for a local-only pin that could not be recorded or
+# differs; bin/fm-crew-state.sh compares against it to tell a changed head apart.
+FM_DOD_LOCAL_HEAD_REFUSAL='local-only done head could not be recorded or differs from the recorded head; revised work requires a new task/approval record'
+
 # Read the single owned local landing identity. Never accept rev expressions,
 # abbreviated hashes, duplicate fields, or a record with no head.
 fm_dod_local_done_head() {  # <meta>
@@ -1169,7 +1173,7 @@ fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state
     if [ "$mode" = local-only ] && [ -n "$meta" ]; then
       if [ -z "$state" ] || [ -z "$id" ] \
         || ! fm_dod_pin_local_done_head "$state" "$id" "$meta" "$sha" "$captured" "${9:-}"; then
-        printf '%s\n' "local-only done head could not be recorded or differs from the recorded head; revised work requires a new task/approval record"
+        printf '%s\n' "$FM_DOD_LOCAL_HEAD_REFUSAL"
         return 1
       fi
     fi
