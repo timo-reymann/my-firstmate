@@ -29,7 +29,6 @@
     "docs/tmux-backend.md",
     "docs/herdr-backend.md",
     "docs/orca-backend.md",
-    "docs/t3code-backend.md",
     "docs/remote-secondmates.md"
   ],
   "requiredOwnerPointers": [
@@ -87,10 +86,6 @@
     },
     {
       "source": "docs/orca-backend.md",
-      "target": "docs/verification/runtime-backends.md"
-    },
-    {
-      "source": "docs/t3code-backend.md",
       "target": "docs/verification/runtime-backends.md"
     },
     {
@@ -458,10 +453,6 @@
     {
       "path": "docs/supervision-host.md",
       "audience": "maintainer-architecture"
-    },
-    {
-      "path": "docs/t3code-backend.md",
-      "audience": "operator-current"
     },
     {
       "path": "docs/tmux-backend.md",

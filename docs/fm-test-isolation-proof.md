@@ -24,7 +24,6 @@ This record owns concurrent isolation evidence for the portable parallel candida
 
 - `tests/fm-arm-pretool-check.test.sh`
 - `tests/fm-backend-herdr.test.sh`
-- `tests/fm-backend-t3code.test.sh`
 - `tests/fm-brief.test.sh`
 - `tests/fm-captain-hold-lifecycle.test.sh`
 - `tests/fm-cd-pretool-check.test.sh`
@@ -42,7 +41,6 @@ This record owns concurrent isolation evidence for the portable parallel candida
 - `tests/fm-send-strict.test.sh`
 - `tests/fm-spawn-batch.test.sh`
 - `tests/fm-supervision-instructions.test.sh`
-- `tests/fm-t3-mcp.test.sh`
 - `tests/fm-test-run.test.sh`
 - `tests/fm-tmux-submit-busy.test.sh`
 - `tests/fm-transition-lib.test.sh`
@@ -304,3 +302,8 @@ When such a failure turns out to be the assertion timing itself rather than cont
 
 The cmux, hc, paseo, rex, tern, and zellij suites and the `cmux`, `zellij`, `paseo`, `rex`, `tern`, and `hc` families no longer exist.
 Proof records above that name a removed suite are historical, and `bin/fm-test-isolation-proof.sh` no longer lists those suites as serial-class exclusions.
+
+## 2026-11-18: T3 Code suites removed
+
+`tests/fm-backend-t3code.test.sh` and `tests/fm-t3-mcp.test.sh` left the candidate set when firstmate dropped the T3 Code backend.
+The 2026-10-23 record above still describes the run that admitted them.
