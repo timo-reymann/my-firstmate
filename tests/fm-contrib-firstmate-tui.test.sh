@@ -292,6 +292,10 @@ test_input_mode_keys_and_frame() {
   SNAP="$snap" py '
 import os
 assert tui.input_for_key("ctrl+right_square_bracket", "\x1d") is None
+assert tui.input_for_key("escape", "\x1b") is None
+assert tui.escape_resend(10.0, "escape", 10.3) and tui.escape_resend(10.0, "escape", 10.39)
+assert not tui.escape_resend(10.0, "escape", 10.5), "too slow"
+assert not tui.escape_resend(10.0, "a", 10.1) and not tui.escape_resend(None, "escape", 10.1)
 cases = {
     ("a", "a"): ("text", "a"),
     ("A", "A"): ("text", "A"),
@@ -302,7 +306,6 @@ cases = {
     ("tab", "\t"): ("keys", "tab"),
     ("shift+tab", None): ("keys", "shift+tab"),
     ("backspace", "\x7f"): ("keys", "backspace"),
-    ("escape", "\x1b"): ("keys", "esc"),
     ("up", None): ("keys", "up"),
     ("ctrl+up", None): ("keys", "ctrl+up"),
     ("ctrl+c", "\x03"): ("keys", "ctrl+c"),
@@ -328,12 +331,12 @@ snap = tui.parse_snapshot(open(os.environ["SNAP"]).read())
 shared = {"selected": None, "filter": "all", "read": {}}
 frame = tui.render_pane("workers", 48, 24, snap, [], True, shared, 0, ["prompt>"], "", False, True)
 text = tui.plain_frame(frame)
-assert "INPUT  audit-cache" in text and "ctrl+] leaves" in text, text
-assert "typing into audit-cache · ctrl+] leaves input" in text, text
+assert "INPUT  audit-cache" in text and "esc leaves" in text, text
+assert "typing into audit-cache · esc leaves input" in text, text
 assert "live · read-only" not in text, text
-assert text.rstrip("\n").split("\n")[-1].startswith(" keys go to the worker  ctrl+] leave input"), text
+assert text.rstrip("\n").split("\n")[-1].startswith(" keys go to the worker  esc leave input"), text
 ' || fail "input mode"
-  pass "input mode sends printable keys as text, named and ctrl keys as herdr keys, keeps ctrl+] to leave, and says INPUT in the live view"
+  pass "input mode sends printable keys as text, named and ctrl keys as herdr keys, leaves on escape and ctrl+], and says INPUT in the live view"
 }
 
 test_once_without_ledger_hints_and_stays_read_only() {
@@ -454,16 +457,23 @@ async def main():
         await pilot.press("enter")
         assert app.typing == worker["id"], app.typing
         pane = worker["target"].split(":", 1)[1]
-        for key in ("h", "i", "q", "enter", "up", "ctrl+c", "tab", "home", "escape"):
+        for key in ("h", "i", "q", "enter", "up", "ctrl+c", "tab", "home"):
             await pilot.press(key)
         app.post_message(events.Paste("pasted -x"))
         await pilot.pause(0.2)
         assert app.typing == worker["id"] and app.rows[app.selected]["id"] == worker["id"] and len(app.screen_stack) == 1
+        await pilot.press("escape")
+        assert app.typing is None, "one escape leaves at once"
+        await pilot.press("escape")
+        assert app.typing == worker["id"], "a quick second escape re-enters input mode"
         await pilot.press("ctrl+right_square_bracket")
         assert app.typing is None
+        app.escape_left = (worker["id"], worker["target"], tui.time.monotonic() - 1.0)
+        await pilot.press("escape")
+        assert app.typing is None, "a slow second escape is a plain key"
         want = [("send-text", "hiq"), ("send-keys", "enter"), ("send-keys", "up"),
                 ("send-keys", "ctrl+c"), ("send-keys", "tab"), ("send-text", "\x1b[H"),
-                ("send-keys", "esc"), ("send-text", "pasted -x")]
+                ("send-text", "pasted -x"), ("send-keys", "esc")]
         for _ in range(100):
             sends = []
             for line in open(os.environ["HERDR_LOG"]).read().split("\n"):
@@ -490,7 +500,7 @@ EOF
   OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$herdr" \
     HERDR_LOG="$TMP_ROOT/herdr.log" uv run --offline --quiet --no-project --with "$deps" python -B "$pilot" "$TUI" 2>&1) ||
     fail "headless app failed: $OUT"
-  pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays, jumps, and forwards input mode keys in order until ctrl+]"
+  pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays, jumps, and forwards input mode keys in order until escape, and a quick double escape reaches the worker"
 }
 
 fm_test_run \
