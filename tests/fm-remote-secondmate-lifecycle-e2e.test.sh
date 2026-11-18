@@ -1462,7 +1462,7 @@ assert_grep 'remote_backend=herdr' "$PARENT/state/ios.meta" \
 # Every explicit backend other than herdr is refused before any remote call and
 # leaves the recorded route untouched, removed backend names included.
 cp "$PARENT/state/ios.meta" "$TMP_ROOT/parent-ios-before-refused-backend.meta"
-for refused_backend in tmux rex cmux zellij hc tern paseo; do
+for refused_backend in tmux rex cmux zellij hc tern paseo t3code; do
   ssh_before=$(cat "$SSH_COUNT")
   if remote_env "$ROOT/bin/fm-spawn.sh" ios --secondmate --backend "$refused_backend" \
     >"$TMP_ROOT/spawn-refused-backend.out" 2>&1; then

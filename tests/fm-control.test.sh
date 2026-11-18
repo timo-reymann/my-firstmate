@@ -633,7 +633,7 @@ test_removed_backend_records_refuse_stop_verbs() {
   # A task record that still names a removed backend is treated like one that
   # names an unknown backend: every stop-proving verb refuses and nothing is
   # sent to the running agent.
-  for backend in zellij cmux paseo rex tern hc; do
+  for backend in zellij cmux paseo rex tern hc t3code; do
     dir=$(new_case "removed-$backend")
     add_task "$dir" t1 claude ship "$backend" "sess:7"
     out=$(run_control "$dir" t1 exit); rc=$?
@@ -703,12 +703,11 @@ test_hermes_profile_refusals_preserve_running_worker() {
   pass 'fm-control relaunch: Hermes profile model and gateway refusals preserve the current worker'
 }
 
-test_state_verified_backends_are_exactly_tmux_herdr_and_t3code() {
+test_state_verified_backends_are_exactly_tmux_and_herdr() {
   fm_control_backend_state_verified tmux || fail "tmux has a recovery-grade classifier"
   fm_control_backend_state_verified herdr || fail "herdr has a recovery-grade classifier"
-  fm_control_backend_state_verified t3code || fail "t3code has a recovery-grade classifier"
   local backend
-  for backend in orca zellij cmux paseo rex tern hc; do
+  for backend in orca zellij cmux paseo rex tern hc t3code; do
     fm_control_backend_state_verified "$backend" \
       && fail "$backend has no recovery-grade classifier and must not claim one"
   done
@@ -1237,7 +1236,7 @@ test_orca_refuses_an_escape_harness_interrupt
 test_removed_backend_records_refuse_stop_verbs
 test_commandcode_relaunch_off_tmux_and_herdr_refuses_before_stopping
 test_hermes_profile_refusals_preserve_running_worker
-test_state_verified_backends_are_exactly_tmux_herdr_and_t3code
+test_state_verified_backends_are_exactly_tmux_and_herdr
 test_window_label_is_refused_with_the_exact_id
 test_explicit_endpoint_is_refused
 test_unknown_task_is_refused

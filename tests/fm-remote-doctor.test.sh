@@ -1216,7 +1216,7 @@ pass "the entrypoint symlink is recreated when absent and never overwritten when
 
 # --- a removed backend name is refused like any other unknown --backend value -
 
-for removed in rex cmux zellij hc tern paseo tmux; do
+for removed in rex cmux zellij hc tern paseo tmux t3code; do
   new_case Darwin with-herdr gui
   doctor --backend "$removed"
   expect_code 2 "$DOCTOR_RC" "--backend $removed was accepted"

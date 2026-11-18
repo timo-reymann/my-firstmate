@@ -674,7 +674,7 @@ unit_stop_rejects_reused_pid() {
 
 unit_removed_backend_start_is_refused() {
   local st removed
-  for removed in cmux paseo rex tern hc zellij; do
+  for removed in cmux paseo rex tern hc zellij t3code; do
     st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-removed-backend.XXXXXX")
     mkdir -p "$st/state"
     enter_posture "$st" || fail "removed backend $removed: could not enter fixture posture"

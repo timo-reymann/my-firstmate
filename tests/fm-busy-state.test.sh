@@ -610,7 +610,7 @@ test_removed_backend_native_busy_is_ignored() {
   state=$(new_state_dir removed-native)
   # shellcheck disable=SC2329 # invoked indirectly through fm_busy_classify
   fm_backend_busy_state() { printf 'busy'; }
-  for backend in tern rex cmux paseo zellij hc; do
+  for backend in tern rex cmux paseo zellij hc t3code; do
     out=$(fm_busy_classify "$backend" 7:9 claude t1 "$state")
     [ "$out" = "unknown missing" ] \
       || fail "a native busy verdict on the removed $backend backend must not classify, got '$out'"

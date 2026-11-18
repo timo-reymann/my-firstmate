@@ -922,7 +922,7 @@ test_herdr_install_requires_manual_action() {
 test_unknown_backend_reports_invalid_configuration() {
   local case_dir fakebin out name
   # A removed backend name in config/backend reads exactly like an unknown one.
-  for name in bogus cmux paseo rex tern hc zellij; do
+  for name in bogus cmux paseo rex tern hc zellij t3code; do
     case_dir="$TMP_ROOT/unknown-backend-$name"
     mkdir -p "$case_dir/home/config"
     printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
@@ -930,7 +930,7 @@ test_unknown_backend_reports_invalid_configuration() {
     fakebin=$(make_fake_toolchain "$case_dir")
     out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
       FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
-    assert_contains "$out" "BACKEND_INVALID: $name (known: tmux herdr orca t3code)" \
+    assert_contains "$out" "BACKEND_INVALID: $name (known: tmux herdr orca)" \
       "bootstrap should report $name as an unknown resolved backend"
     assert_not_contains "$out" "MISSING: tmux" "an unknown backend $name should not silently fall back to tmux dependencies"
   done

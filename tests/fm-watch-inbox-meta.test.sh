@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Non-T3 inbox steering retains the recorded metadata's activity verdict,
+# Inbox steering retains the recorded metadata's activity verdict,
 # including partial records that still identify a terminal but lack a target.
 set -eu
 
@@ -20,16 +20,16 @@ FM_HOME="$TMP_ROOT" FM_STATE_OVERRIDE="$TMP_ROOT/state" \
   # The terminal and rendered busy token alone would classify busy.
   fm_busy_is_busy tmux lab:fm-worker rovo worker "$STATE" "BUSYTOKEN active"
   if inbox_steer_busy lab:fm-worker tmux worker "BUSYTOKEN active"; then
-    echo "missing metadata target incorrectly deferred non-T3 steering" >&2
+    echo "missing metadata target incorrectly deferred steering" >&2
     exit 1
   fi
 
   printf "window=lab:fm-worker\n" >> "$meta"
   inbox_steer_busy lab:fm-worker tmux worker "BUSYTOKEN active"
   if inbox_steer_busy lab:fm-worker tmux worker "quiet output"; then
-    echo "idle non-T3 metadata incorrectly deferred steering" >&2
+    echo "idle metadata incorrectly deferred steering" >&2
     exit 1
   fi
 ' _ "$ROOT"
 
-pass "non-T3 inbox guard preserves no-target uncertainty and recorded busy/idle verdicts"
+pass "inbox guard preserves no-target uncertainty and recorded busy/idle verdicts"

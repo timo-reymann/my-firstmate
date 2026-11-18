@@ -169,22 +169,6 @@ test_backend_name_precedence() {
 # HERDR_ENV, and nothing else, so results never depend on the ambient shell
 # this suite runs inside (a real tmux pane or herdr pane, both normal cases for
 # a captain's session).
-test_backend_detect_t3_explicit_only() (
-  FM_BACKEND_CONFIG_DIR="$TMP_ROOT/t3-detect-config"
-  mkdir -p "$FM_BACKEND_CONFIG_DIR"
-  FM_HOME="$TMP_ROOT/t3-home"
-  mkdir -p "$FM_HOME"
-  unset TMUX HERDR_ENV FM_BACKEND
-  if fm_backend_detect; then fail 'T3 must not auto-detect without its bearer'; fi
-  printf 'test-bearer\n' > "$FM_BACKEND_CONFIG_DIR/t3code-token"
-  if fm_backend_detect; then fail 'T3 must not auto-detect with its bearer'; fi
-  printf 't3code\n' > "$FM_BACKEND_CONFIG_DIR/backend"
-  [ "$(fm_backend_name)" = t3code ] || fail 'configured T3 must be selected explicitly'
-  # shellcheck disable=SC2034 # Read by the sourced backend selector.
-  FM_BACKEND=orca
-  [ "$(fm_backend_name)" = orca ] || fail 'explicit Orca remains selectable ahead of T3'
-  pass 'T3 requires explicit backend selection even with a configured server'
-)
 
 test_backend_detect_precedence() {
   local out
@@ -281,7 +265,7 @@ test_backend_validate_refuses_unknown() {
   out=$(fm_backend_validate bogus 2>&1) && fail "fm_backend_validate should refuse bogus (no such adapter)"
   assert_contains "$out" "unknown backend 'bogus'" "fm_backend_validate did not name the rejected backend"
   local removed
-  for removed in cmux paseo rex tern hc zellij; do
+  for removed in cmux paseo rex tern hc zellij t3code; do
     out=$(fm_backend_validate "$removed" 2>&1) && fail "fm_backend_validate should refuse the removed backend $removed"
     assert_contains "$out" "unknown backend '$removed'" "fm_backend_validate did not treat $removed like an unknown backend"
     out=$(fm_backend_validate_spawn "$removed" 2>&1) && fail "fm_backend_validate_spawn should refuse the removed backend $removed"
@@ -437,8 +421,6 @@ test_backend_validate_spawn_accepts_orca() {
   fm_backend_validate_spawn tmux 2>/dev/null || fail "fm_backend_validate_spawn should accept tmux"
   fm_backend_validate_spawn herdr 2>/dev/null || fail "fm_backend_validate_spawn should accept herdr"
   fm_backend_validate_spawn orca 2>/dev/null || fail "fm_backend_validate_spawn should accept orca"
-  fm_backend_validate_spawn t3code 2>/dev/null || fail "fm_backend_validate_spawn should accept t3code"
-  [ "$(fm_backend_required_tools t3code)" = 'node treehouse' ] || fail "t3code should require node and treehouse"
   out=$(fm_backend_validate_spawn bogus 2>&1) && fail "fm_backend_validate_spawn should still refuse unknown backends"
   assert_contains "$out" "unknown backend 'bogus'" "fm_backend_validate_spawn did not preserve unknown-backend validation"
   out=$(fm_backend_validate_spawn codex-app 2>&1) && fail "fm_backend_validate_spawn should refuse codex-app"
@@ -528,7 +510,6 @@ test_backend_of_selector_matches_explicit_target_meta() {
   fm_write_meta "$state/tmux-task.meta" "window=firstmate:fm-tmux-task"
   fm_write_meta "$state/custom-window-task.meta" "window=custom-window"
   fm_write_meta "$state/orca-task.meta" "window=fm-orca-task" "terminal=term-orca-task" "backend=orca"
-  fm_write_meta "$state/t3-task.meta" "window=fm-t3-task" "t3_thread_id=6f1c2b3a-0000-4000-8000-00000000c0de" "backend=t3code"
 
   [ "$(fm_backend_of_selector 'dotfiles-d6' 'default:wA:p2' "$state")" = herdr ] \
     || fail "bare non-fm task id selector should use its recorded backend"
@@ -544,10 +525,6 @@ test_backend_of_selector_matches_explicit_target_meta() {
     || fail "raw window selector matching metadata should not require tmux fallback"
   [ "$(fm_backend_of_selector 'term-orca-task' 'term-orca-task' "$state")" = orca ] \
     || fail "matching an explicit Orca terminal handle should inherit metadata backend"
-  [ "$(fm_backend_resolve_selector 'fm-t3-task' "$state")" = 6f1c2b3a-0000-4000-8000-00000000c0de ] \
-    || fail "t3code fm-<id> selector should resolve to t3_thread_id=, not window="
-  [ "$(fm_backend_of_selector '6f1c2b3a-0000-4000-8000-00000000c0de' '6f1c2b3a-0000-4000-8000-00000000c0de' "$state")" = t3code ] \
-    || fail "matching an explicit T3 thread id should inherit metadata backend"
   [ "$(fm_backend_of_selector 'default:w1:p2' 'default:w1:p2' "$state")" = herdr ] \
     || fail "explicit backend target matching metadata should use that task's backend"
   [ "$(fm_backend_of_selector 'firstmate:fm-tmux-task' 'firstmate:fm-tmux-task' "$state")" = tmux ] \
@@ -1020,7 +997,7 @@ test_spawn_refuses_removed_backends() {
   local removed out status cfg state meta
   cfg="$TMP_ROOT/removed-config"; state="$TMP_ROOT/removed-state"
   mkdir -p "$cfg" "$state"
-  for removed in cmux paseo rex tern hc zellij; do
+  for removed in cmux paseo rex tern hc zellij t3code; do
     out=$(FM_ROOT_OVERRIDE='' FM_HOME='' FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' \
       FM_PROJECTS_OVERRIDE='' FM_CONFIG_OVERRIDE='' FM_SPAWN_NO_GUARD=1 \
       "$ROOT/bin/fm-spawn.sh" nope-removed-z1 projects/none claude --mode no-mistakes --yolo off --backend "$removed" 2>&1)
@@ -1150,7 +1127,6 @@ fi
 backend_base_ref >/dev/null
 
 test_backend_name_precedence
-test_backend_detect_t3_explicit_only
 test_backend_detect_precedence
 test_backend_name_autodetect_notice
 test_backend_name_explicit_beats_detection

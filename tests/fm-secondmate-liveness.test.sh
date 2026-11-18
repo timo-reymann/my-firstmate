@@ -193,7 +193,7 @@ test_agent_state_dispatcher_and_compatibility() {
   [ "$out" = alive ] || fail "detailed dispatcher should route Herdr, got '$out'"
 
   local removed
-  for removed in zellij cmux paseo rex tern hc; do
+  for removed in zellij cmux paseo rex tern hc t3code; do
     out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state "$1" sess:7' "$ROOT" "$removed")
     [ "$out" = unverified ] || fail "the removed $removed backend should stay unverified, got '$out'"
     out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive "$1" sess:7' "$ROOT" "$removed")
@@ -477,9 +477,8 @@ test_sweep_serializes_distinct_secondmate_relaunches() {
   pass "sweep: distinct secondmate relaunches serialize across the task-set lock"
 }
 
-# The T3-only close refusal (fm_secondmate_liveness_relaunch) must leave every
-# other backend on its existing best-effort kill: a tmux close that fails is
-# still followed by the guarded spawn, exactly as before.
+# A tmux close that fails (fm_secondmate_liveness_relaunch) must be still
+# followed by the guarded spawn, exactly as before.
 test_sweep_keeps_tmux_best_effort_kill_when_close_fails() {
   local w fb tmuxfb log out
   w=$(new_world sweep-dead-close-fails)
@@ -490,7 +489,7 @@ test_sweep_keeps_tmux_best_effort_kill_when_close_fails() {
   out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log" FM_TEST_FAIL_KILL=1)
 
   assert_contains "$(cat "$log")" "kill-window -t =firstmate:=fm-sm1" "the close is attempted"
-  assert_not_contains "$out" "could not prove the old" "a non-T3 close failure must not take the T3-only refusal path"
+  assert_not_contains "$out" "could not prove the old" "a failed close must not stop the guarded spawn"
   assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: respawn failed after confirmed agent absence on existing endpoint" \
     "the guarded spawn still runs after a failed tmux close, as before"
   pass "sweep: a tmux secondmate whose close fails keeps the existing best-effort kill and guarded spawn"
@@ -946,7 +945,7 @@ test_remote_full_probe_backend_drift() {
 
   # The remote reports a backend this home never recorded, removed backends
   # included: a skip, never a silent migration.
-  for removed in tmux rex cmux zellij hc tern paseo; do
+  for removed in tmux rex cmux zellij hc tern paseo t3code; do
     out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND="$removed")
     [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend '$removed'; migrate or retire it explicitly" ] \
       || fail "a $removed route must be reported, got: $out"
@@ -960,7 +959,7 @@ test_remote_full_probe_recorded_removed_backend() {
 
   # A record that still names a removed backend is preserved and reported,
   # never relaunched or probed as a live endpoint.
-  for removed in rex cmux zellij hc tern paseo; do
+  for removed in rex cmux zellij hc tern paseo t3code; do
     sed -i.bak "s/^remote_backend=.*/remote_backend=$removed/" "$w/home/state/rsm1.meta"
     rm -f "$w/home/state/rsm1.meta.bak"
     out=$(probe_remote "$w" full)
