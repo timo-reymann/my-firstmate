@@ -1,37 +1,41 @@
 # Launchers
 
-Four optional launchers for running firstmate day to day.
+Three optional launchers for running firstmate day to day.
 They live outside `bin/` because they are operator conveniences, not part of the supervision contract.
-They need `bash`; `firstmate-herdr` and `firstmate-fleet` also need `jq`, and the Herdr pair needs [Herdr](https://herdr.dev) protocol 14 or newer.
-`firstmate-tui` needs [uv](https://docs.astral.sh/uv/), which fetches Python 3.9 or newer and Textual on first run.
+They need `bash`; `firstmate-herdr` also needs `jq`, [Herdr](https://herdr.dev) protocol 14 or newer, and [uv](https://docs.astral.sh/uv/).
+`firstmate-tui` needs `uv`, which fetches Python 3.9 or newer and Textual on first run.
+This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 
 ## What each one does
 
 - `firstmate` opens the first mate session in the home folder, with Claude Code or OpenCode (see [Choosing the agent](#choosing-the-agent)).
   It resumes the latest session when one changed in the last two hours, and otherwise starts a new one.
   It refuses to start when another session already holds the home's `state/.lock`.
-- `firstmate-herdr` builds a Herdr workspace named `firstmate`: the first mate on the left and the fleet view on the right.
-  Inside Herdr it splits the current pane instead.
-  The workers stay in the same Herdr session.
-  Options: `--no-attach` builds the layout and stops, `--ratio SHARE` sets the width share of the first mate pane (default 0.72).
-  The right pane runs `firstmate-tui` when `uv` is on `PATH`, and `firstmate-fleet` otherwise.
-- `firstmate-tui` is a read-only fleet view with an activity feed, written in Python with Textual.
-  It shows the home and refresh time, a "Needs you" strip (PRs ready for review, workers waiting on a decision, blocked workers), a task table (task, kind, project, state, and the age of the last status report), and the last 30 events of the [fleet activity ledger](../docs/fleet-ledger.md) with PR URLs in full.
-  It reads `bin/fm-fleet-snapshot.sh --json` and `state/fleet-ledger.jsonl`, costs no model tokens, writes nothing, and never steers a worker.
-  The feed needs the ledger: create `config/fleet-ledger` in the home to turn it on; until then the feed shows a hint.
-  Keys: `j`/`k` or arrows move, `enter` jumps to the task tab in Herdr, `r` refreshes, `f` cycles the state filter, `q` quits.
-  `--interval SECONDS` sets the refresh period (default 6), and `--once` prints one plain frame and exits without a terminal.
-- `firstmate-fleet` is the same fleet view in plain bash, built on `bin/fm-fleet-snapshot.sh --json`, without the feed.
-  It costs no model tokens.
-  Keys: `j`/`k` or arrows move, `enter` jumps to the task tab in Herdr, `r` refreshes, `q` quits.
-  `--once` prints one plain frame and exits.
+- `firstmate-herdr` builds the firstmate screen in one Herdr tab with three panes: the activity across the top, the first mate bottom left, and the workers bottom right.
+  Outside Herdr it builds a workspace named `firstmate` and attaches to it; inside Herdr it builds the layout around the current pane.
+  The workers stay in the same Herdr session, and their tabs keep the `fm-<id>` labels that firstmate uses to find them.
+  Options: `--no-attach` builds the layout and stops, `--ratio SHARE` sets the width share of the first mate pane (default 0.6), and `--activity-ratio SHARE` sets the height share of the activity pane (default 0.28).
+  Without `uv` on `PATH` it stops with the install hint.
+- `firstmate-tui` draws the two views of that screen, written in Python with Textual.
+  `--pane activity` is a box with the last 8 events of the [fleet activity ledger](../docs/fleet-ledger.md) as full lines, newest first, and a "NEEDS YOU" count; events that need you (a decision, a blocked worker, a PR ready for review) have a yellow bar.
+  `--pane workers` lists the workers, needs-you first, each with its state symbol, kind, task, state, and the age of its last report; a working worker with no report for over an hour shows its age in yellow with `…`.
+  Below the list is a read-only live view of the selected worker's screen, read from Herdr about once a second.
+  A pane narrower than 34 columns folds the list to compact tabs and hides the live view.
+  `--pane all`, the default, stacks both views in one terminal.
+  Every state has its own symbol, so the screen also reads in 16 or 8 colours; `FIRSTMATE_TUI_COLORS` and `FIRSTMATE_TUI_THEME` override the detected colour depth and theme.
+  The activity needs the ledger: create `config/fleet-ledger` in the home to turn it on; until then it shows a hint.
+- Keys in either view: `↑`/`↓` or `j`/`k` select a worker, `1`-`9` pick one, `tab` selects the next, `enter` opens the worker's real Herdr tab, `l` opens the full log, `n` shows needs-you events and selects the next worker that needs you, `a` shows all events, `t` shows the selected task's events, `y` copies the selected worker's PR URL, `m` marks its needs-you item read, `?` lists the keys, `r` refreshes, and `q` quits.
+  A read mark lasts until the worker's state, report, or PR changes.
+- `firstmate-tui` reads `bin/fm-fleet-snapshot.sh --json`, `state/fleet-ledger.jsonl`, and the worker screens, costs no model tokens, and never steers a worker.
+  The only file it writes is `state/firstmate-tui.json` in the home, which holds the selected worker, the activity filter, and the read marks, so both panes share them.
+  `--interval SECONDS` sets the refresh period (default 6), and `--once` prints one plain frame of the pane and exits without a terminal or Textual.
 
 ## Install
 
 Copy the scripts to a directory on your `PATH`, keeping them together because `firstmate-herdr` finds its siblings next to itself.
 
 ```sh
-install -m 0755 contrib/firstmate contrib/firstmate-herdr contrib/firstmate-fleet contrib/firstmate-tui "$HOME/.bin/"
+install -m 0755 contrib/firstmate contrib/firstmate-herdr contrib/firstmate-tui "$HOME/.bin/"
 ```
 
 `firstmate-tui` starts through its `uv run --script` shebang, so `firstmate-tui` and `uv run contrib/firstmate-tui` both work.
@@ -68,12 +72,12 @@ echo opencode > "${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/agent"
 | `FIRSTMATE_FORCE` | `firstmate` | unset; set it to start despite a live session |
 | `FIRSTMATE_DRY_RUN` | `firstmate` | unset; set it to print the command and exit |
 | `FIRSTMATE_BIN` | `firstmate-herdr` | `firstmate` next to the script |
-| `FIRSTMATE_FLEET_VIEW` | `firstmate-herdr` | unset; `tui` or `bash` forces that fleet view |
-| `FLEET_BIN` | `firstmate-herdr` | `firstmate-fleet` next to the script; setting it selects the bash view unless `FIRSTMATE_FLEET_VIEW=tui` |
 | `TUI_BIN` | `firstmate-herdr` | `firstmate-tui` next to the script |
-| `HERDR_BIN` | `firstmate-herdr`, `firstmate-fleet`, `firstmate-tui` | `herdr` |
+| `HERDR_BIN` | `firstmate-herdr`, `firstmate-tui` | `herdr` |
 | `FM_HERDR_SESSION` | `firstmate-herdr` | unset (default session) |
-| `FM_FLEET_SNAPSHOT_CMD` | `firstmate-fleet`, `firstmate-tui` | unset; replaces the snapshot command |
+| `FM_FLEET_SNAPSHOT_CMD` | `firstmate-tui` | unset; replaces the snapshot command |
+| `FIRSTMATE_TUI_COLORS` | `firstmate-tui` | detected; `truecolor`, `256`, `16` or `8` |
+| `FIRSTMATE_TUI_THEME` | `firstmate-tui` | `light` when `COLORFGBG` names a light background, else `dark` |
 
 Extra arguments you pass to `firstmate` are forwarded to the agent.
 Edit the `cmd` arrays in the script if you want other default settings.
