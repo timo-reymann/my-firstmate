@@ -59,7 +59,9 @@ Select Herdr in any of these ways:
 
 Herdr is also auto-detected when the primary runs natively under `HERDR_ENV=1` and is not inside tmux.
 A tmux pane nested inside Herdr resolves to tmux because the innermost multiplexer wins.
-An auto-detected Herdr spawn stays silent, matching the verified tmux default path.
+An auto-detected Herdr spawn stays silent, like a tmux spawn.
+
+Herdr is also this fork's default when nothing selects a backend; [Backend selection order](configuration.md#backend-selection-order) owns that default and what happens when Herdr is missing.
 
 ### Spawn preflight and CI
 

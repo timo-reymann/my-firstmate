@@ -375,7 +375,11 @@ New spawns choose the backend in this order:
 2. `FM_BACKEND`.
 3. The first non-empty line of local, gitignored `config/backend`.
 4. Runtime auto-detection from `$TMUX` or `HERDR_ENV=1`.
-5. Default `tmux`.
+5. The default backend, `herdr` in this fork (upstream firstmate defaults to `tmux`).
+
+`FM_BACKEND_DEFAULT_NAME` in [`bin/fm-backend.sh`](../bin/fm-backend.sh) is the single owner of that default.
+When only the default selects the backend and its tools are missing, `fm-spawn.sh` refuses the spawn, names the default and the missing tools, and says how to select another backend; it never switches to another backend on its own.
+To keep tmux without auto-detection, put `tmux` in `config/backend` or set `FM_BACKEND=tmux`.
 
 If both runtime markers are present, detection resolves innermost-first: `$TMUX` is checked before `HERDR_ENV=1`, because a tmux started inside a Herdr pane is the innermost, currently-executing layer.
 
@@ -405,7 +409,7 @@ A backend spawn refusal from a missing dependency, version gate, or unauthentica
 
 ### Task metadata
 
-Task meta records `backend=` only for a non-default backend; an absent `backend=` means `tmux`, preserving existing default-path meta files.
+Task meta records `backend=` only for a non-tmux backend; an absent `backend=` means `tmux`, preserving existing tmux meta files.
 
 - Every new task records `endpoint_task_id=` as the cleanup binding between the metadata filename and its opaque runtime endpoint.
 
@@ -2057,7 +2061,7 @@ Lavish is a presentation-only dependency for visual decisions and reports; nonvi
 
 **Backend requirements**
 
-The per-backend delta is required only for the backend resolved from `FM_BACKEND`, then `config/backend`, then runtime auto-detection, then default `tmux`, so a home is never told to install a tool an inactive backend or feature would need.
+The per-backend delta is required only for the backend resolved from `FM_BACKEND`, then `config/backend`, then runtime auto-detection, then the [default backend](#backend-selection-order), so a home is never told to install a tool an inactive backend or feature would need.
 `fm_backend_required_tools` in `bin/fm-backend.sh` owns the backend additions:
 
 | Resolved backend | Additional tools |
