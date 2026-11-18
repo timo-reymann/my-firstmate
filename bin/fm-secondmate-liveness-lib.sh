@@ -149,8 +149,7 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   harness=$(fm_meta_get "$meta" harness)
   remote_host=$(fm_meta_get "$meta" remote_host)
   if [ -n "$remote_host" ]; then
-    # A record written before rex existed carries no remote_backend; those
-    # endpoints are herdr.
+    # A record without a remote_backend names a herdr endpoint.
     expected_remote_backend=$(fm_meta_get "$meta" remote_backend)
     [ -n "$expected_remote_backend" ] || expected_remote_backend=herdr
     if [ "$mode" = full ]; then
@@ -202,7 +201,7 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
           fi
           remote_backend=$(printf '%s\n' "$route_out" | sed -n 's/^backend=//p' | tail -1)
           case "$remote_backend" in
-            herdr | rex) ;;
+            herdr) ;;
             *)
               FM_SM_LIVE_REASON="alive remote endpoint is recorded on backend '${remote_backend:-missing}'; migrate or retire it explicitly"
               return 0
@@ -335,14 +334,7 @@ fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
     fi
     if [ "$backend" != t3code ]; then
       if [ -n "$target" ]; then
-        if [ "$backend" = rex ]; then
-          local home
-          home=$(fm_meta_get "$meta" home)
-          [ -n "$home" ] || home=$(fm_meta_get "$meta" worktree)
-          ( unset FM_ROOT_OVERRIDE; FM_HOME="$home" FM_ROOT="$home" STATE="$home/state" fm_backend_kill "$backend" "$target" ) 2>/dev/null || true
-        else
-          fm_backend_kill "$backend" "$target" 2>/dev/null || true
-        fi
+        fm_backend_kill "$backend" "$target" 2>/dev/null || true
       fi
     elif [ -n "$target" ] && ! fm_backend_kill "$backend" "$target" 2>/dev/null; then
       fm_secondmate_liveness_ledger_add "$id" failed || true

@@ -358,13 +358,12 @@ family_for_basename() {
       ;;
     fm-bearings-board-lavish-live-e2e.test.sh|\
     fm-claude-stop-autoarm-live-e2e.test.sh|\
-    fm-cmux-claude-composer-live-e2e.test.sh|\
     fm-composer-matrix-live-e2e.test.sh|\
     fm-composer-codex-idle-live-e2e.test.sh|\
     fm-codex-continuity-live-e2e.test.sh|fm-codex-hook-layer-live-e2e.test.sh|\
     fm-cursor-primary-live-e2e.test.sh|fm-agy-primary-live-e2e.test.sh|\
     fm-harness-adapter-instructions-live-e2e.test.sh|\
-    fm-harness-liveness-drift-live-e2e.test.sh|fm-backend-hc-liveness-live-e2e.test.sh|\
+    fm-harness-liveness-drift-live-e2e.test.sh|\
     fm-kimi-trust-prompt-live-e2e.test.sh|\
     fm-devin-signals-live-e2e.test.sh|fm-commandcode-signals-live-e2e.test.sh|fm-cortex-signals-live-e2e.test.sh|fm-hermes-signals-live-e2e.test.sh|fm-hermes-profile-safety-live-e2e.test.sh|fm-hermes-gateway-coexistence-live-e2e.test.sh|fm-muse-signals-live-e2e.test.sh|fm-rovo-signals-live-e2e.test.sh|fm-agy-signals-live-e2e.test.sh|fm-kiro-signals-live-e2e.test.sh|fm-polytoken-signals-live-e2e.test.sh|\
     fm-launch-prompt-signals-live-e2e.test.sh|fm-backend-t3code-live-e2e.test.sh|\
@@ -381,7 +380,6 @@ family_for_basename() {
     fm-secondmate-busy-contract-live-e2e.test.sh|\
     fm-calm-claude-mod-plugin.test.sh|fm-calm-claude-mod-live-e2e.test.sh|\
     fm-herdr-submit-confirm-live-e2e.test.sh|\
-    fm-backend-rex-composer-live-e2e.test.sh|\
     fm-watch-wedge-cap-live.test.sh|\
     fm-claude-tool-exclude-live.test.sh)
       printf '%s\n' live-harness-optin
@@ -416,26 +414,8 @@ family_for_basename() {
     fm-fleet-snapshot-view.test.sh|fm-home-summary-refresh.test.sh)
       printf '%s\n' snapshot-bearings
       ;;
-    fm-backend-cmux.test.sh|fm-backend-cmux-smoke.test.sh)
-      printf '%s\n' cmux
-      ;;
-    fm-backend-paseo.test.sh|fm-backend-paseo-smoke.test.sh)
-      printf '%s\n' paseo
-      ;;
-    fm-backend-rex.test.sh|fm-backend-rex-smoke.test.sh|fm-backend-rex-eventwait-smoke.test.sh)
-      printf '%s\n' rex
-      ;;
-    fm-backend-zellij.test.sh|fm-backend-zellij-smoke.test.sh)
-      printf '%s\n' zellij
-      ;;
     fm-backend-orca.test.sh)
       printf '%s\n' orca
-      ;;
-    fm-backend-tern.test.sh|fm-backend-tern-smoke.test.sh)
-      printf '%s\n' tern
-      ;;
-    fm-backend-hc.test.sh|fm-backend-hc-smoke.test.sh|fm-backend-hc-appdetect-smoke.test.sh)
-      printf '%s\n' hc
       ;;
     fm-branch-supervision.test.sh|fm-busy-adapter-wiring.test.sh|\
     fm-busy-state.test.sh|fm-capacity.test.sh|fm-capacity-auto.test.sh|fm-lane-vitals.test.sh|\
@@ -466,7 +446,7 @@ expected_gate_skip_for_family() {
   case "$1" in
     real-herdr-gated) printf '%s\n' herdr ;;
     live-harness-optin) printf '%s\n' live-capability ;;
-    cmux|zellij|orca|paseo|rex|tern|hc) printf '%s\n' optional-binary ;;
+    orca) printf '%s\n' optional-binary ;;
     snapshot-bearings) printf '%s\n' optional-binary ;;
     *) printf '%s\n' none ;;
   esac
@@ -484,13 +464,7 @@ backend-dispatch
 pr-forge
 afk
 snapshot-bearings
-cmux
-zellij
 orca
-paseo
-rex
-tern
-hc
 standalone
 unclassified
 EOF
@@ -721,21 +695,10 @@ tests/fm-agy-primary.test.sh 45000
 tests/fm-agy-signals-live-e2e.test.sh 53
 tests/fm-approval-failover.test.sh 5410
 tests/fm-ask-user-authority.test.sh 171
-tests/fm-backend-cmux-smoke.test.sh 34
-tests/fm-backend-cmux.test.sh 3754
-tests/fm-backend-hc-liveness-live-e2e.test.sh 9000
-tests/fm-backend-hc-smoke.test.sh 3700
-tests/fm-backend-hc.test.sh 4000
 tests/fm-backend-orca.test.sh 27102
-tests/fm-backend-paseo-smoke.test.sh 40
-tests/fm-backend-paseo.test.sh 8000
 tests/fm-backend-t3code-live-e2e.test.sh 51
 tests/fm-backend-t3code-pr-tools-live-e2e.test.sh 52
-tests/fm-backend-tern-smoke.test.sh 60
-tests/fm-backend-tern.test.sh 6000
 tests/fm-backend-tmux-smoke.test.sh 291
-tests/fm-backend-zellij-smoke.test.sh 23
-tests/fm-backend-zellij.test.sh 10453
 tests/fm-backend.test.sh 23932
 tests/fm-backlog-atomicity.test.sh 219379
 tests/fm-backlog-handoff.test.sh 57458
@@ -762,7 +725,6 @@ tests/fm-claude-stop-autoarm-live-e2e.test.sh 73
 tests/fm-claude-stop-autoarm.test.sh 61189
 tests/fm-claude-tool-exclude-live.test.sh 75
 tests/fm-claude-trust.test.sh 12010
-tests/fm-cmux-claude-composer-live-e2e.test.sh 77
 tests/fm-codex-continuity-live-e2e.test.sh 108
 tests/fm-codex-hook-layer-live-e2e.test.sh 108
 tests/fm-codex-stop-park.test.sh 35000
@@ -1516,37 +1478,6 @@ families_for_changed_path() {
       printf '%s\n' real-herdr-gated
       printf '%s\n' backend-dispatch
       ;;
-    bin/backends/zellij*|tests/zellij-test-safety.sh)
-      printf '%s\n' zellij
-      printf '%s\n' backend-dispatch
-      ;;
-    bin/backends/cmux*|tests/cmux-test-safety.sh)
-      printf '%s\n' cmux
-      printf '%s\n' backend-dispatch
-      ;;
-    bin/backends/paseo*)
-      printf '%s\n' paseo
-      printf '%s\n' backend-dispatch
-      ;;
-    bin/backends/rex*|bin/fm-rex-marks.sh|tests/rex-test-safety.sh)
-      printf '%s\n' rex
-      printf '%s\n' backend-dispatch
-      ;;
-    bin/backends/tern*|tests/tern-test-safety.sh)
-      printf '%s\n' tern
-      printf '%s\n' backend-dispatch
-      ;;
-    bin/backends/hc.sh|bin/fm-hc-lab.sh|tests/hc-test-safety.sh)
-      printf '%s\n' hc
-      printf '%s\n' backend-dispatch
-      printf '%s\n' "__script__:fm-backend-hc-liveness-live-e2e.test.sh"
-      ;;
-    bin/fm-install-hc.sh|bin/fm-hc-ci-cleanup.sh)
-      printf '%s\n' pure-contract-unit
-      # Pin or cleanup changes also select the hc family so the real lane's
-      # coverage re-runs, mirroring the real-herdr-gated arm above.
-      printf '%s\n' hc
-      ;;
     bin/backends/orca*|bin/backends/tmux.sh)
       printf '%s\n' backend-dispatch
       printf '%s\n' orca
@@ -1664,7 +1595,6 @@ families_for_changed_path() {
       # reference scan, which widens to each referencing suite's WHOLE family -
       # and these suites sit in several different families, so that pulls in
       # dozens of suites with nothing to do with the module.
-      printf '%s\n' __script__:fm-backend-paseo.test.sh
       printf '%s\n' __script__:fm-branch-supervision.test.sh
       printf '%s\n' __script__:fm-wake-queue.test.sh
       printf '%s\n' __script__:fm-supervision-host.test.sh
@@ -1725,11 +1655,9 @@ families_for_changed_path() {
     bin/fm-nm-run-lib.sh)
       # Shared no-mistakes run-attribution primitives, sourced by
       # bin/fm-crew-state.sh (pure-contract-unit), bin/fm-teardown.sh's
-      # pre-teardown run abort (pr-forge), and bin/fm-rex-marks.sh's
-      # validation progress (rex).
+      # pre-teardown run abort (pr-forge).
       printf '%s\n' pure-contract-unit
       printf '%s\n' pr-forge
-      printf '%s\n' rex
       ;;
     bin/fm-control-lib.sh)
       printf '%s\n' backend-dispatch

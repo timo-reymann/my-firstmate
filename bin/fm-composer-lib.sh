@@ -3,7 +3,7 @@
 # every shape a verified harness draws, every glyph, every container proof, and
 # the empty|pending|pending-unproven|unknown verdict, shared by every
 # session-provider adapter (tmux via bin/fm-tmux-lib.sh, and
-# bin/backends/{herdr,orca,cmux,zellij,tern}.sh) and by fm-spawn.sh's kimi
+# bin/backends/{herdr,orca}.sh) and by fm-spawn.sh's kimi
 # launch-readiness check.
 #
 # WHY THIS EXISTS (tasks fm-composer-shellglyph-safety and
@@ -23,7 +23,7 @@
 # judged; they never change what the shapes ARE:
 #   styled=1    the capture preserves ANSI styling, so ghost/placeholder text
 #               is detectable and can be stripped (tmux -e, herdr --format
-#               ansi, zellij dump-screen --ansi). With styled=0 (cmux, orca, tern)
+#               ansi). With styled=0 (orca)
 #               ghost text is unreadable, so a bare glyph row or left-bar row
 #               carrying trailing non-idle text degrades to `unknown` rather
 #               than `pending`: the text may be the harness's own idle
@@ -254,8 +254,7 @@ fm_composer_kiro_scope() {
 
 # fm_composer_strip_ghost: the ONE fleet-wide ANSI-aware extractor of "real typed
 # content" from a captured, styled composer row. Reads the styled line on stdin
-# (from `tmux capture-pane -e`, `herdr pane read --format ansi`, or
-# `zellij action dump-screen --ansi`) and prints the
+# (from `tmux capture-pane -e` or `herdr pane read --format ansi`) and prints the
 # plain, non-ghost text on stdout, dropping:
 #   - dim/faint runs (SGR 2): how claude and codex render ghost/suggestion text.
 #     A reset (SGR 0) or normal-intensity (SGR 22) ends a dim run.
@@ -441,8 +440,8 @@ fm_composer_strip_ghost() {
 # These live here, in the ONE shared composer/delivery owner, rather than in any
 # single backend adapter, because every backend needs them for the SAME job:
 # proving a submitted Enter actually landed. Keeping them in bin/fm-tmux-lib.sh
-# made cursor's signature reachable only from tmux, even though herdr, zellij,
-# cmux, orca, and tern run the same harnesses and face the same acknowledgement
+# made cursor's signature reachable only from tmux, even though herdr
+# and orca run the same harnesses and face the same acknowledgement
 # problem.
 #
 # This is a DELIVERY guard, deliberately NOT a worker-state source. The semantic
@@ -1637,8 +1636,8 @@ _fm_composer_leftbar_cwd_start() {  # <screen> <first-row> <last-row>
 # separators at 111;110;105, luminances 119.8 and 109.7 against the 128
 # ghost threshold. fm_composer_strip_ghost exists to answer "what did the human
 # type?", so it deleted exactly the cells that identify the footer, the
-# column-zero anchor became unreachable on every styled backend (tmux, Herdr,
-# Zellij - which is all of them, since the unstyled row keeps its styling
+# column-zero anchor became unreachable on every styled backend (tmux and Herdr -
+# which is all of them, since the unstyled row keeps its styling
 # bytes), and a real idle composer read `pending`: the verdict that refuses
 # every send, restart, and shutdown and skips every steer doorbell. Proving the
 # furniture on the row ghost stripping cannot reach is the fix. What makes that
@@ -2062,7 +2061,7 @@ EOF
     # A styled agent-glyph placeholder disappears above when ghost stripping
     # proves it is furniture. If the same placeholder-looking bytes survive
     # styling, they are real user input and must remain in the extracted content
-    # (the zellij paste proof depends on observing exactly what was typed).
+    # (paste proofs depend on observing exactly what was typed).
     # OpenCode's left-bar hint and legacy shell-glyph boxed placeholders have no
     # such styling proof, so their structurally fixed positions remain the two
     # idle-regex exceptions here.
@@ -2308,7 +2307,7 @@ EOF
 }
 
 # fm_composer_submit_retry_core: the ONE verify-and-retry-Enter submit loop
-# for the cursor-less backends (cmux, orca, zellij, tern), parameterised by the
+# for the cursor-less backends (orca), parameterised by the
 # adapter's send-key and composer-state functions. The caller has already
 # typed the text ONCE (send_literal) and settled; this loop submits with
 # Enter, re-reading the composer verdict, and retries Enter ONLY - never

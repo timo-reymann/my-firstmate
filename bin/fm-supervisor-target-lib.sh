@@ -21,11 +21,6 @@
 FM_SUPERVISOR_TARGET_DEFAULT="firstmate:0"
 FM_SUPERVISOR_BACKEND_DEFAULT="tmux"
 
-# fm_supervisor_in_rex: this process runs directly inside a Rex block.
-fm_supervisor_in_rex() {
-  [ "${TERM_PROGRAM:-}" = rex ] && [ -n "${REX_SESSION:-}" ] && [ -n "${REX_BLOCK:-}" ]
-}
-
 # discover_supervisor_target: resolve the endpoint running firstmate. Priority:
 #   1. FM_SUPERVISOR_TARGET env (explicit override) - uses the exact tmux target
 #      forms owned by bin/fm-backend.sh's fm_backend_target_exists header, a
@@ -39,20 +34,7 @@ fm_supervisor_in_rex() {
 #      fm_backend_herdr_session) and $HERDR_PANE_ID. Checked after $TMUX_PANE so a
 #      tmux pane nested inside herdr still resolves to tmux, matching
 #      fm_backend_detect's innermost-first rule.
-#   4. TERM_PROGRAM=rex + $REX_SESSION + $REX_BLOCK - Rex injects them into every
-#      block's process tree; compose the "<session-uuid>:<block-uuid>" target
-#      bin/backends/rex.sh records (both ids without their kind prefix).
-#      Checked after tmux and herdr, whose nested panes rewrite TERM_PROGRAM.
-#   4c. $HC_TERMINAL_ID + $HC_TERMINAL_SOCKET - the core's own marker pair for
-#      a process running inside an hc (herdr-core) terminal, including the
-#      Herdr app's terminals; compose the "<session>:<terminal-address>"
-#      target bin/backends/hc.sh records in meta's window= (session from
-#      $HC_SESSION, defaulting to "default"). Checked after tmux, herdr, and
-#      Rex, whose nested surfaces carry their own innermost markers. The away
-#      daemon does not support hc endpoints yet - resolving one here lets the
-#      supported-backend check fail loudly instead of silently mis-targeting
-#      the tmux fallback.
-#   4d. The live T3 thread running in this home (discover_supervisor_t3code_thread)
+#   4. The live T3 thread running in this home (discover_supervisor_t3code_thread)
 #      - T3 puts nothing into the agent's environment, so this is a cwd match
 #      over T3's live threads, consulted only when t3code is explicitly
 #      selected and a T3 credential is configured.
@@ -70,14 +52,6 @@ discover_supervisor_target() {
   fi
   if [ "${HERDR_ENV:-}" = "1" ] && [ -n "${HERDR_PANE_ID:-}" ]; then
     printf '%s:%s' "${HERDR_SESSION:-default}" "$HERDR_PANE_ID"
-    return 0
-  fi
-  if fm_supervisor_in_rex; then
-    printf '%s:%s' "${REX_SESSION#session:}" "${REX_BLOCK#block:}"
-    return 0
-  fi
-  if [ -n "${HC_TERMINAL_ID:-}" ] && [ -n "${HC_TERMINAL_SOCKET:-}" ]; then
-    printf '%s:%s' "${HC_SESSION:-default}" "$HC_TERMINAL_ID"
     return 0
   fi
   if t3_thread=$(discover_supervisor_t3code_thread); then
@@ -106,16 +80,12 @@ discover_supervisor_t3code_thread() {
 
 # discover_supervisor_backend: resolve the supervisor endpoint's BACKEND, independent
 # of the target string so an explicit FM_SUPERVISOR_TARGET override still knows
-# which primitives (tmux, herdr, rex, or t3code) to dispatch through. Priority mirrors
+# which primitives (tmux, herdr, or t3code) to dispatch through. Priority mirrors
 # discover_supervisor_target and bin/fm-backend.sh's fm_backend_detect:
 #   1. FM_SUPERVISOR_BACKEND env (explicit override).
 #   2. $TMUX_PANE set - tmux.
 #   3. $HERDR_ENV=1 (with $HERDR_PANE_ID present) - herdr.
-#   4. TERM_PROGRAM=rex (with $REX_SESSION and $REX_BLOCK present) - rex.
-#   4c. $HC_TERMINAL_ID (with $HC_TERMINAL_SOCKET present) - hc. The away
-#      daemon refuses hc today; resolving it here fails closed at the
-#      supported-backend check instead of steering tmux's firstmate:0.
-#   4d. A live T3 thread in this home - t3code (stderr quiet here; the target
+#   4. A live T3 thread in this home - t3code (stderr quiet here; the target
 #      resolver reports an ambiguity once).
 #   5. FM_SUPERVISOR_BACKEND_DEFAULT (tmux) - matches the target fallback. Returns 1.
 discover_supervisor_backend() {
@@ -129,14 +99,6 @@ discover_supervisor_backend() {
   fi
   if [ "${HERDR_ENV:-}" = "1" ] && [ -n "${HERDR_PANE_ID:-}" ]; then
     printf 'herdr'
-    return 0
-  fi
-  if fm_supervisor_in_rex; then
-    printf 'rex'
-    return 0
-  fi
-  if [ -n "${HC_TERMINAL_ID:-}" ] && [ -n "${HC_TERMINAL_SOCKET:-}" ]; then
-    printf 'hc'
     return 0
   fi
   if discover_supervisor_t3code_thread >/dev/null 2>&1; then

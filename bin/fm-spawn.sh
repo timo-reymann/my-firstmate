@@ -124,31 +124,18 @@
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then
 #   config/backend, then runtime auto-detection from the runtime firstmate's
-#   environment: $TMUX, HERDR_ENV=1, TERM_PROGRAM=rex with REX_BLOCK, cmux
-#   runtime signals, or the Herdr app signals (via
-#   bin/fm-backend.sh's fm_backend_detect, with cmux fallback details in
-#   docs/cmux-backend.md and the app signals in docs/hc-backend.md),
-#   then tmux.
+#   environment: $TMUX or HERDR_ENV=1 (via bin/fm-backend.sh's
+#   fm_backend_detect), then tmux.
 #   Spawn-capable backends are the reference tmux adapter, verified herdr
-#   adapter, and experimental zellij, orca, cmux, paseo, rex, t3code, tern,
-#   and hc adapters. Orca owns both the task worktree and terminal, so ship/scout Orca
-#   spawns do not run treehouse get; cmux, paseo, rex, tern, and hc are session
-#   providers only, exactly like herdr/zellij, so they do. Auto-detected herdr
-#   and rex stay silent like tmux; auto-detected cmux and Herdr-app-driven hc
-#   print a loud stderr notice; zellij, orca, paseo, t3code, and tern are never
-#   auto-detected (the paseo and tern markers, like bare hc markers, leak into
-#   every descendant process). An app-detected hc also records its signal in
-#   meta's backend_detect= line.
+#   adapter, and experimental orca and t3code adapters. Orca owns both the task
+#   worktree and terminal, so ship/scout Orca spawns do not run treehouse get.
+#   Auto-detected herdr stays silent like tmux; orca and t3code are never
+#   auto-detected.
 #   Herdr leases its slot durably (treehouse get --lease) and moves the pane's
 #   top-level shell into it, because a restart restores that shell's cwd.
 #   codex-app is not a known backend yet; docs/codex-app-backend.md owns that
 #   blocked backend contract. Default tmux spawns do not write backend= to meta;
-#   absent backend= means tmux. Orca, cmux, paseo, tern, and hc do not support
-#   --secondmate spawns.
-#   A rex crewmate or scout opens one tab in the Rex session the launching
-#   firstmate runs in when it runs directly inside Rex, otherwise in its home's
-#   own Rex session; a --secondmate launch opens its tab in that secondmate
-#   home's own Rex session (bin/backends/rex.sh owns placement).
+#   absent backend= means tmux. Orca does not support --secondmate spawns.
 #   t3code is experimental (docs/t3code-backend.md): T3 Code
 #   owns the agent session, so the spawn leases a treehouse slot durably,
 #   launches a T3 thread on it, and sends the launch brief over T3's /mcp
@@ -390,11 +377,7 @@
 #   The fixed operational floor is HOME PATH USER LOGNAME SHELL TERM COLORTERM
 #   LANG LC_ALL LC_CTYPE TMPDIR TMP TEMP GOTMPDIR, plus backend identity/routing:
 #   TMUX TMUX_PANE HERDR_ENV HERDR_SESSION HERDR_SOCKET_PATH HERDR_PANE_ID
-#   CMUX_WORKSPACE_ID CMUX_SURFACE_ID CMUX_TAB_ID CMUX_PANEL_ID CMUX_SOCKET_PATH
-#   ZELLIJ ZELLIJ_SESSION_NAME ZELLIJ_PANE_ID FM_ZELLIJ_SESSION TERM_PROGRAM
-#   REX_SESSION REX_BLOCK REX_SERVER REX_BIN_DIR TERN_IDENTITY TERN_PANE
-#   TERN_PANE_SOCKET TERN_WINDOW_KEY TERN_WINDOW_SOCKET HC_SESSION
-#   HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE, plus the task
+#   TERM_PROGRAM, plus the task
 #   marker FM_TASK_ID that ship and scout panes receive above, plus the
 #   compact-adviser kill switch COMPACT_ADVISER_DISABLE, which the floor also
 #   pins to 1 with a literal assignment so it survives the cleared environment
@@ -1271,7 +1254,6 @@ fi
 spawn_remote_secondmate() {
   local id=$1 remote host root home harness positional model effort backend out rc meta tmp
   local remote_backend remote_target remote_harness remote_herdr_session registry_lock remote_lock remote_generation
-  local remote_rex_session_id remote_rex_server remote_rex_ok
   local remote_traceparent remote_recorded_traceparent sm_primary_head sync_out sync_rc account_config
   local -a launch_args
   id=${POS[0]:-}
@@ -1373,23 +1355,21 @@ spawn_remote_secondmate() {
   fi
   # A remote second mate runs only on a backend whose session-provider server
   # outlives every SSH connection that supervises it: herdr (its server belongs
-  # to the host's GUI login session) is the default; rex runs on the host's
-  # persistent personal rex server. Without an explicit selection a relaunch
-  # keeps the backend its record names, and a record written before rex
-  # existed names none, so it is herdr. bin/fm-remote-doctor.sh gates that host
-  # on the selected backend, and the remote home's config/backend never
-  # overrides the selection.
+  # to the host's GUI login session). Without an explicit selection a relaunch
+  # keeps the backend its record names, and a record that names none is herdr.
+  # bin/fm-remote-doctor.sh gates that host on the selected backend, and the
+  # remote home's config/backend never overrides the selection.
   backend=${BACKEND_ARG:-}
   if [ -z "$backend" ] && [ -f "$meta" ]; then
     backend=$(fm_meta_get "$meta" remote_backend)
   fi
   case "${backend:--}" in
   -) backend=herdr ;;
-  herdr | rex) ;;
+  herdr) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
-    echo "error: a remote secondmate runs only on the herdr or rex backend, not '$backend'" >&2
+    echo "error: a remote secondmate runs only on the herdr backend, not '$backend'" >&2
     return 1
     ;;
   esac
@@ -1505,8 +1485,6 @@ spawn_remote_secondmate() {
     return 1
   }
   remote_herdr_session=
-  remote_rex_session_id=
-  remote_rex_server=
   case "$remote_backend" in
     herdr)
       remote_herdr_session=$(printf '%s\n' "$out" | sed -n 's/^herdr_session=//p' | tail -1)
@@ -1515,26 +1493,6 @@ spawn_remote_secondmate() {
         fm_lock_release "$registry_lock" || true
         fm_lock_release "$SPAWN_TASK_LOCK" || true
         echo "error: remote launch returned Herdr session '${remote_herdr_session:-missing}', expected 'fm-remote' or a code-root-derived 'fm-remote-<id>'; preserving the remote route for reconciliation" >&2
-        return 1
-      fi
-      ;;
-    rex)
-      remote_rex_session_id=$(printf '%s\n' "$out" | sed -n 's/^rex_session_id=//p' | tail -1)
-      remote_rex_server=$(printf '%s\n' "$out" | sed -n 's/^rex_server=//p' | tail -1)
-      # The route must pin a host-local unix:// server and a
-      # <session-uuid>:<block-uuid> target whose session half is the reported
-      # session id; anything else is not an endpoint this contract launched.
-      remote_rex_ok=1
-      case "$remote_rex_server" in unix://*) ;; *) remote_rex_ok=0 ;; esac
-      case "$remote_rex_session_id" in session:?*) ;; *) remote_rex_ok=0 ;; esac
-      case "$remote_target" in "${remote_rex_session_id#session:}":?*) ;; *) remote_rex_ok=0 ;; esac
-      case "${remote_target%%:*}" in '' | *[!0-9a-f-]*) remote_rex_ok=0 ;; esac
-      case "${remote_target#*:}" in '' | *:* | *[!0-9a-f-]*) remote_rex_ok=0 ;; esac
-      if [ "$remote_rex_ok" -ne 1 ]; then
-        fm_lock_release "$remote_lock" || true
-        fm_lock_release "$registry_lock" || true
-        fm_lock_release "$SPAWN_TASK_LOCK" || true
-        echo "error: remote launch returned malformed Rex route metadata (session '${remote_rex_session_id:-missing}', server '${remote_rex_server:-missing}', target '${remote_target:-missing}'); preserving the remote route for reconciliation" >&2
         return 1
       fi
       ;;
@@ -1567,10 +1525,6 @@ spawn_remote_secondmate() {
     echo "remote_backend=$remote_backend"
     case "$remote_backend" in
       herdr) echo "remote_herdr_session=$remote_herdr_session" ;;
-      rex)
-        echo "remote_rex_session_id=$remote_rex_session_id"
-        echo "remote_rex_server=$remote_rex_server"
-        ;;
     esac
     echo "remote_target=$remote_target"
     [ -z "$remote_recorded_traceparent" ] || echo "traceparent=$remote_recorded_traceparent"
@@ -1861,7 +1815,6 @@ spawn_abort_cleanup() {
     if [ "$SPAWN_FRESH_ENDPOINT_OPENED" = 1 ] && [ "$SPAWN_LAUNCH_SENT" = 0 ] && [ -n "${T:-}" ]; then
       SPAWN_FRESH_ENDPOINT_OPENED=0
       local abort_tab_id=
-      [ "$BACKEND" != zellij ] || abort_tab_id=${ZELLIJ_TAB_ID:-}
       if fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
         SPAWN_ENDPOINT_CLOSED=1
       else
@@ -2304,10 +2257,7 @@ fi
 if [ "$RELAUNCH" -eq 0 ]; then
   if [ "$BACKEND_SET" -eq 1 ]; then
     BACKEND=$BACKEND_ARG
-    FM_BACKEND_DETECT_SIGNAL=""
   else
-    # Called directly so the one detection that chose BACKEND also leaves
-    # FM_BACKEND_DETECT_SIGNAL for the meta's backend_detect= line below.
     fm_backend_resolve
     BACKEND=$FM_BACKEND_RESOLVED
   fi
@@ -2317,26 +2267,7 @@ if [ "$RELAUNCH" -eq 0 ]; then
     echo "error: backend=orca does not support --secondmate spawns yet" >&2
     exit 1
   fi
-  if [ "$BACKEND" = cmux ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=cmux does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
-  if [ "$BACKEND" = paseo ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=paseo does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
-  if [ "$BACKEND" = tern ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=tern does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
-  if [ "$BACKEND" = hc ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=hc does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
   fm_backend_runtime_check "$BACKEND" || exit 1
-  if [ "$BACKEND" = rex ]; then
-    fm_backend_rex_local_server_ensure || exit 1
-  fi
   if [ "$BACKEND" = orca ]; then
     ORCA_LAUNCH_ENV_ENABLED=$(fm_config_source_present "$CONFIG/launch-env-tmux-session") || exit 1
     if [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then
@@ -2434,18 +2365,12 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # endpoint was DESTROYED" with "the endpoint is UNREACHABLE from here right
   # now", and an unreachable endpoint can still hold the live agent this
   # relaunch would duplicate. So absence is PROVEN before it may rebind, never
-  # inferred from a failed read - and only HERDR and REX can prove it:
+  # inferred from a failed read - and only HERDR can prove it:
   #   herdr - the recorded session's server is started, and the recorded pane is
   #           RE-READ through that session's own socket. `dead` means the pane
   #           survived the restart and is adopted after all; `alive` means the
   #           agent came back and refuses; only a second `missing` proves the
   #           pane itself did not survive.
-  #   rex   - the recorded block is re-read on the server the record names
-  #           (rex_server); Rex never reuses an id, so its structured
-  #           not-found there proves the block itself is gone. A Rex
-  #           `unreadable` is rechecked too, because a stopped Rex server
-  #           reads as unreachable to a read that never starts it
-  #           (fm_control_absence_recheck_applies owns that rule).
   #   tmux  - REFUSES, always. A task record carries no socket identity for its
   #           endpoint, and a server-wide inventory describes only the server
   #           this process addresses, so no read available here can tell "gone"
@@ -2570,12 +2495,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
     HERDR_WORKSPACE_ID=$(fm_meta_get "$RELAUNCH_META" herdr_workspace_id)
     HERDR_TAB_ID=$(fm_meta_get "$RELAUNCH_META" herdr_tab_id)
     HERDR_PANE_ID=$(fm_meta_get "$RELAUNCH_META" herdr_pane_id)
-  fi
-  if [ "$BACKEND" = rex ]; then
-    FM_REX_TASK_SESSION_ID=$(fm_meta_get "$RELAUNCH_META" rex_session_id)
-    FM_REX_TASK_WINDOW_ID=$(fm_meta_get "$RELAUNCH_META" rex_window_id)
-    FM_REX_TASK_BLOCK_ID=$(fm_meta_get "$RELAUNCH_META" rex_block_id)
-    FM_REX_TASK_SERVER=$(fm_meta_get "$RELAUNCH_META" rex_server)
   fi
   # With no explicit harness, a relaunch reuses the harness already recorded
   # for this task. It must NOT fall through to the fresh-spawn config
@@ -2957,15 +2876,15 @@ launch_template() {
   # spawn answers. The leading shell loop clears every foreign ORCA_*/FM_*
   # marker the pane actually carries at launch time (verified live: ORCA_*
   # values from the launching session's environment reach worker tool
-  # subprocesses through the pane), keeping the three launch-owned names
-  # (FM_TASK_ID, FM_TASK_INBOX, FM_ZELLIJ_SESSION) so the doorbell and backend
+  # subprocesses through the pane), keeping the two launch-owned names
+  # (FM_TASK_ID, FM_TASK_INBOX) so the doorbell and backend
   # plumbing keep working; the fixed `env -u` set clears every harness-identity
   # marker, because polytoken publishes none of its own and does not clear
   # inherited ones. There is no `__EFFORTFLAG__`: polytoken encodes reasoning
   # effort inside the model reference as `<model>(<effort>)`, so the effort
   # axis rides `__MODELFLAG__` after mapping to the nearest compatible
   # level in the installed model's selectable set.
-  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Command Code receives the typed launch envelope after -- as its initial
   # message. --yolo bypasses permission prompts, --trust skips the folder-trust
   # prompt of a fresh worktree, and --skip-onboarding skips taste onboarding.
@@ -3153,7 +3072,7 @@ if [ "$KIND" = secondmate ] && [ "$HARNESS" = rovo ]; then
 fi
 
 # Command Code's idle placeholder reads empty only with a Command Code pane
-# identity, which tmux and Herdr supply and zellij, cmux, orca, paseo, and tern do not, so
+# identity, which tmux and Herdr supply and orca does not, so
 # there the composer would never read empty and steering would stall.
 if [ "$HARNESS" = commandcode ] && [ "$BACKEND" != tmux ] && [ "$BACKEND" != herdr ]; then
   echo "error: commandcode is verified on the tmux and herdr backends only; backend=$BACKEND cannot prove its composer empty. Select backend tmux or herdr." >&2
@@ -3161,7 +3080,7 @@ if [ "$HARNESS" = commandcode ] && [ "$BACKEND" != tmux ] && [ "$BACKEND" != her
 fi
 
 # Cortex's titled composer box is proven only with a Cortex pane identity,
-# which tmux and Herdr supply and zellij, cmux, orca, paseo, rex, and t3code do not, so there the
+# which tmux and Herdr supply and orca and t3code do not, so there the
 # composer would never read empty and steering would stall.
 if [ "$HARNESS" = cortex ] && [ "$BACKEND" != tmux ] && [ "$BACKEND" != herdr ]; then
   echo "error: cortex is verified on the tmux and herdr backends only; backend=$BACKEND cannot prove its composer empty. Select backend tmux or herdr." >&2
@@ -4283,8 +4202,7 @@ BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 # PROJ_ABS can still carry a symlinked path component (e.g. macOS's /tmp ->
 # /private/tmp) when it came from the ship/scout branch's logical `pwd` above.
 # Every backend's own current-path read (tmux's pane_current_path, herdr's
-# foreground_cwd, tern's foreground cwd from `tern process`, zellij/cmux's
-# active pwd probe against the live shell) can report the OS-level,
+# foreground_cwd) can report the OS-level,
 # physically-resolved cwd, so comparing it against a
 # still-symlinked PROJ_ABS can misfire both ways: false-negative (the poll
 # below never notices the pane left the project) or false-positive (the
@@ -4688,48 +4606,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
     T=$RELAUNCH_TARGET
     WT_TARGET=$T
     SES=${T%%:*}
-  elif [ "$BACKEND" = rex ]; then
-    # The recorded endpoint is authoritatively gone, so there is nothing to
-    # adopt: create ONE fresh endpoint for the same task, opened directly in the
-    # recorded worktree. The record published below writes window= and the rex
-    # ids from these values, which is the whole rebind - the task id, brief,
-    # worktree, armed poll and status log are untouched.
-    #
-    # Rex reaches here only on a PROVEN-gone block: its never-reused ids
-    # answer a structured not-found from the server the record names
-    # (fm_control_endpoint_absence_verdict owns that argument). The tab is
-    # re-created in the RECORDED session while that session survives. A Rex
-    # session never survives its server, so when the session itself is gone
-    # the task goes where an ordinary spawn from this seat would put it; that
-    # is the reclaim that recovers a server restart. Both placements open the
-    # tab in reclaim mode, so a bare-shell husk an earlier refused reclaim left
-    # carrying this task's label is replaced rather than blocking every retry.
-    fm_backend_rex_container_ensure || exit 1
-    FM_REX_TASK_SERVER=$(fm_backend_rex_server_endpoint) || {
-      echo "error: could not read the Rex server endpoint to record for $W" >&2
-      exit 1
-    }
-    rex_rebind_status=0
-    REX_TASK_IDS=$(fm_backend_rex_create_task_in_session "$FM_REX_TASK_SESSION_ID" "$W" "$WT") \
-      || rex_rebind_status=$?
-    case "$rex_rebind_status" in
-      0) ;;
-      2) REX_TASK_IDS=$(fm_backend_rex_create_task "$W" "$WT" launcher-home reclaim) || exit 1 ;;
-      *)
-        echo "error: task $ID's endpoint could not be re-created in its recorded Rex session $FM_REX_TASK_SESSION_ID; see the refusal above for what failed" >&2
-        exit 1
-        ;;
-    esac
-    read -r FM_REX_TASK_SESSION_ID FM_REX_TASK_WINDOW_ID FM_REX_TASK_BLOCK_ID <<EOF
-$REX_TASK_IDS
-EOF
-    if [ -z "$FM_REX_TASK_SESSION_ID" ] || [ -z "$FM_REX_TASK_BLOCK_ID" ]; then
-      echo "error: rex did not return a session/block id for $W" >&2
-      exit 1
-    fi
-    T=$(fm_backend_rex_target "$FM_REX_TASK_SESSION_ID" "$FM_REX_TASK_BLOCK_ID")
-    SES=${T%%:*}
-    WT_TARGET=$T
   else
     # The recorded endpoint is authoritatively gone, so there is nothing to
     # adopt: create ONE fresh endpoint for the same task, opened directly in the
@@ -4739,8 +4615,8 @@ EOF
     #
     # Herdr reaches here only on a PROVEN-gone pane: its every read is scoped to
     # the session the record names (fm_control_endpoint_absence_verdict owns
-    # that argument). tmux and every secondmate were already refused, and rex
-    # took the branch above, so there is no dispatch left to make.
+    # that argument). tmux and every secondmate were already refused, so
+    # there is no dispatch left to make.
     #
     # This deliberately uses the FLAT container shape rather than Herdr's
     # presentation projection: projection is a presentation-only layout that is
@@ -4999,92 +4875,6 @@ EOF
     fi
     T="$HERDR_SES:$HERDR_PANE_ID"
     ;;
-  zellij)
-    ZELLIJ_SES=$(fm_backend_zellij_container_ensure) || exit 1
-    ZELLIJ_TASK_IDS=$(fm_backend_zellij_create_task "$ZELLIJ_SES" "$W" "$PROJ_ABS") || exit 1
-    read -r ZELLIJ_TAB_ID ZELLIJ_PANE_ID <<EOF
-$ZELLIJ_TASK_IDS
-EOF
-    if [ -z "$ZELLIJ_TAB_ID" ] || [ -z "$ZELLIJ_PANE_ID" ]; then
-      echo "error: zellij did not return a tab/pane id for $W" >&2
-      exit 1
-    fi
-    T="$ZELLIJ_SES:$ZELLIJ_PANE_ID"
-    ;;
-  cmux)
-    fm_backend_cmux_container_ensure || exit 1
-    CMUX_TASK_IDS=$(fm_backend_cmux_create_task "$W" "$PROJ_ABS") || exit 1
-    read -r CMUX_WORKSPACE_ID CMUX_SURFACE_ID <<EOF
-$CMUX_TASK_IDS
-EOF
-    if [ -z "$CMUX_WORKSPACE_ID" ] || [ -z "$CMUX_SURFACE_ID" ]; then
-      echo "error: cmux did not return a workspace/surface id for $W" >&2
-      exit 1
-    fi
-    T="$CMUX_WORKSPACE_ID:$CMUX_SURFACE_ID"
-    ;;
-  paseo)
-    fm_backend_paseo_container_ensure || exit 1
-    PASEO_TASK_IDS=$(fm_backend_paseo_create_task "$W" "$PROJ_ABS") || exit 1
-    read -r FM_PASEO_TASK_TERMINAL_ID FM_PASEO_TASK_WORKSPACE_ID <<EOF
-$PASEO_TASK_IDS
-EOF
-    if [ -z "$FM_PASEO_TASK_TERMINAL_ID" ] || [ -z "$FM_PASEO_TASK_WORKSPACE_ID" ]; then
-      echo "error: paseo did not return a terminal/workspace id for $W" >&2
-      exit 1
-    fi
-    T="$FM_PASEO_TASK_TERMINAL_ID:$FM_PASEO_TASK_WORKSPACE_ID"
-    ;;
-  rex)
-    # A --secondmate launch stands up the OTHER home's own Rex session, so it
-    # shadows FM_HOME for the session label exactly as herdr does; every other
-    # kind goes beside this launcher (bin/backends/rex.sh owns placement).
-    fm_backend_rex_container_ensure || exit 1
-    FM_REX_TASK_SERVER=$(fm_backend_rex_server_endpoint) || {
-      echo "error: could not read the Rex server endpoint to record for $W" >&2
-      exit 1
-    }
-    # The session lock follows the shadowed home too, so the secondmate's own
-    # cleanup serializes against this launch on the same lock file.
-    REX_LABEL_HOME=$FM_HOME
-    REX_LABEL_ROOT=$FM_ROOT
-    REX_LABEL_STATE=$STATE
-    REX_LAUNCHER_RELATIONSHIP=launcher-home
-    if [ "$KIND" = secondmate ]; then
-      REX_LABEL_HOME=$PROJ_ABS
-      REX_LABEL_ROOT=$PROJ_ABS
-      REX_LABEL_STATE=$PROJ_ABS/state
-      REX_LAUNCHER_RELATIONSHIP=other-home
-    fi
-    REX_TASK_IDS=$(FM_HOME="$REX_LABEL_HOME" FM_ROOT="$REX_LABEL_ROOT" STATE="$REX_LABEL_STATE" fm_backend_rex_create_task "$W" "$PROJ_ABS" "$REX_LAUNCHER_RELATIONSHIP") || exit 1
-    read -r FM_REX_TASK_SESSION_ID FM_REX_TASK_WINDOW_ID FM_REX_TASK_BLOCK_ID <<EOF
-$REX_TASK_IDS
-EOF
-    if [ -z "$FM_REX_TASK_SESSION_ID" ] || [ -z "$FM_REX_TASK_BLOCK_ID" ]; then
-      echo "error: rex did not return a session/block id for $W" >&2
-      exit 1
-    fi
-    T=$(fm_backend_rex_target "$FM_REX_TASK_SESSION_ID" "$FM_REX_TASK_BLOCK_ID")
-    ;;
-  tern)
-    TERN_SESSION_ID=$(fm_backend_tern_container_ensure) || exit 1
-    TERN_TASK_IDS=$(fm_backend_tern_create_task "$W" "$PROJ_ABS") || exit 1
-    read -r TERN_TAB_ID TERN_BLOCK_ID <<EOF
-$TERN_TASK_IDS
-EOF
-    if ! fm_backend_endpoint_u64_valid "$TERN_SESSION_ID" ||
-      ! fm_backend_endpoint_u64_valid "$TERN_TAB_ID" ||
-      ! fm_backend_endpoint_u64_valid "$TERN_BLOCK_ID"; then
-      echo "error: tern did not return a numeric session/tab/block id for $W" >&2
-      exit 1
-    fi
-    T="$TERN_SESSION_ID:$TERN_BLOCK_ID"
-    ;;
-  hc)
-    HC_SES=$(fm_backend_hc_container_ensure) || exit 1
-    HC_TERMINAL=$(fm_backend_hc_create_task "$HC_SES" "$W" "$PROJ_ABS") || exit 1
-    T="$HC_SES:$HC_TERMINAL"
-    ;;
   orca)
     set +e
     ORCA_WT_RAW=$(fm_backend_orca_worktree_create "$PROJ_ABS" "$W")
@@ -5199,64 +4989,30 @@ spawn_send_text_line() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_text_line "$1" "$2" ;;
   herdr) fm_backend_herdr_send_text_line "$1" "$2" ;;
-  zellij) fm_backend_zellij_send_text_line "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_text_line "$1" "$2" ;;
-  cmux) fm_backend_cmux_send_text_line "$1" "$2" "$W" ;;
-  paseo) fm_backend_paseo_send_text_line "$1" "$2" "$W" ;;
-  rex) fm_backend_rex_send_text_line "$1" "$2" "$W" ;;
   t3code) fm_backend_t3code_send_literal "$1" "$2" ;;
-  tern) fm_backend_tern_send_text_line "$1" "$2" "$W" ;;
-  hc) fm_backend_hc_send_text_line "$1" "$2" "$W" ;;
   esac
 }
 spawn_current_path() { # <target>
   case "$BACKEND" in
   tmux) fm_backend_tmux_current_path "$1" ;;
   herdr) fm_backend_herdr_current_path "$1" ;;
-  zellij) fm_backend_zellij_current_path "$1" "$W" ;;
-  cmux) fm_backend_cmux_current_path "$1" "$W" ;;
-  paseo) fm_backend_paseo_current_path "$1" "$W" ;;
-  rex) fm_backend_rex_current_path "$1" "$W" ;;
-  tern) fm_backend_tern_current_path "$1" "$W" ;;
-  hc) fm_backend_hc_current_path "$1" "$W" ;;
   esac
 }
 spawn_send_literal() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_literal "$1" "$2" ;;
   herdr) fm_backend_herdr_send_literal "$1" "$2" ;;
-  zellij) fm_backend_zellij_send_literal "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_literal "$1" "$2" ;;
-  cmux) fm_backend_cmux_send_literal "$1" "$2" "$W" ;;
-  paseo) fm_backend_paseo_send_literal "$1" "$2" "$W" ;;
-  rex) fm_backend_rex_send_literal "$1" "$2" "$W" ;;
   t3code) fm_backend_t3code_send_literal "$1" "$2" ;;
-  tern) fm_backend_tern_send_literal "$1" "$2" "$W" ;;
-  # hc has no paste without submit, and its keys cannot type the launch line's
-  # `+` or `_`, so the line is pasted and submitted here and the Enter that
-  # follows it is consumed below (docs/hc-backend.md "Limits").
-  hc) fm_backend_hc_send_text_line "$1" "$2" "$W" && SPAWN_HC_LINE_SUBMITTED=1 ;;
   esac
 }
-SPAWN_HC_LINE_SUBMITTED=0
 spawn_send_key() { # <target> <key>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_key "$1" "$2" ;;
   herdr) fm_backend_herdr_send_key "$1" "$2" ;;
-  zellij) fm_backend_zellij_send_key "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_key "$1" "$2" ;;
-  cmux) fm_backend_cmux_send_key "$1" "$2" "$W" ;;
-  paseo) fm_backend_paseo_send_key "$1" "$2" "$W" ;;
-  rex) fm_backend_rex_send_key "$1" "$2" "$W" ;;
   t3code) fm_backend_t3code_send_literal "$1" "$2" ;;
-  tern) fm_backend_tern_send_key "$1" "$2" "$W" ;;
-  hc)
-    if [ "$2" = Enter ] && [ "$SPAWN_HC_LINE_SUBMITTED" = 1 ]; then
-      SPAWN_HC_LINE_SUBMITTED=0
-    else
-      fm_backend_hc_send_key "$1" "$2" "$W"
-    fi
-    ;;
   esac
 }
 
@@ -5295,8 +5051,7 @@ spawn_enter_recorded_worktree() {
 }
 
 # Verify the endpoint's cwd after the explicit handoff but before any harness
-# starts. Zellij and cmux implement this read with a shell probe, so keeping it
-# before launch prevents the probe from becoming input to a live worker.
+# starts.
 spawn_assert_agent_worktree() {
   local expected seen i last_poll=19 agent_status
   [ "$KIND" = secondmate ] && return 0
@@ -5557,7 +5312,6 @@ rovo_endpoint_cleanup() {
     return 0
   fi
   local tab_id=
-  [ "$BACKEND" = zellij ] && tab_id=$ZELLIJ_TAB_ID
   fm_backend_kill "$BACKEND" "$T" "$tab_id" "fm-$ID" 2>/dev/null && SPAWN_ENDPOINT_CLOSED=1 || true
 }
 
@@ -5788,7 +5542,7 @@ elif [ "$RELAUNCH" -eq 1 ]; then
     sleep 0.5
   done
   if [ -z "$relaunch_seen" ] || [ "$(real_path_or_raw "$relaunch_seen")" != "$relaunch_wt_real" ]; then
-    if [ "$BACKEND" != herdr ] && [ "$BACKEND" != rex ]; then
+    if [ "$BACKEND" != herdr ]; then
       echo "error: task $ID's endpoint is in '${relaunch_seen:-unknown}', not its recorded worktree '$WT'; refusing to relaunch an agent outside the copy holding its work" >&2
       exit 1
     fi
@@ -6809,7 +6563,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness hermes_profile hermes_home kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
+      split("window endpoint_task_id worktree project harness hermes_profile hermes_home kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id orca_worktree_id terminal t3_thread_id t3_project_id home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -6856,53 +6610,19 @@ preserve_relaunch_meta() {
   # default path's meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).
   [ "$BACKEND" = tmux ] || echo "backend=$BACKEND"
-  # backend_detect= records which Herdr app signal auto-selected hc, so the
-  # task record carries the reason, not just the result. Every other
-  # selection (explicit, default, or another detected backend) writes none.
-  case "$BACKEND:${FM_BACKEND_DETECT_SIGNAL:-}" in
-    hc:app-terminal) echo "backend_detect=$FM_BACKEND_DETECT_SIGNAL" ;;
-  esac
   if [ "$BACKEND" = herdr ]; then
     echo "herdr_session=$HERDR_SES"
     echo "herdr_workspace_id=$HERDR_WORKSPACE_ID"
     echo "herdr_tab_id=$HERDR_TAB_ID"
     echo "herdr_pane_id=$HERDR_PANE_ID"
   fi
-  if [ "$BACKEND" = zellij ]; then
-    echo "zellij_session=$ZELLIJ_SES"
-    echo "zellij_tab_id=$ZELLIJ_TAB_ID"
-    echo "zellij_pane_id=$ZELLIJ_PANE_ID"
-  fi
   if [ "$BACKEND" = orca ]; then
     echo "orca_worktree_id=$ORCA_WORKTREE_ID"
     echo "terminal=$ORCA_TERMINAL"
   fi
-  if [ "$BACKEND" = cmux ]; then
-    echo "cmux_workspace_id=$CMUX_WORKSPACE_ID"
-    echo "cmux_surface_id=$CMUX_SURFACE_ID"
-  fi
-  if [ "$BACKEND" = paseo ]; then
-    echo "paseo_terminal_id=$FM_PASEO_TASK_TERMINAL_ID"
-    echo "paseo_workspace_id=$FM_PASEO_TASK_WORKSPACE_ID"
-  fi
-  if [ "$BACKEND" = rex ]; then
-    echo "rex_server=$FM_REX_TASK_SERVER"
-    echo "rex_session_id=$FM_REX_TASK_SESSION_ID"
-    echo "rex_window_id=$FM_REX_TASK_WINDOW_ID"
-    echo "rex_block_id=$FM_REX_TASK_BLOCK_ID"
-  fi
   if [ "$BACKEND" = t3code ]; then
     echo "t3_thread_id=$T"
     echo "t3_project_id=$T3CODE_PROJECT_ID"
-  fi
-  if [ "$BACKEND" = tern ]; then
-    echo "tern_session_id=$TERN_SESSION_ID"
-    echo "tern_tab_id=$TERN_TAB_ID"
-    echo "tern_block_id=$TERN_BLOCK_ID"
-  fi
-  if [ "$BACKEND" = hc ]; then
-    echo "hc_session=$HC_SES"
-    echo "hc_terminal=$HC_TERMINAL"
   fi
   if [ "$KIND" = secondmate ]; then
     echo "home=$PROJ_ABS"
@@ -7410,11 +7130,7 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
   # authoritative setter.
   for env_name in HOME PATH USER LOGNAME SHELL TERM COLORTERM LANG LC_ALL LC_CTYPE \
     TMPDIR TMP TEMP GOTMPDIR TMUX TMUX_PANE HERDR_ENV HERDR_SESSION HERDR_SOCKET_PATH \
-    HERDR_PANE_ID CMUX_WORKSPACE_ID CMUX_SURFACE_ID CMUX_TAB_ID CMUX_PANEL_ID \
-    CMUX_SOCKET_PATH ZELLIJ ZELLIJ_SESSION_NAME ZELLIJ_PANE_ID FM_ZELLIJ_SESSION \
-    TERM_PROGRAM REX_SESSION REX_BLOCK REX_SERVER REX_BIN_DIR \
-    TERN_IDENTITY TERN_PANE TERN_PANE_SOCKET TERN_WINDOW_KEY TERN_WINDOW_SOCKET \
-    HC_SESSION HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE \
+    HERDR_PANE_ID TERM_PROGRAM \
     FM_TASK_ID COMPACT_ADVISER_DISABLE LAVISH_AXI_HOST \
     $LAUNCH_ENV_FORWARD_NAMES; do
     if [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then

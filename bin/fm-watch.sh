@@ -3482,7 +3482,7 @@ heartbeat_scan_finds_actionable() {
 }
 
 # event_wait_or_sleep: the terminal wait of each supervision cycle. For a home
-# with push-capable windows (herdr, rex), it replaces the blind `sleep POLL` with a
+# with push-capable windows (herdr, t3code), it replaces the blind `sleep POLL` with a
 # bounded wait on the backend's native transition stream, so a crew going
 # `blocked` wakes the supervisor sub-second instead of after the stale-pane
 # wedge timer. For every other home - no push-capable window, backend not
@@ -3512,7 +3512,7 @@ event_wait_or_sleep() {
     session=${w%%:*}
     if [ -z "$first_backend" ]; then first_backend=$b; first_session=$session; fi
     # One socket connection covers one backend+session; a home normally has a
-    # single herdr or rex session. A window in a different backend/session stays on the
+    # single herdr session. A window in a different backend/session stays on the
     # poll path this cycle.
     if [ "$b" != "$first_backend" ] || [ "$session" != "$first_session" ]; then
       continue
@@ -3994,14 +3994,6 @@ while :; do
   # Opt-in Herdr project groups (docs/herdr-backend.md "Project groups"):
   # display-only tags and agents view, never a wake. Off costs one file test.
   [ ! -e "$CONFIG/herdr-project-groups" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-herdr-groups.sh" sync || true
-  # Opt-in Rex attention marks, validation progress, and tint (docs/rex-backend.md
-  # "Attention marks"): display and desktop notification only, never a wake.
-  # Off (no config file and no cached record) costs two file tests and a glob.
-  if [ -e "$CONFIG/rex-status-marks" ] || [ -e "$CONFIG/rex-tint" ] \
-    || compgen -G "$STATE/.rex-mark-*" >/dev/null || compgen -G "$STATE/.rex-progress-*" >/dev/null \
-    || compgen -G "$STATE/.rex-tint-*" >/dev/null; then
-    FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-rex-marks.sh" sync >/dev/null 2>&1 || true
-  fi
 
   if [ "$(age_of "$STATE/home-summary.json")" -ge "$HOME_SUMMARY_INTERVAL" ]; then
     home_summary_refresh_detached
@@ -4482,7 +4474,7 @@ EOF
     ewf="$STATE/.wedge-escalations-$key"
     pf="$STATE/.paused-$key"   # flag: this key's stale is using the bounded pause cadence
     prev=$(cat "$hf" 2>/dev/null || true)
-    # Busy match: a backend's native semantic state when available (herdr, rex), else
+    # Busy match: a backend's native semantic state when available (herdr), else
     # the last 6 non-blank lines only (the TUI footer area, where every verified
     # harness renders its busy indicator) so busy-looking strings in displayed
     # content cannot suppress stale detection. Read once per window per poll and
@@ -4798,7 +4790,7 @@ EOF
     fi
   fi
 
-  # Terminal wait: a bounded native-event wait for push-capable homes (herdr, rex),
+  # Terminal wait: a bounded native-event wait for push-capable homes (herdr, t3code),
   # else the blind poll sleep. See event_wait_or_sleep.
   event_wait_or_sleep
 done
