@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Behavior tests for the contrib launchers: the agent choice of contrib/firstmate in dry-run mode,
-# and the fleet view contrib/firstmate-herdr puts in the right pane, driven against a fake herdr.
+# and the three-pane layout contrib/firstmate-herdr builds, driven against a fake herdr.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -104,7 +104,7 @@ test_invalid_agent_is_refused() {
   pass "an unsupported agent is refused with a message naming claude and opencode"
 }
 
-# fake_herdr: a herdr that answers the launcher's calls and logs every pane command to $HERDR_LOG.
+# fake_herdr: a herdr that answers the launcher's calls, numbers new panes p2, p3, ..., and logs every call to $HERDR_LOG.
 fake_herdr() {
   cat > "$FAKEBIN/herdr" <<'EOF'
 #!/usr/bin/env bash
@@ -114,47 +114,62 @@ case "$1 ${2:-}" in
   "status --json") echo '{"server":{"running":true}}' ;;
   "workspace list") echo '{"result":{"workspaces":[]}}' ;;
   "workspace create") echo '{"result":{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"p1"}}}' ;;
-  "pane split") echo '{"result":{"pane":{"pane_id":"p2"}}}' ;;
+  "pane split")
+    n=$(($(grep -c '^pane split' "$HERDR_LOG") + 1))
+    printf '{"result":{"pane":{"pane_id":"p%s"}}}\n' "$n" ;;
   *) echo '{}' ;;
 esac
 EOF
   chmod +x "$FAKEBIN/herdr"
 }
 
-# herdr_view [VAR=value...]: builds the layout with --no-attach; sets VIEW to the right pane's command.
-herdr_view() {
+# herdr_layout [VAR=value...] [-- args...]: builds the layout with --no-attach; sets OUT, RC and LOG.
+herdr_layout() {
+  local -a vars=()
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do vars+=("$1"); shift; done
+  [ $# -eq 0 ] || shift
   export HERDR_LOG="$TMP_ROOT/herdr.log"
   : > "$HERDR_LOG"
-  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" "$@" \
-    bash "$HERDR_LAUNCHER" --no-attach 2>&1)
+  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" ${vars[@]+"${vars[@]}"} \
+    bash "$HERDR_LAUNCHER" --no-attach "$@" 2>&1)
   RC=$?
-  VIEW=$(sed -n 's/^pane run p2 clear; //p' "$HERDR_LOG")
+  LOG=$(cat "$HERDR_LOG")
 }
 
-test_herdr_chooses_tui_or_bash() {
+test_herdr_builds_three_panes() {
+  local tui="$FAKEBIN/uv run --script $ROOT/contrib/firstmate-tui"
   fake_herdr
-  herdr_view
-  [ "$RC" -eq 0 ] || fail "no uv exit $RC: $OUT"
-  assert_contains "$VIEW" "/firstmate-fleet" "no uv falls back to the bash view"
   fm_fake_exit0 "$FAKEBIN" uv
-  herdr_view
-  [ "$RC" -eq 0 ] || fail "uv exit $RC: $OUT"
-  assert_contains "$VIEW" "$FAKEBIN/uv run --script $ROOT/contrib/firstmate-tui" "uv picks the TUI"
-  assert_contains "$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")" "/firstmate" "first mate runs on the left"
-  herdr_view FIRSTMATE_FLEET_VIEW=bash
-  assert_contains "$VIEW" "/firstmate-fleet" "override bash"
-  herdr_view FLEET_BIN=/opt/fleet-view
-  assert_contains "$VIEW" "/opt/fleet-view" "an explicit FLEET_BIN keeps the bash view"
-  herdr_view FLEET_BIN=/opt/fleet-view FIRSTMATE_FLEET_VIEW=tui
-  assert_contains "$VIEW" "firstmate-tui" "override tui beats FLEET_BIN"
-  herdr_view FIRSTMATE_FLEET_VIEW=gui
-  [ "$RC" -ne 0 ] || fail "invalid view accepted"
-  assert_contains "$OUT" "FIRSTMATE_FLEET_VIEW must be tui or bash" "invalid view message"
+  herdr_layout
+  [ "$RC" -eq 0 ] || fail "layout exit $RC: $OUT"
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.28 --no-focus" "activity split"
+  assert_contains "$LOG" "pane swap --source-pane p1 --target-pane p2" "activity moves to the top"
+  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.6 --no-focus" "workers split"
+  assert_contains "$LOG" "pane rename p2 firstmate-activity" "activity label"
+  assert_contains "$LOG" "pane rename p3 firstmate-workers" "workers label"
+  assert_contains "$(sed -n 's/^pane run p2 clear; //p' "$HERDR_LOG")" "$tui --pane activity" "activity pane"
+  assert_contains "$(sed -n 's/^pane run p3 clear; //p' "$HERDR_LOG")" "$tui --pane workers" "workers pane"
+  assert_contains "$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")" "$ROOT/contrib/firstmate" "first mate bottom left"
+  assert_not_contains "$LOG" "tab rename" "worker tabs keep their labels"
+  herdr_layout -- --ratio 0.7 --activity-ratio 0.2
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.2 --no-focus" "--activity-ratio"
+  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.7 --no-focus" "--ratio"
+  herdr_layout FM_HERDR_SESSION=lab
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.28 --no-focus --session lab" "named session"
+  OUT=$(bash "$HERDR_LAUNCHER" --help 2>&1)
+  assert_contains "$OUT" "--activity-ratio SHARE" "help names --activity-ratio"
+  pass "firstmate-herdr puts the activity across the top, the first mate bottom left and the workers bottom right"
+}
+
+test_herdr_needs_uv() {
+  fake_herdr
   rm -f "$FAKEBIN/uv"
-  herdr_view FIRSTMATE_FLEET_VIEW=tui
-  [ "$RC" -ne 0 ] || fail "tui without uv accepted"
-  assert_contains "$OUT" "needs uv on PATH" "tui without uv message"
-  pass "firstmate-herdr runs the TUI when uv is on PATH, else the bash view, with FIRSTMATE_FLEET_VIEW as override"
+  herdr_layout
+  [ "$RC" -ne 0 ] || fail "no uv accepted: $OUT"
+  assert_contains "$OUT" "needs uv on PATH" "no uv message"
+  assert_contains "$OUT" "https://docs.astral.sh/uv/" "install hint"
+  assert_not_contains "$LOG" "pane split" "no layout without uv"
+  pass "firstmate-herdr stops with an install hint when uv is missing"
 }
 
 fm_test_run \
@@ -162,4 +177,5 @@ fm_test_run \
   test_env_selects_opencode_and_resume \
   test_file_selects_agent_and_env_wins \
   test_invalid_agent_is_refused \
-  test_herdr_chooses_tui_or_bash
+  test_herdr_builds_three_panes \
+  test_herdr_needs_uv
