@@ -299,3 +299,8 @@ bin/fm-test-isolation-proof.sh --pool watcher-wake-lock --jobs 4
 Run a family proof on an otherwise idle host.
 Families recorded above have failed on elapsed-time assertions rather than on shared state, and this harness deliberately never retries a failure into green, so a proof taken on a busy machine can only refuse a family it might have admitted.
 When such a failure turns out to be the assertion timing itself rather than contention, fix the assertion so it decides on an observed condition instead of a wall clock, and re-run: `session-bootstrap` was admitted that way, from proofs taken on a host that was not idle.
+
+## 2026-11-18 removal of six runtime backends
+
+The cmux, hc, paseo, rex, tern, and zellij suites and the `cmux`, `zellij`, `paseo`, `rex`, `tern`, and `hc` families no longer exist.
+Proof records above that name a removed suite are historical, and `bin/fm-test-isolation-proof.sh` no longer lists those suites as serial-class exclusions.
