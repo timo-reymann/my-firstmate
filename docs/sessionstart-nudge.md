@@ -27,7 +27,7 @@ The tier is a property of the harness surface, not of the home.
 | Tier | What the adapter does | Used by |
 | --- | --- | --- |
 | Run | Executes `bin/fm-session-start.sh` through the native session-open adapter and gates its ordered digest into model context before the first turn. | Claude, `codex exec`, verified native Codex TUI, Pi / pi-signed, omp, Cursor, Antigravity (agy) |
-| Nudge | Asks the agent to run the digest through the native adapter or the tracked session-start instruction. | Grok, OpenCode, and run-tier sources routed to the nudge |
+| Nudge | Asks the agent to run the digest through the native adapter or the tracked session-start instruction. | OpenCode and run-tier sources routed to the nudge |
 
 Codex's interactive TUI has verified session-open delivery only on the native version selected by `bin/fm-codex-stop-park.sh`; its compaction and re-emit surfaces remain unverified.
 
@@ -40,7 +40,6 @@ Codex's interactive TUI has verified session-open delivery only on the native ve
 | Codex interactive TUI | Run on the verified native version; otherwise uncovered | [Codex interactive TUI](#codex-interactive-tui) |
 | Pi / pi-signed | Run | [Pi and pi-signed](#pi-and-pi-signed) |
 | OpenCode | Nudge | [OpenCode](#opencode) |
-| Grok | Nudge | [Grok](#grok) |
 | Cursor | Run | [Cursor](#cursor) |
 | omp | Run | [omp](#omp) |
 | Antigravity (agy) | Run | [Antigravity (agy)](#antigravity-agy) |
@@ -329,18 +328,6 @@ That early exit is also why OpenCode cannot use the run tier.
 The OpenCode nudge runs only on `session.created`.
 The watcher-arm and turn-end plugins run later, on the terminal `session.execution.succeeded`, `session.execution.failed`, and `session.execution.interrupted` events in OpenCode 2, or `session.idle` in OpenCode 1.
 The guard lets the watcher coordinator act first, so the plugins do not race for one lifecycle event.
-
-### Grok
-
-Grok is a nudge-tier harness.
-`.grok/hooks/fm-primary-sessionstart-nudge.json` registers a project `SessionStart` hook and invokes the wrapper through inline-defaulted `${GROK_WORKSPACE_ROOT:-}`.
-The project hook runs when the checkout is trusted.
-Grok currently discards hook stdout from model context.
-So this path is intentionally fail-open and cannot use the run tier.
-
-Grok's guaranteed-loading alternative is a global token-guarded hook like the pattern used by `bin/fm-spawn.sh`.
-That alternative expands trust and writes outside this repository.
-So Firstmate never installs it or grants folder trust automatically.
 
 ### Cursor
 

@@ -20,15 +20,15 @@ An arm owner is the component in each primary harness that starts watcher cycles
 
 ## Scope today
 
-The host runs by default on a Claude primary and is opt-in per home on the other six primaries it supports; [configuration.md](configuration.md#supervision-host-configsupervision-host) owns the home gate and inherited opt-out.
+The host runs by default on a Claude primary and is opt-in per home on the other five primaries it supports; [configuration.md](configuration.md#supervision-host-configsupervision-host) owns the home gate and inherited opt-out.
 A home that does not run the host behaves exactly as it does without it.
-Today it runs beside a Claude, Cursor, OpenCode, omp, Grok, Codex, or Antigravity (`agy`) primary: away on all seven, and attended on Claude and Cursor, the primaries with a verified [dialog mirror](#the-dialog-mirror).
+Today it runs beside a Claude, Cursor, OpenCode, omp, Codex, or Antigravity (`agy`) primary: away on all six, and attended on Claude and Cursor, the primaries with a verified [dialog mirror](#the-dialog-mirror).
 
 ### Behavior by posture and harness
 
 - Attended (no away record: no `state/.afk-contract`, or quiet mode's) on Claude and Cursor, the engine takes the wakes the Pi branch would take and never wakes main for a routine outcome; see [Postures](#postures).
   Every other close reaches main exactly as the plain watcher arm delivers it.
-- Attended on OpenCode, omp, Grok, Codex, and agy, the host is a pass-through: every close reaches main as without the host.
+- Attended on OpenCode, omp, Codex, and agy, the host is a pass-through: every close reaches main as without the host.
 - Away (an away record exists), the host hands each close to the engine.
   Main stays parked unless the host hands the wake back.
 - `/afk` launches no away daemon on a home of those harnesses that runs the host, because the host is the away session there.
@@ -39,7 +39,7 @@ Today it runs beside a Claude, Cursor, OpenCode, omp, Grok, Codex, or Antigravit
 
 ### Not yet on the host
 
-Attended supervision beside a Codex primary, running the host by default on the other six primaries, and the daemon's retirement are later steps of the same design.
+Attended supervision beside a Codex primary, running the host by default on the other five primaries, and the daemon's retirement are later steps of the same design.
 Until they land, their current behavior stays as described in their own owners.
 
 ## Components and their owners
@@ -71,17 +71,13 @@ The host's header owns the output contract they read.
 | Cursor | the `stop` hook park, `bin/fm-turnend-guard-cursor.sh` | the park's `watcher` follow-up |
 | OpenCode | the TUI plugin, `.opencode/plugins/fm-primary-watch-arm.js`, which restarts its own successor after each close | a `watcher` prompt through `ctx.session.prompt` |
 | omp | the watch extension, `.omp/extensions/fm-primary-omp-watch.ts`, which restarts its own successor after each close | the extension's `watcher` follow-up |
-| Grok | the model's tracked background call, rendered as `bin/fm-supervision-host.sh park` at session start | the background task's completion notification |
 | Codex | the foreground checkpoint, `bin/fm-watch-checkpoint.sh`, or the native Stop park on a home that [opts in](configuration.md#codex-native-stop-park-configcodex-stop-park) | checkpoint output, or the native thread queue; see [the Codex protocol](supervision-protocols/codex.md) |
 | Antigravity (`agy`) | the Stop-hook park, `bin/fm-turnend-guard-agy.sh` | the park's `watcher` follow-up |
 
 Hook, plugin, extension, and checkpoint owners pass their harness as the primary pin.
-Grok's model-owned call relies on primary detection.
 The host pins dispatched work to the primary's crew harness rather than the engine's.
 
-Grok's arm command is fixed when the session-start block renders.
-So adding or removing the file on a Grok home takes effect at the next session start.
-The other owners read the file at every arm.
+Every arm owner reads the file at every arm.
 
 ### The report surface
 
@@ -160,7 +156,7 @@ A captain prompt whose hook write fails is not mirrored, so the engine may judge
 
 Claude and Cursor have writers, proven against the real harness to record the session's dialog from its first captain prompt, so only they run the attended posture.
 Codex has no verified dialog-mirror writer yet, including on its native Stop-park path, so attended host handling remains pass-through.
-Grok and OpenCode have no writer, because their session takes the fleet lock during its first turn, so that turn's captain prompt could never be recorded.
+OpenCode has no writer, because its session takes the fleet lock during its first turn, so that turn's captain prompt could never be recorded.
 omp has no verified writer, because no omp was available to prove one against.
 
 ## One wake
@@ -307,7 +303,7 @@ So it never stops the owner's host or watcher or releases its leases.
 ### A host that dies without a close
 
 The host's owner retries it.
-Grok's model and Codex's checkpoint see it as a failed cycle and start the next one.
+Codex's checkpoint sees it as a failed cycle and starts the next one.
 The native Codex park reports the failure through its queue delivery and bounded retry owner.
 Before it arms, the next host does two things:
 
@@ -326,7 +322,7 @@ But a host absorbs its own wakes, so it ends its park itself before that registr
 
 `FM_SUPERVISION_HOST_PARK_SECONDS` sets that boundary (default 27,000).
 A value that is not a positive integer below 28,800 is treated as the default.
-The OpenCode, omp, and Grok owners have no hook timeout and keep the same default, so their parks end on the same cadence.
+The OpenCode and omp owners have no hook timeout and keep the same default, so their parks end on the same cadence.
 
 ### At the boundary
 
@@ -338,7 +334,6 @@ Main drains and acknowledges, and the owner starts the next park:
 |---|---|
 | Claude and Cursor | At the next turn end. |
 | OpenCode and omp | At once. |
-| Grok | At the model's re-arm. |
 
 The host checks the boundary on every loop pass, so closes that are already waiting cannot carry it past the boundary.
 It also starts no engine turn that could still be running at the boundary (the turn bound plus the engine grace).
@@ -443,8 +438,8 @@ Such a process is never recorded and survives the turn, the same residual `bin/f
 The default model is `sonnet`, which handled every measured wake correctly at a fraction of a larger model's cost.
 `config/supervision-host` can name another.
 
-The Claude engine runs beside any of the seven primaries, but only a Claude primary selects it by default when the host is enabled, even with no file.
-A Cursor, OpenCode, omp, Grok, Codex, or agy home names it (`claude`, optionally with a model) in `config/supervision-host`.
+The Claude engine runs beside any of the six primaries, but only a Claude primary selects it by default when the host is enabled, even with no file.
+A Cursor, OpenCode, omp, Codex, or agy home names it (`claude`, optionally with a model) in `config/supervision-host`.
 `/afk` there says so when the file selects no engine.
 
 ## Verification
@@ -462,7 +457,7 @@ Each arm owner's own suite covers its host mode against a stub host.
 | `tests/fm-pi-watch-extension.test.sh` | The OpenCode plugin's host mode against a stub host. |
 | `tests/fm-omp-harness.test.sh` | The omp arm owner's host mode against a stub host. |
 | `tests/fm-watch-checkpoint.test.sh` | The Codex checkpoint's host mode against a stub host. |
-| `tests/fm-supervision-instructions.test.sh` | The rendered protocol, including Grok's arm command. |
+| `tests/fm-supervision-instructions.test.sh` | The rendered protocol. |
 | `tests/fm-host-mirror.test.sh` | The dialog mirror's writers through the tracked Claude and Cursor registrations, the home gate, the feed, and the verified-writer list. |
 | `tests/fm-afk-launch.test.sh` | The home gate on each primary, the `/afk` daemon refusal, and `/quiet` on a home that runs the host: the statement, the paused statement, each named missing part, the quiet daemon fallback that carries its recorded mode, a failed quiet start that archives its quiet record, and the refusal under a live away record until the return. |
 | `tests/fm-afk-return.test.sh` | The return's drain-owned read-cursor advance through the away window on a host home, and none on Pi. |
