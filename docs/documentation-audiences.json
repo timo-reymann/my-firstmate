@@ -299,6 +299,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/readme-reminder.md",
+      "audience": "maintainer-architecture"
+    },
+    {
       "path": "docs/calm.md",
       "audience": "operator-current"
     },
