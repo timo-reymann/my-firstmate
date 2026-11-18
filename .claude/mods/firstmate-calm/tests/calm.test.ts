@@ -44,13 +44,11 @@ describe("activation", () => {
     expect(drawings.every(isStock)).toBe(true);
     await clock.advance(220 * 16);
     expect(journal.commands).toHaveLength(0);
-    expect(journal.blits).toHaveLength(0);
     expect(journal.invalidations).toHaveLength(0);
     expect(journal.toasts).toHaveLength(0);
     expect(journal.fsReads).toHaveLength(0);
     expect(journal.logs).toHaveLength(0);
     expect(journal.sessionMessageReads).toBe(0);
-    expect(journal.configLists).toBe(0);
   }
 
   test("is fully inert when the function-hooks opt-in is absent", async ($, on) => {
@@ -62,7 +60,7 @@ describe("activation", () => {
   });
 
   test("registers /calm at session start and stays a pass-through while off", async ($, on) => {
-    const { clock, journal } = world(on);
+    const { journal } = world(on);
     await $.session.start(sessionStart);
     expect(journal.commands).toEqual(["calm"]);
     expect(isStock(await $.ui.render(spinner()))).toBe(true);
@@ -71,8 +69,6 @@ describe("activation", () => {
     expect(isStock(await $.ui.render(toolGroup()))).toBe(true);
     expect(isStock(await $.ui.render(userMessage(operational("watcher", "signal: x"))))).toBe(true);
     expect(isStock(await $.ui.render(assistantMessage("hello")))).toBe(true);
-    await clock.advance(220 * 8);
-    expect(journal.blits).toHaveLength(0);
     expect(journal.toasts).toHaveLength(0);
   });
 

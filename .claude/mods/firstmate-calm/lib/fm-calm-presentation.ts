@@ -2,9 +2,9 @@
 //
 // This module owns the decisions ../hooks/register.ts applies through `$`: where the
 // shared per-home Calm preference lives and how its value reads, which assistant text is
-// a mid-turn working note, and which transcript rows Calm hides. It shares Pi Calm's
-// broad presentation boundary: genuine user prompts, genuine agent responses, and
-// working activity stay visible; tool rows, tool groups, classified working notes, and
+// a mid-turn working note, and which transcript rows Calm hides. Its presentation
+// boundary: genuine user prompts, genuine agent responses, and working activity stay
+// visible; tool rows, tool groups, classified working notes, and
 // canonically classified operational user rows hide, including a record-backed doorbell
 // once the caller has read the record it names. docs/calm.md owns the exact
 // captain-facing contract and docs/configuration.md
@@ -46,7 +46,7 @@ export function calmCodeRootFromPluginRoot(pluginRoot: string): string {
 }
 
 /**
- * The per-home `config/calm` path, resolved exactly as the Pi extension resolves it:
+ * The per-home `config/calm` path:
  * `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root, with
  * `FM_CONFIG_OVERRIDE` naming the config directory outright when present.
  */
@@ -67,7 +67,7 @@ export function parseCalmPreference(stored: string | undefined): boolean {
   return value === "on" || value === "max";
 }
 
-/** The exact file content the Pi extension writes for the same choice. */
+/** The exact file content written for a choice. */
 export function serializeCalmPreference(active: boolean): string {
   return active ? "on\n" : "off\n";
 }

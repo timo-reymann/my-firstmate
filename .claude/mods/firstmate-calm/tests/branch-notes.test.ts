@@ -138,7 +138,7 @@ describe("supervision notes", () => {
     expect(journal.logs).toHaveLength(1);
   });
 
-  test("a latch trip and its recovery each write Pi's health note, and a new session key alone writes none", async ($, on) => {
+  test("a latch trip and its recovery each write its health note, and a new session key alone writes none", async ($, on) => {
     const { clock, files, journal } = world(on);
     files.set(HEALTH, health("s1", 0));
     await $.session.start(sessionStart);

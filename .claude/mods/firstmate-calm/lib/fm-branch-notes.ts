@@ -1,9 +1,8 @@
 // Firstmate supervision notes for the Claude Code mod, kept free of the engine.
 //
-// Pi renders each supervision outcome in the transcript: a sailboat note for a visible
-// routine outcome and a sequence-keyed anchor entry for a captain outcome
-// (.pi/extensions/fm-branch-supervision.ts). This module owns the same lines for
-// Claude Code, read from the display tail copy of the one outcome store
+// Each supervision outcome renders as one transcript line: a sailboat note for a visible
+// routine outcome and a sequence-keyed anchor entry for a captain outcome. This module
+// owns those lines for Claude Code, read from the display tail copy of the one outcome store
 // (bin/fm-branch-outcome.sh owns every file format read here) and from the supervision
 // host's latch (bin/fm-supervision-host.sh). It only renders: nothing here marks an
 // outcome read or processed. Everything is pure so tests run it under Node.
@@ -31,7 +30,7 @@ export type OutcomeRow = {
   readonly silent: boolean;
 };
 
-/** The home's state directory, resolved as the Pi extension resolves it. */
+/** The home's state directory, resolved as bin/fm-host-dispatch.mjs resolves it. */
 export function firstmateStateDirectory(env: FirstmateStateEnvironment, pluginRoot: string): string {
   return env.FM_STATE_OVERRIDE || `${env.FM_HOME || env.FM_ROOT_OVERRIDE || calmCodeRootFromPluginRoot(pluginRoot)}/state`;
 }
@@ -72,7 +71,7 @@ export function parseOutcomeMarker(text: string | undefined): number {
   return /^(0|[1-9][0-9]*)$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : 0;
 }
 
-/** Pi's transcript line for one row, on one line; a silent row has none. */
+/** The transcript line for one row, on one line; a silent row has none. */
 export function outcomeNoteLine(row: OutcomeRow): string | undefined {
   if (row.silent) return undefined;
   const summary = row.summary.replace(/\s*\n\s*/g, " ");
@@ -82,7 +81,7 @@ export function outcomeNoteLine(row: OutcomeRow): string | undefined {
 }
 
 /**
- * The session-start replay, as Pi's startup replay presents the store: every captain row
+ * The session-start replay of the store: every captain row
  * main has not acknowledged as processed and every unread visible routine row, bounded
  * to the newest few with one line counting any that were left out. Rows through
  * `shownThrough` are already in this session's restored transcript and are skipped,
@@ -154,7 +153,7 @@ export function parseHostHealth(text: string | undefined): HostHealth | undefine
   return { key, cooling: /^[0-9]+$/.test(cooldown) && Number(cooldown) > 0 };
 }
 
-/** The note a latch change owes, as Pi's two health notes: a trip, or a recovery under the same key. */
+/** The note a latch change owes, one of two health notes: a trip, or a recovery under the same key. */
 export function hostHealthNote(previous: HostHealth | undefined, next: HostHealth | undefined): string | undefined {
   if (next === undefined) return undefined;
   const wasCooling = previous !== undefined && previous.key === next.key && previous.cooling;

@@ -3,7 +3,7 @@
 // Each test mocks the world beneath the plugin noun by noun: the environment that
 // names the Firstmate home, an in-memory file system for the per-home preference, the
 // engine's own draw for every component the mod passes through, and a journal of every
-// call the mod makes on `$` (blits, toasts, redraws, transcript lines, the command it
+// call the mod makes on `$` (toasts, redraws, transcript lines, the command it
 // registers).
 import type { On, SessionMessage } from "claude-code";
 import { mock, type MockClock } from "claude-code/testing";
@@ -18,16 +18,12 @@ export type Journal = {
   toasts: string[];
   /** Every `$.ui.invalidate` event, in order. */
   invalidations: string[];
-  /** Every `$.ui.blit`, as `{ requestId, key, columns, rows, cells }`. */
-  blits: { requestId: string; key: string; columns?: number; rows?: number; cells: string }[];
   /** Which components reached the engine's own drawing, in order. */
   stock: string[];
   /** Preference reads that reached the mocked filesystem. */
   fsReads: string[];
   /** Number of transcript reads that reached the mocked session. */
   sessionMessageReads: number;
-  /** Number of `/config` listings that reached the mocked menu. */
-  configLists: number;
   /** Every `$.ui.log` line, in order. */
   logs: string[];
 };
@@ -38,8 +34,6 @@ export type World = {
   /** A file's modification time, overriding the default stamp derived from its content. */
   mtimes: Map<string, number>;
   journal: Journal;
-  /** Set to deny every `$.ui.blit` from now on, as an unmounted site does. */
-  denyBlits: (reason: string | undefined) => void;
   /** Set to reject every `$.fs.write` from now on. */
   failWrites: (reason: string | undefined) => void;
   /** Set the id `$.session.id()` answers from now on, as a new or resumed session has. */
@@ -57,8 +51,6 @@ export type WorldOptions = {
   home?: string | undefined;
   /** What `$.session.messages()` answers. */
   messages?: readonly { role: "user" | "assistant"; text: string; toolUses: readonly unknown[] }[];
-  /** The `theme` row's value as `$.config.list()` reports it; omitted means `dark`. */
-  theme?: unknown;
 };
 
 /** The engine's own drawing, as the bottom of every `ui.render` chain. */
@@ -82,15 +74,11 @@ export function world(on: On, options: WorldOptions = {}): World {
     commands: [],
     toasts: [],
     invalidations: [],
-    blits: [],
     stock: [],
     fsReads: [],
     sessionMessageReads: 0,
-    configLists: 0,
     logs: [],
   };
-  let theme: unknown = "theme" in options ? options.theme : "dark";
-  let blitDenial: string | undefined;
   let writeFailure: string | undefined;
 
   on("fs.read", async (_$, e) => {
@@ -128,37 +116,12 @@ export function world(on: On, options: WorldOptions = {}): World {
     journal.invalidations.push(e.event);
     return { value: undefined };
   });
-  on("ui.blit", async (_$, e) => {
-    journal.blits.push({ requestId: e.requestId, key: e.key, columns: e.columns, rows: e.rows, cells: e.cells });
-    return { value: blitDenial === undefined ? {} : { deny: blitDenial } };
-  });
   on("session.messages", async () => {
     journal.sessionMessageReads += 1;
     return { value: [...(options.messages ?? [])] as SessionMessage[] };
   });
   on("session.start", async (_$, e) => ({ cwd: e.cwd }));
   on("session.id", async () => ({ value: sessionId }));
-  on("config.list", async () => {
-    journal.configLists += 1;
-    return {
-      value: [
-        {
-          key: "theme",
-          label: "Theme",
-          kind: "choice",
-          value: theme as never,
-          options: ["auto", "dark", "light", "light-daltonized", "dark-daltonized", "light-ansi", "dark-ansi"],
-          provider: { plugin: "engine", tier: "core" },
-          isLocked: false,
-        },
-      ],
-    };
-  });
-  // The menu writes the row: the value lands for later listings and the hook above sees it.
-  on("config.set", async (_$, e) => {
-    if (e.key === "theme") theme = e.value;
-    return { value: e.value };
-  });
   on("ui.render", async (_$, e) => {
     journal.stock.push(e.component);
     return { type: "Text", props: {}, children: [STOCK_TEXT] };
@@ -169,9 +132,6 @@ export function world(on: On, options: WorldOptions = {}): World {
     files,
     mtimes,
     journal,
-    denyBlits: (reason) => {
-      blitDenial = reason;
-    },
     failWrites: (reason) => {
       writeFailure = reason;
     },
@@ -189,16 +149,6 @@ export function spinner(requestId = "agent-main", viewport: { columns: number; r
     component: "Spinner" as const,
     requestId,
     viewport,
-    props: { word: "Sauteing", message: null, mode: "requesting" as const },
-  };
-}
-
-/** A Spinner drawing before any surface has measured: no viewport at all. */
-export function unmeasuredSpinner(requestId = "agent-main") {
-  return {
-    surface: "terminal" as const,
-    component: "Spinner" as const,
-    requestId,
     props: { word: "Sauteing", message: null, mode: "requesting" as const },
   };
 }
@@ -272,83 +222,6 @@ export function isStock(tree: unknown): boolean {
   return JSON.stringify(tree).includes(STOCK_TEXT);
 }
 
-function drawingNodes(tree: unknown): unknown[] {
-  const seen: unknown[] = [tree];
-  const nodes: unknown[] = [];
-  while (seen.length > 0) {
-    const node = seen.pop();
-    if (node === null || typeof node !== "object") continue;
-    nodes.push(node);
-    const element = node as { props?: Record<string, unknown>; children?: unknown };
-    if (Array.isArray(element.children)) seen.push(...element.children);
-    else if (element.children !== undefined) seen.push(element.children);
-    if (element.props !== undefined && "children" in element.props) seen.push(element.props.children);
-  }
-  return nodes;
-}
-
-/** The Box wrapping a Spinner Raster, or undefined when the drawing has none. */
-export function boxOf(tree: unknown): { props?: Record<string, unknown> } | undefined {
-  for (const node of drawingNodes(tree)) {
-    const element = node as { type?: unknown; props?: Record<string, unknown> };
-    if (element.type === "Box" && element.props !== undefined && rasterOf(element) !== undefined) {
-      return element;
-    }
-  }
-  return undefined;
-}
-
-/** The Raster element inside a Spinner drawing, or undefined when the drawing has none. */
-export function rasterOf(tree: unknown): { columns: number; rows: number; cells: string; key: string } | undefined {
-  for (const node of drawingNodes(tree)) {
-    const element = node as { type?: unknown; props?: Record<string, unknown> };
-    if (element.type === "Raster" && element.props !== undefined) {
-      return element.props as { columns: number; rows: number; cells: string; key: string };
-    }
-  }
-  return undefined;
-}
-
-const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/** Decode packed cells back into rows of glyphs and foregrounds, the way the surface reads them. */
-export function decodeCells(cells: string, columns: number, rows: number): { glyphs: string[]; foregrounds: number[][]; backgrounds: number[][] } {
-  const clean = cells.replace(/=+$/, "");
-  const bytes: number[] = [];
-  let buffer = 0;
-  let bits = 0;
-  for (const char of clean) {
-    buffer = (buffer << 6) | BASE64.indexOf(char);
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes.push((buffer >> bits) & 0xff);
-    }
-  }
-  const words = new Uint32Array(new Uint8Array(bytes).buffer);
-  if (words.length !== columns * rows * 3) {
-    throw new Error(`cells decode to ${words.length} words, not ${columns * rows * 3}`);
-  }
-  const glyphs: string[] = [];
-  const foregrounds: number[][] = [];
-  const backgrounds: number[][] = [];
-  for (let row = 0; row < rows; row += 1) {
-    let text = "";
-    const fg: number[] = [];
-    const bg: number[] = [];
-    for (let column = 0; column < columns; column += 1) {
-      const offset = (row * columns + column) * 3;
-      text += String.fromCodePoint(words[offset]!);
-      fg.push(words[offset + 1]!);
-      bg.push(words[offset + 2]!);
-    }
-    glyphs.push(text);
-    foregrounds.push(fg);
-    backgrounds.push(bg);
-  }
-  return { glyphs, foregrounds, backgrounds };
-}
-
 /** The exact current operational envelope for one kind, as bin/fm-operational-input.sh encodes it. */
 export function operational(kind: string, body: string): string {
   return `\u2063FIRSTMATE_OP: v1 ${kind}: ${body}`;
@@ -362,15 +235,4 @@ export function doorbell(record: string): string {
 /** The established from-firstmate routing carrier. */
 export function fromFirstmate(body: string): string {
   return `[fm-from-firstmate]\u2063${body}`;
-}
-
-/** A `config.set` of the `theme` row from the `/config` menu, as the engine raises it. */
-export function themeChange(value: string, previous: string) {
-  return {
-    key: "theme",
-    value,
-    previous,
-    provider: { plugin: "engine", tier: "core" as const },
-    origin: { kind: "composer" as const },
-  };
 }

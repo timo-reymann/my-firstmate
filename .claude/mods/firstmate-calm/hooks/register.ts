@@ -8,26 +8,20 @@
 // command below exists only once this module has registered it. docs/calm.md owns the
 // captain-facing contract and docs/calm-mode-feasibility.md the version-scoped evidence.
 //
-// This file is the only place the engine interface `$` is touched: the geometry lives
-// in ../lib/fm-calm-working-ship-sprite.ts (shared with the Pi extension), the Raster
-// packing in ../lib/fm-calm-ship-raster.ts, and every visibility decision in
-// ../lib/fm-calm-presentation.ts, so the policy is testable under Node and the engine
+// This file is the only place the engine interface `$` is touched: every visibility
+// decision lives in ../lib/fm-calm-presentation.ts, so the policy is testable under Node and the engine
 // glue under `claude plugin test`. Nothing here rewrites a message: `ui.render` changes
 // drawings and leaves the stored transcript, model context, and session storage alone.
 //
-// Presentation while Calm is on, sharing Pi Calm's goals where the mods API allows:
-// the stock working row (`Spinner`) becomes the two-row sailboat, repainted through
-// `$.ui.blit` on the sprite's own tick; `ToolUse`, `ToolResult`, and `ToolGroup` rows
-// draw as zero-height boxes; a `UserMessage` whose text the canonical operational-input
+// Presentation while Calm is on: the stock working row (`Spinner`) stays the engine's
+// own; `ToolUse`, `ToolResult`, and `ToolGroup` rows draw as zero-height boxes; a `UserMessage` whose text the canonical operational-input
 // classifier recognizes, or a record-backed doorbell whose record holds a current
 // envelope (read through `$.fs.read`, cached until Calm next invalidates its drawings),
 // draws as zero height; an `AssistantMessage` block recorded as a mid-turn working note
 // draws as zero height. Calm off returns every drawing to the
 // engine. A toggle invalidates every hooked drawing, so rows already on screen redraw.
-// The boat is painted in Claude Code's own theme colors: the family is read from the
-// `theme` setting at load and re-read when a `config.set` changes it.
 //
-// Supervision notes, whether Calm is on or off, as Pi shows them regardless of Calm: a
+// Supervision notes, whether Calm is on or off: a
 // slow timer follows the outcome store's display tail copy and the supervision host's
 // latch, and `$.ui.log` appends one dim line per new outcome or latch change, never
 // sent to the model. The first tail copy a session sees, at `session.start` or later,
@@ -41,18 +35,6 @@
 // the per-home preference and restored working notes rather than trusting a stale "off".
 // Each `session.start` clears presentation classifications and reloads the new session.
 import type { EngineInterface, Register, RenderElement, RenderInput } from "claude-code";
-import {
-  CALM_WORKING_SHIP_TICK_MS,
-  createCalmWorkingShipSprite,
-} from "../lib/fm-calm-working-ship-sprite.ts";
-import {
-  CALM_SHIP_RASTER_KEY,
-  CALM_SHIP_RASTER_PALETTES,
-  calmShipPaletteFamily,
-  calmShipRasterColumns,
-  packCalmShipRasterCells,
-  type CalmShipRasterPalette,
-} from "../lib/fm-calm-ship-raster.ts";
 import {
   calmPreferencePath,
   parseCalmPreference,
@@ -77,26 +59,19 @@ import {
   type HostHealth,
 } from "../lib/fm-branch-notes.ts";
 
-/** The slash command the mod serves, the same name as Pi's `/calm`. */
+/** The slash command the mod serves. */
 const CALM_COMMAND = "calm";
 
-// One module environment holds one Calm state; a hot reload starts a fresh one, the
-// same as a new Pi extension lifetime.
+// One module environment holds one Calm state; a hot reload starts a fresh one.
 let calm = false;
 let preferencePath: string | undefined;
 let activation: Promise<boolean> | undefined;
 let loading: Promise<void> | undefined;
-let ticker: { cancel(): void } | undefined;
 const workingNotes = new Set<string>();
 const finalReplies = new Set<string>();
 // Each doorbell's record verdict, by record path. Records are immutable once published
 // but pruned after seven days, so every invalidation drops the cache and rechecks.
 const doorbellVerdicts = new Map<string, Promise<boolean>>();
-const sprite = createCalmWorkingShipSprite();
-let palette: CalmShipRasterPalette = CALM_SHIP_RASTER_PALETTES.light;
-// Every Spinner site currently drawing the boat, by its requestId, with the mounted
-// Raster size a blit must repeat exactly.
-const sites = new Map<string, { columns: number; rows: number }>();
 /** How often the supervision notes check the store's tail copy and the host's latch. */
 const BRANCH_NOTES_POLL_MS = 3000;
 /**
@@ -148,15 +123,6 @@ async function readText($: EngineInterface, path: string): Promise<string | unde
   }
 }
 
-/** The `theme` setting's current value, or undefined when the menu cannot be read. */
-async function readTheme($: EngineInterface): Promise<unknown> {
-  try {
-    return (await $.config.list()).find((row) => row.key === "theme")?.value;
-  } catch {
-    return undefined;
-  }
-}
-
 async function load($: EngineInterface): Promise<void> {
   preferencePath = calmPreferencePath(
     {
@@ -167,18 +133,12 @@ async function load($: EngineInterface): Promise<void> {
     $.plugin.root,
   );
   calm = parseCalmPreference(await readText($, preferencePath));
-  palette = CALM_SHIP_RASTER_PALETTES[calmShipPaletteFamily(await readTheme($))];
   try {
     const restored = classifyRestoredTranscript(await $.session.messages());
     for (const note of restored.workingNotes) workingNotes.add(note);
     for (const reply of restored.finalReplies) finalReplies.add(reply);
   } catch {
     // A transcript that cannot be read leaves restored narration visible; nothing else changes.
-  }
-  if (ticker === undefined) {
-    ticker = $.clock.every(CALM_WORKING_SHIP_TICK_MS, () => {
-      void repaintShip($);
-    });
   }
   invalidateDrawings($);
 }
@@ -196,9 +156,6 @@ async function resetSession($: EngineInterface): Promise<void> {
   workingNotes.clear();
   finalReplies.clear();
   doorbellVerdicts.clear();
-  sites.clear();
-  sprite.reset();
-  palette = CALM_SHIP_RASTER_PALETTES.light;
   await ensureLoaded($);
 }
 
@@ -206,25 +163,6 @@ async function resetSession($: EngineInterface): Promise<void> {
 function invalidateDrawings($: EngineInterface): void {
   doorbellVerdicts.clear();
   $.ui.invalidate("ui.render");
-}
-
-/** One scheduler tick: advance the sprite, then repaint every mounted boat in place. */
-async function repaintShip($: EngineInterface): Promise<void> {
-  if (!calm || sites.size === 0) return;
-  sprite.tick();
-  for (const [requestId, site] of sites) {
-    const packed = packCalmShipRasterCells(sprite.frame(site.columns), site.columns, palette);
-    const result = await $.ui.blit({
-      requestId,
-      key: CALM_SHIP_RASTER_KEY,
-      cells: packed.cells,
-      columns: site.columns,
-      rows: site.rows,
-    });
-    // A denied blit means the site no longer shows this plugin's Raster (the turn
-    // settled, or a resize redrew it); forget it until the next Spinner drawing.
-    if (result.deny !== undefined && sites.get(requestId) === site) sites.delete(requestId);
-  }
 }
 
 /** Whether a user row is a record-backed doorbell whose record holds a current envelope. */
@@ -376,7 +314,7 @@ export const register: Register = (on) => {
     await startNotes($).catch(() => undefined);
     await $.command.register({
       name: CALM_COMMAND,
-      description: "Toggle Firstmate's Calm transcript presentation and working ship.",
+      description: "Toggle Firstmate's Calm transcript presentation.",
     });
     return next(e);
   });
@@ -395,25 +333,10 @@ export const register: Register = (on) => {
       return {};
     }
     calm = active;
-    if (!calm) sites.clear();
     invalidateDrawings($);
     $.ui.toast(active ? "Calm on" : "Calm off");
-    // No `text`: the toggle leaves no output row in the transcript, as on Pi.
+    // No `text`: the toggle leaves no output row in the transcript.
     return {};
-  });
-
-  // Follow a theme change: the next drawing and every later blit use the new family.
-  on("config.set", { key: "theme" }, async ($, e, next) => {
-    if (!(await isActivated($))) return next(e);
-    const result = await next(e);
-    if (result.deny === undefined) {
-      const chosen = CALM_SHIP_RASTER_PALETTES[calmShipPaletteFamily(result.value)];
-      if (chosen !== palette) {
-        palette = chosen;
-        if (calm) invalidateDrawings($);
-      }
-    }
-    return result;
   });
 
   // Record mid-turn narration as it streams: the text blocks of a model step that
@@ -451,25 +374,6 @@ export const register: Register = (on) => {
       if (changed && calm) invalidateDrawings($);
     }
     return result;
-  });
-
-  on("ui.render", { component: "Spinner" }, async ($, e, next) => {
-    if (!(await isActivated($))) return next(e);
-    await ensureLoaded($);
-    if (!calm || e.surface !== "terminal") {
-      sites.delete(e.requestId);
-      return next(e);
-    }
-    const columns = calmShipRasterColumns(e.viewport?.columns);
-    const packed = packCalmShipRasterCells(sprite.frame(columns), columns, palette);
-    sites.set(e.requestId, { columns, rows: packed.rows });
-    const { Box, Raster } = $.ui.resolve(e);
-    // One blank row above the boat keeps its sail off the highlighted prompt, since Calm hides the rows between.
-    return Box({
-      flexDirection: "column",
-      paddingTop: 1,
-      children: Raster({ key: CALM_SHIP_RASTER_KEY, columns, rows: packed.rows, cells: packed.cells }),
-    });
   });
 
   on("ui.render", { component: "ToolUse" }, async ($, e, next) => {
