@@ -135,6 +135,33 @@ assert tui.cell_width("日本") == 4
   pass "every state has its own symbol, and the palette maps to 16 and 8 colours and both themes"
 }
 
+test_stale_head_worker_needs_you_without_reading_blocked() {
+  py '
+import json
+row = lambda i, state, hints: {"id": i, "kind": "ship", "project": "api",
+    "current_state": {"state": state}, "pr": {"url": None}, "hints": hints}
+text = json.dumps({"tasks": [
+    row("busy", "working", {}),
+    row("rebased", "stale-head", {"pending_decision": False, "blocked_event": False}),
+    row("stuck", "blocked", {"pending_decision": False, "blocked_event": True}),
+]})
+workers = tui.build_workers(tui.parse_snapshot(text)["tasks"], [], {})
+states = {w["id"]: w["state"] for w in workers}
+assert states == {"busy": "working", "rebased": "stale-head", "stuck": "blocked"}, states
+rebased = [w for w in workers if w["id"] == "rebased"][0]
+assert rebased["needs"] and rebased["unread"] and rebased["rank"] == 1
+assert [w["id"] for w in workers] == ["rebased", "stuck", "busy"], [w["id"] for w in workers]
+assert tui.STATES["stale-head"][0] not in [tui.STATES[s][0] for s in tui.STATES if s != "stale-head"]
+wide = tui.worker_row(rebased, 46, False, tui.task_column(workers, 46)).plain()
+assert "⟳" in wide and "new head" in wide and "blocked" not in wide, wide
+live = [line.plain() for line in tui.live_box(60, 8, rebased, None, "")]
+assert any("head changed after approval" in line for line in live), live
+plain = [line.plain() for line in tui.live_box(60, 8, workers[1], None, "")]
+assert not any("head changed" in line for line in plain), plain
+' || fail "stale-head worker"
+  pass "a stale-head worker shows its own needs-you badge and hint, not blocked"
+}
+
 test_workers_sorting_labels_and_read_marks() {
   local snap
   snap=$(make_home "$TMP_ROOT/parse")
@@ -507,6 +534,7 @@ fm_test_run \
   test_ledger_parser_tolerates_bad_input \
   test_ledger_file_partial_tail_and_missing \
   test_palette_and_symbols \
+  test_stale_head_worker_needs_you_without_reading_blocked \
   test_workers_sorting_labels_and_read_marks \
   test_shared_selection_file \
   test_once_activity_frame \

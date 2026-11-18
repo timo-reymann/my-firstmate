@@ -943,6 +943,46 @@ EOF
   pass "nonprogressing child states are explicit and inconsistent terminal rows invalidate"
 }
 
+test_stale_head_child_is_held_like_blocked() {
+  local home mate fakebin canonical project worker pinned
+  home=$(make_home child-stale-head)
+  mate="$TMP_ROOT/child-stale-head-home"
+  make_valid_secondmate_home heads "$mate"
+  append_secondmate_registry "$home" heads "$mate"
+  project="$mate/projects/sample"
+  worker="$TMP_ROOT/child-stale-head-worker"
+  fm_git_worktree "$project" "$worker" fm/rebased
+  git -C "$worker" commit -q --allow-empty -m 'approved work'
+  pinned=$(git -C "$worker" rev-parse HEAD)
+  git -C "$worker" reset -q --hard HEAD~1
+  git -C "$worker" commit -q --allow-empty -m 'approved work, rebased'
+  cat > "$mate/data/backlog.md" <<'EOF'
+## In flight
+- [ ] rebased - Rebased local child (repo: sample) (kind: ship) (since 2026-07-11)
+
+## Queued
+
+## Done
+EOF
+  fm_write_meta "$mate/state/rebased.meta" \
+    "window=firstmate:fm-rebased" "worktree=$worker" "project=$project" \
+    "harness=claude" "kind=ship" "mode=local-only" "local_done_head=$pinned"
+  record_claude_state "$mate/state" rebased idle
+  printf 'done: ready in branch fm/rebased\n' > "$mate/state/rebased.status"
+  fakebin=$(make_fakebin "$home")
+  refresh_local_secondmate_ledgers "$home"
+  canonical=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW=2026-07-11T18:00:00Z \
+    "$ROOT/bin/fm-fleet-snapshot.sh" --json)
+  printf '%s' "$canonical" | jq -e '
+    .secondmate_current.records[] | select(.id == "heads")
+    | .current.state == "externally_held"
+      and .active_children == []
+      and (.holds | any(.id == "rebased" and .source == "child-state"
+                        and (.reason | contains("head changed after approval"))))
+  ' >/dev/null || fail "a stale-head child was not held like a blocked one: $canonical"
+  pass "a stale-head child is held like a blocked one in its home summary"
+}
+
 test_registry_unavailability_and_bounds_are_explicit() {
   local home fakebin json canonical id mate boundary
   home=$(make_home registry-unavailable)
@@ -3472,6 +3512,7 @@ fm_test_run \
   test_parent_decision_is_untrusted_contradiction_only \
   test_parent_evidence_reconciles_by_verb_and_key \
   test_nonprogressing_child_states_are_explicit \
+  test_stale_head_child_is_held_like_blocked \
   test_registry_unavailability_and_bounds_are_explicit \
   test_current_landed_baseline_is_repeatable_and_prior_report_independent \
   test_default_is_bounded_and_local_only \

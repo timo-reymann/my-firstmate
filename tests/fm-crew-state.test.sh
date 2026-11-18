@@ -2661,6 +2661,49 @@ test_external_review_done_reads_ready() {
   pass "forge=external: an uploaded review reads done, and a PR report reads blocked with the gate's reason"
 }
 
+test_local_only_rebase_after_done_reads_stale_head() {
+  reset_fakes
+  local d project worker first second out
+  d=$(new_case local-rebase)
+  project="$d/project"
+  worker="$d/worker"
+  fm_git_worktree "$project" "$worker" fm/rebased
+  git -C "$worker" commit -q --allow-empty -m 'approved work'
+  first=$(git -C "$worker" rev-parse HEAD)
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/rebased.meta" \
+    "window=fm:fm-rebased" "worktree=$worker" "project=$project" \
+    "kind=ship" "mode=local-only" "harness=claude"
+  printf 'done: ready in branch fm/rebased\n' > "$d/state/rebased.status"
+  FM_FAKE_AXI_STATUS=""
+  FM_FAKE_RUNS_LIST=""
+  FM_FAKE_BUSY=0
+  arm_idle_record "$d/state" rebased
+  out=$(run_crew_state "$d" rebased)
+  assert_contains "$out" "state: done" "the first local-only done: must read done"
+  [ "$(sed -n 's/^local_done_head=//p' "$d/state/rebased.meta")" = "$first" ] \
+    || fail "the first local-only done: did not record its head"
+  git -C "$worker" reset -q --hard HEAD~1
+  git -C "$worker" commit -q --allow-empty -m 'approved work, rebased'
+  second=$(git -C "$worker" rev-parse HEAD)
+  printf 'done: ready in branch fm/rebased (rebased onto main)\n' >> "$d/state/rebased.status"
+  out=$(run_crew_state "$d" rebased)
+  assert_contains "$out" "state: stale-head" "a rebased second done: must read stale-head"
+  assert_contains "$out" "source: status-log" "the stale-head read stays status-log sourced"
+  assert_contains "$out" "head changed after approval" "the stale-head read must say the head changed"
+  assert_contains "$out" "${first:0:12}" "the stale-head read must name the recorded head"
+  assert_contains "$out" "${second:0:12}" "the stale-head read must name the new head"
+  assert_not_contains "$out" "state: blocked" "a rebased second done: must not read blocked"
+  [ "$(sed -n 's/^local_done_head=//p' "$d/state/rebased.meta")" = "$first" ] \
+    || fail "the stale-head read changed the recorded head"
+  git -C "$worker" checkout -q --detach
+  git -C "$worker" commit -q --allow-empty -m 'only in the copy'
+  out=$(run_crew_state "$d" rebased)
+  assert_contains "$out" "state: blocked" "an unreachable head must keep reading blocked"
+  assert_contains "$out" "unreachable outside the worker copy" "the blocked read must keep the gate's reason"
+  pass "local-only rebase after done: reads stale-head, and other refusals keep reading blocked"
+}
+
 # (f) no run for this crew + a busy pane -> working via pane
 test_no_run_busy_pane() {
   reset_fakes
@@ -6829,6 +6872,7 @@ test_merged_pr_reads_done_under_captured_meta
 test_no_mistakes_prevalidation_done_stays_done
 test_moved_remote_branch_without_named_head_is_blocked
 test_external_review_done_reads_ready
+test_local_only_rebase_after_done_reads_stale_head
 test_no_run_busy_pane
 test_no_run_overview_zero_branch_falls_through
 test_no_run_launch_prompt_parked_is_not_working
