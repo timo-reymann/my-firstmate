@@ -54,7 +54,7 @@ Firstmate-built Claude command lines scope `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
 T3 Code owns its provider command and cannot carry this setting; [`docs/t3code-backend.md`](../../../../../docs/t3code-backend.md#active-limits) owns that backend limit.
 CLI `--prompt-suggestions` affects print or SDK mode only and did not suppress interactive ghost text on v2.1.186.
 
-As defense in depth, `fm_composer_strip_ghost` in `../../../bin/fm-composer-lib.sh` removes SGR-2 runs before pending classification on styled tmux, Herdr, and Zellij readers.
+As defense in depth, `fm_composer_strip_ghost` in `../../../bin/fm-composer-lib.sh` removes SGR-2 runs before pending classification on styled tmux and Herdr readers.
 `../../../docs/herdr-backend.md` under "Composer and injection safety" owns dark-TRUECOLOR tradeoffs and `../../../docs/verification/runtime-backends.md` owns captures.
 Styled capture stays internal to the boolean detector; `fm-peek` and model-facing captures remain plain, without escapes.
 
