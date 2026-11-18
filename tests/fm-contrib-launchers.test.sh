@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Behavior tests for the contrib launchers: the agent choice of contrib/firstmate in dry-run mode,
-# and the three-pane layout contrib/firstmate-herdr builds, driven against a fake herdr.
+# its hand-over to the herdr screen, and the three-pane layout contrib/firstmate-herdr builds,
+# all driven against a fake herdr.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -110,7 +111,7 @@ fake_herdr() {
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$HERDR_LOG"
 case "$1 ${2:-}" in
-  "status client") echo "protocol: 14" ;;
+  "status client") echo "protocol: ${FAKE_PROTOCOL:-14}" ;;
   "status --json") echo '{"server":{"running":true}}' ;;
   "workspace list") echo "{\"result\":{\"workspaces\":[${FAKE_WORKSPACES:-}]}}" ;;
   "workspace create") echo '{"result":{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"p1"}}}' ;;
@@ -190,7 +191,7 @@ test_herdr_lock_holder_gets_one_line() {
   line=$(bash -c "$mate")
   assert_equals "1" "$(printf '%s\n' "$line" | wc -l | tr -d ' ')" "one line"
   assert_contains "$line" "already runs as pid $$" "names the pid"
-  assert_contains "$line" "then run $ROOT/contrib/firstmate here" "how to start it here"
+  assert_contains "$line" "then run $ROOT/contrib/firstmate --plain here" "how to start it here"
   assert_contains "$line" "FIRSTMATE_FORCE=1" "how to start a second one"
   OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" HERDR_ENV=1 HERDR_PANE_ID=p1 \
     HERDR_TAB_ID=t1 HERDR_WORKSPACE_ID=w1 bash "$HERDR_LAUNCHER" 2>&1)
@@ -216,6 +217,97 @@ test_herdr_needs_uv() {
   pass "firstmate-herdr stops with an install hint when uv is missing"
 }
 
+# route [VAR=value...] [-- args...]: runs contrib/firstmate without dry run against the fake herdr; sets OUT, RC and LOG.
+route() {
+  local -a vars=()
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do vars+=("$1"); shift; done
+  [ $# -eq 0 ] || shift
+  export HERDR_LOG="$TMP_ROOT/herdr.log"
+  : > "$HERDR_LOG"
+  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" ${vars[@]+"${vars[@]}"} \
+    bash "$LAUNCHER" "$@" 2>&1)
+  RC=$?
+  LOG=$(cat "$HERDR_LOG")
+}
+
+test_firstmate_hands_over_to_herdr() {
+  local mate
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  export HERDR_LOG="$TMP_ROOT/herdr.log"
+  : > "$HERDR_LOG"
+  launch HERDR_LOG="$HERDR_LOG" -- --verbose
+  [ "$RC" -eq 0 ] || fail "dry-run hand-over exit $RC: $OUT"
+  assert_equals "bash $ROOT/contrib/firstmate-herdr -- --verbose" "$OUT" "dry run prints the hand-over"
+  route -- --verbose
+  [ "$RC" -eq 0 ] || fail "hand-over exit $RC: $OUT"
+  assert_contains "$LOG" "workspace create --cwd $HOME_DIR/workspace/firstmate --label firstmate-screen --no-focus" "screen workspace"
+  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.6 --no-focus" "workers pane"
+  mate=$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")
+  assert_equals "$ROOT/contrib/firstmate --plain --verbose" "$mate" "first mate pane runs the plain path"
+  assert_not_contains "$OUT" "plain mode" "no fallback line"
+  pass "with herdr, jq and uv usable, firstmate builds the screen and runs itself with --plain in the left pane"
+}
+
+test_firstmate_falls_back_to_plain() {
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  launch HERDR_LOG="$TMP_ROOT/herdr.log" FAKE_PROTOCOL=13
+  [ "$RC" -eq 0 ] || fail "old protocol exit $RC: $OUT"
+  assert_contains "$OUT" "firstmate: plain mode, herdr protocol 14 or newer is required (found 13)" "old protocol line"
+  assert_contains "$OUT" " claude --permission-mode auto --model sonnet" "plain claude command"
+  assert_equals "1" "$(printf '%s\n' "$OUT" | grep -c 'plain mode')" "one fallback line"
+  rm -f "$FAKEBIN/uv"
+  launch HERDR_LOG="$TMP_ROOT/herdr.log"
+  assert_contains "$OUT" "firstmate: plain mode, the firstmate screen runs firstmate-tui, which needs uv on PATH" "no uv line"
+  assert_contains "$OUT" " claude --permission-mode auto" "plain without uv"
+  rm -f "$FAKEBIN/herdr"
+  launch
+  assert_contains "$OUT" "firstmate: plain mode, herdr is not installed (https://herdr.dev) (--plain or FIRSTMATE_HERDR=0 skips this check)" "no herdr line"
+  assert_contains "$OUT" " claude --permission-mode auto" "plain without herdr"
+  pass "without herdr, a new enough protocol, or uv, firstmate runs in this terminal after one line that says why"
+}
+
+test_firstmate_plain_flag_and_env() {
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  route FIRSTMATE_DRY_RUN=1 -- --plain --verbose
+  [ "$RC" -eq 0 ] || fail "--plain exit $RC: $OUT"
+  assert_contains "$OUT" " claude --permission-mode auto --model sonnet --continue --verbose Lets" "--plain runs claude here"
+  assert_not_contains "$OUT" "--plain" "--plain is not passed to the agent"
+  assert_not_contains "$OUT" "plain mode" "no fallback line for --plain"
+  assert_equals "" "$LOG" "--plain never asks herdr"
+  route FIRSTMATE_DRY_RUN=1 FIRSTMATE_HERDR=0 FIRSTMATE_AGENT=opencode
+  assert_contains "$OUT" " opencode --prompt Lets" "FIRSTMATE_HERDR=0 runs here"
+  assert_equals "" "$LOG" "FIRSTMATE_HERDR=0 never asks herdr"
+  pass "firstmate --plain and FIRSTMATE_HERDR=0 keep the session in this terminal without asking herdr"
+}
+
+test_herdr_pane_runs_plain_path_with_settings() {
+  local home="$HOME_DIR/workspace/firstmate" mate calls
+  fake_herdr
+  fm_fake_exit0 "$FAKEBIN" uv
+  fake_opencode 2.1.1 $(($(date +%s) * 1000))
+  mkdir -p "$home/state"
+  printf '%s\n' "$$" > "$home/state/.lock"
+  route FIRSTMATE_AGENT=opencode FIRSTMATE_FORCE=1
+  [ "$RC" -eq 0 ] || fail "forced hand-over exit $RC: $OUT"
+  mate=$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")
+  assert_equals "FIRSTMATE_AGENT=opencode FIRSTMATE_FORCE=1 $ROOT/contrib/firstmate --plain" "$mate" "pane carries the settings"
+  calls=$(grep -c . "$HERDR_LOG")
+  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" FIRSTMATE_DRY_RUN=1 bash -c "$mate" 2>&1)
+  assert_contains "$OUT" " opencode --standalone --continue --prompt Lets" "pane starts the forced opencode session and resumes it"
+  assert_equals "$calls" "$(grep -c . "$HERDR_LOG")" "the pane command never calls herdr again"
+  OUT=$(env -i HOME="$HOME_DIR" PATH="$FAKEBIN:$BASE_PATH" HERDR_LOG="$HERDR_LOG" HERDR_ENV=1 HERDR_PANE_ID=p1 \
+    HERDR_TAB_ID=t1 HERDR_WORKSPACE_ID=w1 FIRSTMATE_FORCE=1 FIRSTMATE_DRY_RUN=1 bash "$HERDR_LAUNCHER" 2>&1)
+  RC=$?
+  [ "$RC" -eq 0 ] || fail "forced inside herdr exit $RC: $OUT"
+  assert_contains "$OUT" " claude --permission-mode auto --model sonnet --continue Lets" "inside herdr, FIRSTMATE_FORCE starts the first mate here"
+  assert_not_contains "$OUT" "already runs" "no lock line when forced"
+  rm -f "$home/state/.lock" "$FAKEBIN/opencode"
+  pass "the screen's first mate pane runs firstmate --plain, carries FIRSTMATE_AGENT and FIRSTMATE_FORCE, and never loops back to herdr"
+}
+
 fm_test_run \
   test_default_is_claude_with_unchanged_command \
   test_env_selects_opencode_and_resume \
@@ -224,4 +316,8 @@ fm_test_run \
   test_herdr_builds_three_panes \
   test_herdr_screen_has_its_own_workspace \
   test_herdr_lock_holder_gets_one_line \
-  test_herdr_needs_uv
+  test_herdr_needs_uv \
+  test_firstmate_hands_over_to_herdr \
+  test_firstmate_falls_back_to_plain \
+  test_firstmate_plain_flag_and_env \
+  test_herdr_pane_runs_plain_path_with_settings
