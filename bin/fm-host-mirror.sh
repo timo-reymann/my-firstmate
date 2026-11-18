@@ -10,8 +10,8 @@
 #
 # WRITERS. Code-owned turn surfaces append here, never the model: Claude
 # through its prompt-submit and Stop hooks, and Cursor through its
-# beforeSubmitPrompt and afterAgentResponse hooks. Codex, Grok, OpenCode, and
-# omp have no writer (docs/supervision-host.md "The dialog mirror"). A writer
+# beforeSubmitPrompt and afterAgentResponse hooks. Codex, OpenCode, and omp
+# have no writer (docs/supervision-host.md "The dialog mirror"). A writer
 # appends captain text (the submitted prompt) and MAIN text (the turn's final
 # assistant message), never tool traffic, as said, with only the whitespace at
 # the very end of the message trimmed. A prompt the shared operational-input

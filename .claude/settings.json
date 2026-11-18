@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-sessionstart-run.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-sessionstart-run.sh",
             "timeout": 180
           }
         ]
@@ -17,11 +17,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-arm-pretool-check.sh --claude"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-arm-pretool-check.sh --claude"
           },
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-cd-pretool-check.sh --claude"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-cd-pretool-check.sh --claude"
           }
         ]
       },
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-host-mirror.sh hook claude",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-host-mirror.sh hook claude",
             "timeout": 10
           }
         ]
@@ -51,22 +51,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-turnend-guard.sh --claude"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-turnend-guard.sh --claude"
           },
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-claude-stop-autoarm.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-claude-stop-autoarm.sh",
             "asyncRewake": true,
             "timeout": 28800
           },
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-host-mirror.sh hook claude",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-host-mirror.sh hook claude",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-stow-guard.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-stow-guard.sh",
             "timeout": 10
           }
         ]
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GROK_AGENT:-}${GROK_HOOK_EVENT:-}\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR\"/bin/fm-claude-stop-autoarm.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/bin/fm-claude-stop-autoarm.sh",
             "asyncRewake": true,
             "timeout": 28800
           }

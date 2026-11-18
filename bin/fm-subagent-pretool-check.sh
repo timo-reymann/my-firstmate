@@ -34,13 +34,15 @@
 #   <PreToolUse JSON on stdin> | bin/fm-subagent-pretool-check.sh
 #   bin/fm-subagent-pretool-check.sh --tool '<tool-name>'
 #
-# Stdin mode extracts .tool_name for Claude and Codex, or .toolName for Grok.
+# Stdin mode extracts .tool_name for Claude and Codex, or .toolCall.name for
+# Antigravity.
 # CLI mode is for adapters that already hold the tool name (OpenCode, Pi).
 #
 # Exit/output contract (identical shape to bin/fm-cd-pretool-check.sh):
 #   ALLOW - exit 0 and no output.
-#   DENY - exit 2, a Claude-shaped deny object on stderr, and a Grok-shaped
-#          deny object on stdout unless --claude was supplied.
+#   DENY - exit 2, a Claude-shaped deny object on stderr, and empty stdout.
+#          --claude is accepted for the tracked Claude entry and renders the
+#          same way.
 #   INERT - not a genuine primary home (a crewmate/scout task worktree or a
 #           non-firstmate repo): exit 0 with no output, exactly like ALLOW.
 #   ESCAPE - FM_ALLOW_SUBAGENT=1 in the environment allows deliberately.
@@ -48,7 +50,6 @@
 #
 # Claude requires stdout to remain empty on deny.
 # Codex blocks on exit 2 and displays stderr.
-# Grok consumes the stdout decision object.
 # OpenCode and Pi consume exit 2 plus stderr.
 set -u
 
@@ -80,7 +81,6 @@ PLAN_ONLY_TOOLS='taskcreate taskupdate'
 
 TOOL=""
 TOOL_SET=0
-CLAUDE_MODE=0
 AGY_MODE=0
 
 usage() {
@@ -88,7 +88,7 @@ usage() {
 Usage: fm-subagent-pretool-check.sh [--tool <tool-name>] [--claude|--agy]
 
 With no --tool, reads a PreToolUse-style JSON payload on stdin (Claude/Codex
-tool_name, Grok toolName, or Antigravity toolCall.name).
+tool_name, or Antigravity toolCall.name).
 Denies a delegation-SHAPED tool name in a genuine primary home.
 Claude primaries may also add an untracked per-home permissions.deny list that
 removes known delegation tools from the model schema before this hook is needed.
@@ -120,7 +120,6 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --claude)
-      CLAUDE_MODE=1
       shift
       ;;
     --agy)
@@ -143,7 +142,7 @@ if [ "$TOOL_SET" -eq 0 ]; then
   PAYLOAD=$(cat 2>/dev/null || true)
   [ -n "$PAYLOAD" ] || exit 0
   command -v jq >/dev/null 2>&1 || exit 0
-  TOOL=$(printf '%s' "$PAYLOAD" | jq -r '(.toolCall.name // .tool_name // .toolName // empty)' 2>/dev/null) || exit 0
+  TOOL=$(printf '%s' "$PAYLOAD" | jq -r '(.toolCall.name // .tool_name // empty)' 2>/dev/null) || exit 0
 fi
 
 [ -n "$TOOL" ] || exit 0
@@ -217,5 +216,4 @@ if [ "$AGY_MODE" -eq 1 ]; then
   exit 0
 fi
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"%s"}\n' "$ESCAPED" >&2
-[ "$CLAUDE_MODE" -eq 1 ] || printf '{"decision":"deny","reason":"%s"}\n' "$ESCAPED"
 exit 2

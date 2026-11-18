@@ -16,16 +16,17 @@
 #   <PreToolUse JSON on stdin> | bin/fm-cd-pretool-check.sh
 #   bin/fm-cd-pretool-check.sh --command '<cmd>'
 #
-# Stdin mode extracts .toolInput.command for Grok or .tool_input.command for
-# Claude, Codex, and Cursor. CLI mode is used by OpenCode and Pi after their
+# Stdin mode extracts .toolCall.args.CommandLine or .toolCall.args.command for
+# Antigravity, or .tool_input.command for Claude, Codex, and Cursor. CLI mode is used by OpenCode and Pi after their
 # adapters extract the exact command string. --cursor selects Cursor's own deny
 # rendering and marks this invocation as the Cursor registration rather than the
 # Claude-settings duplicate Cursor also loads.
 #
 # Exit/output contract (identical shape to bin/fm-arm-pretool-check.sh):
 #   ALLOW - exit 0 and no output.
-#   DENY - exit 2, a Claude-shaped deny object on stderr, and a Grok-shaped
-#          deny object on stdout unless --claude was supplied.
+#   DENY - exit 2, a Claude-shaped deny object on stderr, and empty stdout.
+#          --claude is accepted for the tracked Claude entry and renders the
+#          same way.
 #   DENY, --cursor - exit 0 and Cursor's own decision object on stdout. Cursor
 #          reads the returned object rather than the exit status.
 #   INERT - not the real primary checkout (a crewmate/scout task worktree or a
@@ -35,7 +36,6 @@
 #
 # Claude requires stdout to remain empty on deny.
 # Codex blocks on exit 2 and displays stderr.
-# Grok consumes the stdout decision object.
 # OpenCode and Pi consume exit 2 plus stderr.
 # Cursor consumes the stdout decision object.
 # Antigravity (agy) consumes the stdout decision object.
@@ -43,7 +43,6 @@ set -u
 
 CMD=""
 CMD_SET=0
-CLAUDE_MODE=0
 CURSOR_MODE=0
 AGY_MODE=0
 
@@ -51,16 +50,14 @@ usage() {
   cat <<'EOF'
 Usage: fm-cd-pretool-check.sh [--command <cmd>] [--claude|--cursor|--agy]
 
-With no --command, reads a PreToolUse-style JSON payload on stdin (Grok
-toolInput.command, Antigravity toolCall.args.CommandLine/command, or
-Claude/Codex tool_input.command).
+With no --command, reads a PreToolUse-style JSON payload on stdin (Antigravity
+toolCall.args.CommandLine/command, or Claude/Codex tool_input.command).
 Fires only in the real primary firstmate checkout; it is a silent no-op in a
 crewmate/scout task worktree or any non-firstmate repo.
 Exits 0 to allow and 2 to deny a persistent top-level cwd change.
 A cd whose single literal absolute target resolves to this checkout itself is
 allowed, because it cannot move the shell out of the home.
-The deny reason is written to stderr, with a Grok decision object on stdout
-unless --claude is supplied.
+The deny reason is written to stderr, and stdout stays empty.
 With --cursor, a deny is Cursor's own decision object on stdout and exit 0,
 because Cursor reads the returned object rather than the exit status.
 With --agy, a deny is Antigravity's decision object on stdout and exit 0.
@@ -82,7 +79,6 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --claude)
-      CLAUDE_MODE=1
       shift
       ;;
     --cursor)
@@ -117,7 +113,7 @@ if [ "$CMD_SET" -eq 0 ]; then
   if [ "$CURSOR_MODE" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] && fm_hook_payload_is_foreign_host "$PAYLOAD"; then
     exit 0
   fi
-  CMD=$(printf '%s' "$PAYLOAD" | jq -r '(.toolCall.args.CommandLine // .toolCall.args.command // .toolInput.command // .tool_input.command // empty)' 2>/dev/null) || exit 0
+  CMD=$(printf '%s' "$PAYLOAD" | jq -r '(.toolCall.args.CommandLine // .toolCall.args.command // .tool_input.command // empty)' 2>/dev/null) || exit 0
 fi
 
 [ -n "$CMD" ] || exit 0
@@ -204,5 +200,4 @@ if [ "$AGY_MODE" -eq 1 ]; then
   exit 0
 fi
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"%s"}\n' "$ESCAPED" >&2
-[ "$CLAUDE_MODE" -eq 1 ] || printf '{"decision":"deny","reason":"%s"}\n' "$ESCAPED"
 exit 2

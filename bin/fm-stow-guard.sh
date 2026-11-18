@@ -21,7 +21,7 @@
 # a /stow timestamp cannot be read, including when python3 is missing, so a
 # just-completed /stow is not asked for again from a stale clock. The stored
 # state is what makes each ask once per crossing, so a continuation stop
-# (stop_hook_active / stopHookActive) is handled like any other stop. The first
+# (stop_hook_active) is handled like any other stop. The first
 # opt-in stop with no /stow in the tail starts the age clock instead of asking.
 #
 # Context size is the same sum warm-cache compaction uses: input + cache_read
@@ -33,8 +33,7 @@
 # The hook prints one Claude block decision, or nothing. Any unreadable
 # payload, missing jq, scope miss, or state-write failure exits 0 and prints
 # nothing, so a Stop is never stuck on this hook. It is silent for a Cursor
-# payload, for Grok, in a marked secondmate home, and outside a plain primary
-# checkout. A Stop block in a secondmate home would leave its parent recording
+# payload, in a marked secondmate home, and outside a plain primary checkout. A Stop block in a secondmate home would leave its parent recording
 # idle while that session was still working.
 set -u
 set -o pipefail
@@ -62,10 +61,6 @@ case "${1:-}" in
   "") ;;
   *) usage >&2; exit 2 ;;
 esac
-
-if [ -n "${GROK_AGENT:-}${GROK_HOOK_EVENT:-}" ]; then
-  exit 0
-fi
 
 if [ -t 0 ]; then
   usage
