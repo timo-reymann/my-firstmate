@@ -10,7 +10,7 @@
 # backend dispatch, while bin/fm-composer-lib.sh owns the shared verdict.
 #
 # Composer shapes and verdicts are owned by bin/fm-composer-lib.sh.
-# This file owns only tmux's styled capture, cursor and Pi identity primitives,
+# This file owns only tmux's styled capture, cursor and identity primitives,
 # delivery busy read, and submit conversions that consume the shared verdict.
 # Styled captures remain internal; fm-peek and every human-facing capture stay
 # plain.
@@ -40,7 +40,7 @@
 # bin/fm-composer-lib.sh (fm_composer_classify_screen), sourced below and
 # reused by every backend adapter so the decision cannot drift. This file
 # keeps only tmux's genuine capture-side primitives - the styled pane
-# capture, the #{cursor_y} cursor read, the pi foreground-process identity
+# capture, the #{cursor_y} cursor read, the foreground-process identity
 # probe, and the capability descriptor - plus the busy detection and submit
 # cores that consume the shared verdict.
 
@@ -68,7 +68,7 @@ fm_tmux_strip_ghost() { fm_composer_strip_ghost; }
 #
 # These four functions are the ONLY tmux-specific composer knowledge left:
 # how to capture a styled screen, how to read the cursor row, how to probe a
-# live pi agent, and the static capability facts. Every shape, glyph, border
+# live agent's identity, and the static capability facts. Every shape, glyph, border
 # family, and verdict decision lives in the shared owner
 # (bin/fm-composer-lib.sh, fm_composer_classify_screen), so a new harness
 # shape is taught there once and never here.
@@ -93,14 +93,13 @@ fm_tmux_composer_caps() {
 }
 
 # fm_tmux_composer_identity: the tmux agent-identity probe backing the
-# separated (pi) composer shape, tmux's analogue of herdr's native
+# separated (polytoken) composer shape, tmux's analogue of herdr's native
 # `agent get`. It answers only for the verified owners of that shape, from
 # two live signals:
 #   - identity: the pane tty's FOREGROUND process group (pgid = tpgid, the
 #     same scoping as fm_backend_tmux_foreground_comms) contains a
-#     shape-owner process (pi, pi-signed, pi-launcher - docs/verification/
-#     runtime-backends.md "Agent liveness name sources"; polytoken, whose
-#     TUI pane foreground is comm `polytoken`, verified live on 0.8.19),
+#     shape-owner process (polytoken, whose TUI pane foreground is comm
+#     `polytoken`, verified live on 0.8.19),
 #     falling back to tmux's own foreground-derived #{pane_current_command}.
 #     A pane whose agent died to a shell has no shape-owner foreground
 #     process and gets NO identity, which is exactly what keeps the strict
@@ -114,7 +113,7 @@ fm_tmux_composer_caps() {
 # identity-scoped ghost ceiling in bin/fm-composer-lib.sh. Hermes runs under
 # an interpreter, so it is matched by foreground argv through
 # bin/fm-hermes-process-lib.sh rather than by process name.
-# Prints "<owner><TAB>idle" or "<owner><TAB>working" for owner pi,
+# Prints "<owner><TAB>idle" or "<owner><TAB>working" for owner
 # polytoken, commandcode, or hermes; exits 1 when the pane is not a live
 # shape owner.
 fm_tmux_composer_identity() {  # <target>
@@ -126,7 +125,6 @@ fm_tmux_composer_identity() {  # <target>
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
         case "${comm##*/}" in
-          pi|pi-signed|pi-launcher|Pi) owner=pi ;;
           polytoken) owner=polytoken ;;
           command-code) owner=commandcode ;;
         esac
@@ -143,13 +141,12 @@ EOF
   if [ -z "$owner" ]; then
     comm=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null) || comm=
     case "${comm##*/}" in
-      pi|pi-signed|pi-launcher) owner=pi ;;
       polytoken) owner=polytoken ;;
     esac
   fi
   [ -n "$owner" ] || return 1
   # The busy footer read is scoped to the matched owner's own harness
-  # signature (pi for the pi family, polytoken's `Running for` row, Command
+  # signature (polytoken's `Running for` row, Command
   # Code's own footer) so one owner's ordinary output can never acknowledge
   # another's pane.
   status=$(fm_pane_busy_state "$target" "$owner")
@@ -165,7 +162,7 @@ EOF
 # pending-unproven | unknown, positive proof required for empty, unrecognized
 # future verdicts failing safe) is owned by bin/fm-composer-lib.sh. Identity
 # is fetched lazily, only when the classifier reports the verdict depends on
-# it (a pi separator pair under the cursor), the cursor-anchored read is
+# it (a separator pair under the cursor), the cursor-anchored read is
 # `unknown` (the Command Code check below), or the pane shows a `❯` prompt
 # that may be Hermes's; any other definite read pays no process probe.
 fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
@@ -304,8 +301,8 @@ fm_pane_is_busy() {  # <target> [harness]
 # a genuine swallow. Pending-unproven receives the same Enter retry budget but
 # never reaches this exception.
 # Turn-started confirmation (the strict blank-row posture's counterpart): a
-# harness whose mid-turn screen the classifier cannot positively identify (pi
-# replaces its separated composer while working) reads `unknown` right after a
+# harness whose mid-turn screen the classifier cannot positively identify reads
+# `unknown` right after a
 # successful submit. When and only when the pane was IDLE before the text was
 # typed, an idle-to-busy transition across our Enter is proof the harness
 # accepted the submission - the same semantic signal herdr's native

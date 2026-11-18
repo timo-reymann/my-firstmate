@@ -47,13 +47,13 @@
 # with no desktop window, using read-only commands (ls, process, capture, ctl
 # state) on the probing session's own block:
 #   - `tern capture` of a block that draws natively through the Tern Surface
-#     Protocol (an omp session) returns NOTHING for plain and --ansi captures.
+#     Protocol returns NOTHING for plain and --ansi captures.
 #     `--surfaces` returns a JSON object {"block","text"} whose `text` is the
 #     surface's main-region text (the transcript), byte-identical with and
-#     without --scrollback, and does not contain omp's composer. Every capture
+#     without --scrollback, and does not contain the harness's composer. Every capture
 #     therefore passes --surfaces and reads `.text` (raw output that is not
-#     that object is used as is); the composer classifier cannot see an omp
-#     composer on tern, so the native agent state below is the only submit
+#     that object is used as is); the composer classifier cannot see a
+#     surface-drawn composer on tern, so the native agent state below is the only submit
 #     proof for it. Capture is plain text (styled=0).
 #   - Because --scrollback changes nothing for a surface, a viewport read of a
 #     surface block is its WHOLE transcript. visible_capture and the composer
@@ -538,7 +538,7 @@ fm_backend_tern_composer_capture() {  # <target> [expected-label]
 # identity=0: no identity probe is wired, because the native entry's `program`
 # was not verified to name a harness the way herdr's `agent get` does and a
 # wrong identity could prove a composer empty. The only shape that needs one,
-# pi's blank separator pair, therefore stays `unknown` on tern; native state
+# the blank separator pair, therefore stays `unknown` on tern; native state
 # still drives submit confirmation, so steering is not blocked by it.
 fm_backend_tern_composer_caps() {
   printf 'styled=0\ncursor=0\nidentity=0\nrows=%s\n' "$FM_COMPOSER_CAPTURE_LINES"

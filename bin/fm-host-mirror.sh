@@ -3,14 +3,12 @@
 # MAIN said in the captain's conversation, carried to the host's headless
 # engine session at the head of each attended wake, while an away wake carries
 # none and never moves the cursor (docs/supervision-host.md "The dialog
-# mirror"). The Pi branch mirrors the same dialog in process
-# (docs/pi-supervision-branch.md "How the branch knows what the captain
-# said"); this is its twin for a host that is not Pi, and the one owner of the
-# mirror file, its cursor, its lock, the feed, and the verified-writer list.
+# mirror"). This is the one owner of the mirror file, its cursor, its lock,
+# the feed, and the verified-writer list.
 #
 # WRITERS. Code-owned turn surfaces append here, never the model: Claude
 # through its prompt-submit and Stop hooks, and Cursor through its
-# beforeSubmitPrompt and afterAgentResponse hooks. Codex, OpenCode, and omp
+# beforeSubmitPrompt and afterAgentResponse hooks. Codex and OpenCode
 # have no writer (docs/supervision-host.md "The dialog mirror"). A writer
 # appends captain text (the submitted prompt) and MAIN text (the turn's final
 # assistant message), never tool traffic, as said, with only the whitespace at
@@ -40,8 +38,7 @@
 # different text under the same id is recorded. The digest covers the text
 # after trailing whitespace is trimmed, before capping. Legacy entries without
 # a digest remain feedable but cannot suppress a new entry. Each text is capped
-# at 4000 characters, its truncation note included (head and tail kept, as the Pi
-# mirror caps); when the file exceeds 300 entries it is trimmed to its newest
+# at 4000 characters, its truncation note included (head and tail kept); when the file exceeds 300 entries it is trimmed to its newest
 # 200. New entries continue above both the committed and staged
 # cursor after file recreation so a later commit cannot skip them. An append
 # writes the whole new file, owner-only, beside the mirror and renames it into

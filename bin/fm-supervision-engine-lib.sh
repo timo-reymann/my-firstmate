@@ -55,7 +55,7 @@ FM_SUPERVISION_ENGINES_VERIFIED='claude'
 fm_supervision_host_primary() {
   if [ "${FM_TEST_SEAM:-}" = 1 ]; then
     case "${FM_TEST_HARNESS:-}" in
-      claude | codex | opencode | pi | pi-signed | kimi | cursor | gemini | muse | rovo | omp | agy | devin | commandcode | polytoken | cortex | hermes | unknown)
+      claude | codex | opencode | kimi | cursor | gemini | muse | rovo | agy | devin | commandcode | polytoken | cortex | hermes | unknown)
         printf '%s\n' "$FM_TEST_HARNESS"
         return
         ;;
@@ -170,14 +170,10 @@ fm_supervision_host_attended_ready() {
 
 # fm_supervision_host_outcomes_drained <config-dir>: 0 when main processes the
 # supervision session's outcomes through the drain's BRANCH OUTCOMES section
-# (bin/fm-wake-drain.sh): the home runs the host and its primary is not Pi,
-# whose branch extension owns that path. The drain and the return
+# (bin/fm-wake-drain.sh): the home runs the host. The drain and the return
 # (bin/fm-afk-return.sh) share this check.
 fm_supervision_host_outcomes_drained() {
-  local primary
-  primary=$(fm_supervision_host_primary)
-  case "$primary" in pi|pi-signed) return 1 ;; esac
-  fm_supervision_host_enabled "$1" "$primary"
+  fm_supervision_host_enabled "$1" "$(fm_supervision_host_primary)"
 }
 
 # fm_supervision_host_main_key <state-dir>: print the key of the current main

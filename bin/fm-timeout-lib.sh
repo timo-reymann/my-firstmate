@@ -8,7 +8,7 @@
 #   fm_timeout_mechanism
 #       Prints the mechanism fm_run_timed will use on this host: "timeout",
 #       "gtimeout", "perl", or "bash". Set FM_TIMEOUT_MECHANISM_OVERRIDE=bash
-#       to force the dependency-free fallback. An omp shell defines timeout as
+#       to force the dependency-free fallback. A shell can define timeout as
 #       a builtin; command -v reports that builtin, and invoking the name runs
 #       it. timeout and gtimeout are selected only when type -P yields an
 #       executable path, and that path is what fm_run_timed and fm_exec_timed
@@ -65,8 +65,8 @@
 #       output cannot keep a capturing caller waiting, and GNU timeout, the
 #       fallback, cannot be followed by that reap from a replaced shell. A
 #       descendant that moves into a process group of its own is outside both
-#       signals and the reap (the Claude and Pi CLIs do this for every tool
-#       command they run), so it ends only through the command's own TERM
+#       signals and the reap (the Claude CLI does this for every tool
+#       command it runs), so it ends only through the command's own TERM
 #       handling; that is what the grace is for, and a command KILLed after
 #       the grace can leave such a descendant running. With
 #       no perl, timeout, or gtimeout on the host it refuses with 127 rather
@@ -186,8 +186,8 @@ fm_run_external_timeout() {
   local runner=$1 seconds=$2 status_file runner_pid runner_rc command_rc
   shift 2
   status_file=$(mktemp "${TMPDIR:-/tmp}/fm-timeout-status.XXXXXX" 2>/dev/null) || return 124
-  # Run the executable path asynchronously (never a bare name: that is the omp
-  # timeout builtin, and backgrounding it leaves $! empty) so its pid - also
+  # Run the executable path asynchronously (never a bare name: that can be a
+  # shell's timeout builtin, and backgrounding it leaves $! empty) so its pid - also
   # the process-group id created by GNU/BSD timeout without --foreground -
   # remains available for cleanup. fm_timeout_background keeps a redirected
   # stdin across that async assignment.

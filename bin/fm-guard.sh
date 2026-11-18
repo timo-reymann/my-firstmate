@@ -14,11 +14,7 @@
 # between turns, so mid-turn a fresh beacon with no live watcher is healthy, and
 # a stale beacon is still healthy while fm_autoarm_midturn_healthy proves a
 # Claude auto-arm generation explains the gap; only a stale beacon with no such
-# generation is a genuine lapse; under the Pi
-# extension model the extension tears the watcher down and respawns it on every
-# actionable wake, so a fresh beacon with a genuinely unheld lock is healthy
-# while that live Pi session provably owns continuity; any held but unhealthy
-# lock is down; under every
+# generation is a genuine lapse; under every
 # persistent-watcher harness a live identity-matched watcher with a fresh beacon
 # is required. The banner names the true failing condition (a missing live
 # watcher process vs a genuinely stale beacon). The full banner is emitted once
@@ -40,7 +36,7 @@
 # while handling exactly the queued rows its grant covers and can drain nothing
 # else. The watcher-down banner and its reminder stay silent for that actor too,
 # and its calls leave the episode state alone: the branch never owns watcher
-# continuity (Pi main or the supervision host restarts the watcher once the
+# continuity (the supervision host restarts the watcher once the
 # branch's turn ends, and a successor cycle that closed on a newer wake mid-turn
 # is that host's normal gap), while the repair line names the primary's own arm
 # command, which under a supervision host's primary pin is the host itself or
@@ -181,7 +177,7 @@ sources=$FM_SUP_SOURCES
 checks=$FM_SUP_CHECKS
 needed=$FM_SUP_NEEDED
 beacon_desc=$FM_SUP_BEACON_DESC
-fm_watcher_supervision_verdict "$STATE" "$WATCH" "$GRACE" "$FM_HOME" "$FM_ROOT"
+fm_watcher_supervision_verdict "$STATE" "$WATCH" "$GRACE" "$FM_HOME"
 watcher_healthy=$FM_WATCHER_VERDICT_OK
 watcher_down_reason=$FM_WATCHER_VERDICT_REASON
 if [ "$needed" = false ]; then

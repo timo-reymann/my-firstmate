@@ -196,7 +196,7 @@
 #
 # Answering a decision is the gate-answer path and is main-owned while
 # attended: when any named key is an open needs-decision or a captain-held task
-# (a blocked: key is ordinary steering and stays lease-guarded only), the Pi
+# (a blocked: key is ordinary steering and stays lease-guarded only), the
 # supervision branch is refused outright, exactly as its prompt promises. While
 # the away-posture record exists main is parked and that one refusal relocates
 # to the branch (contract: bin/fm-lease-lib.sh); which findings firstmate may
@@ -498,7 +498,7 @@ fm_send_detect_kiro_from_live_target
 FM_COMPOSER_HARNESS=$TARGET_HARNESS
 shift
 
-# Supervision lease guard: a steer is overlap territory between the two Pi
+# Supervision lease guard: a steer is overlap territory between the two
 # supervision actors, so refuse while the OTHER actor holds this task's live
 # lease. A home with no supervision branch has no lease files and passes
 # untouched (contract: bin/fm-lease-lib.sh).
@@ -1255,7 +1255,7 @@ else
   # invocation, so a `$...` message to a codex target gets the same settle. That
   # `$` case is scoped to codex on purpose: unlike `/`, a leading `$` commonly
   # starts ordinary text ("$5/month", "$HOME"), so a universal `$` rule would
-  # needlessly slow plain text to claude/opencode/pi. The target backend's
+  # needlessly slow plain text to claude/opencode. The target backend's
   # verified submit retry still backs the settle up either way.
   case "$*" in
   /*) settle=1.2 ;;

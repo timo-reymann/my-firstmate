@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Render the primary-harness supervision operating block for session start and
-# the short repair line used by guards and turn-end hooks. On a non-Pi primary
-# with a supervision protocol (claude, cursor, opencode, omp, codex, agy) whose
+# the short repair line used by guards and turn-end hooks. On a primary
+# with a supervision protocol (claude, cursor, opencode, codex, agy) whose
 # home runs the supervision host (fm_supervision_host_enabled in
 # bin/fm-supervision-engine-lib.sh: by default on Claude, by
 # config/supervision-host elsewhere, never with config/supervision-host-off), the block
@@ -106,8 +106,7 @@ case "$HARNESS" in
   hermes)
     echo 'error: hermes is a crewmate/scout adapter only; primary supervision is unsupported' >&2
     exit 1 ;;
-  claude|codex|opencode|pi|cursor|omp|agy) SNIPPET="$DOC_DIR/$HARNESS.md" ;;
-  pi-signed) SNIPPET="$DOC_DIR/pi.md" ;;
+  claude|codex|opencode|cursor|agy) SNIPPET="$DOC_DIR/$HARNESS.md" ;;
   *) HARNESS=unknown; SNIPPET="$DOC_DIR/unknown.md" ;;
 esac
 [ -f "$SNIPPET" ] || SNIPPET="$DOC_DIR/unknown.md"
@@ -121,7 +120,7 @@ if [ "$HARNESS" = codex ]; then
 fi
 HOST_SNIPPET=
 case "$HARNESS" in
-  claude|cursor|opencode|omp|codex|agy)
+  claude|cursor|opencode|codex|agy)
     # shellcheck source=bin/fm-supervision-engine-lib.sh
     . "$SCRIPT_DIR/fm-supervision-engine-lib.sh"
     if fm_supervision_host_enabled "$CONFIG" "$HARNESS"; then
@@ -131,26 +130,7 @@ case "$HARNESS" in
 esac
 
 checkpoint_seconds=${FM_CODEX_WATCH_CHECKPOINT:-180}
-pi_ext="$FM_ROOT/.pi/extensions/fm-primary-pi-watch.ts"
-pi_turnend_ext="$FM_ROOT/.pi/extensions/fm-primary-turnend-guard.ts"
-omp_ext="$FM_ROOT/.omp/extensions/fm-primary-omp-watch.ts"
-omp_turnend_ext="$FM_ROOT/.omp/extensions/fm-primary-turnend-guard.ts"
 x_mode_env="$CONFIG/x-mode.env"
-
-# True when the active home is not the firstmate checkout: omp's extensions load
-# from the checkout, and only the `fm <project>` launcher points them at another home.
-omp_home_elsewhere=0
-if [ "$(cd -P "$FM_HOME" 2>/dev/null && pwd -P || printf '%s' "$FM_HOME")" != "$(cd -P "$FM_ROOT" 2>/dev/null && pwd -P || printf '%s' "$FM_ROOT")" ]; then
-  omp_home_elsewhere=1
-fi
-# shellcheck disable=SC2016  # backticks are literal markdown in the rendered text
-if [ "$omp_home_elsewhere" -eq 1 ]; then
-  omp_restart_long='exit omp and relaunch through `fm <project>`, which sets FM_HOME and --cwd; a bare omp or /resume from the firstmate checkout does not register the extensions for this home'
-  omp_restart_short='exit omp and relaunch through `fm <project>`'
-else
-  omp_restart_long="restart omp inside this home; pass \`-e $omp_turnend_ext -e $omp_ext\` only when omp must start from another directory, because omp loads a file named both ways twice"
-  omp_restart_short='restart omp inside this home'
-fi
 
 shell_quote() {
   printf "'"
@@ -180,12 +160,6 @@ render_snippet() {  # [snippet]
         line=${line#*\} }
         ;;
     esac
-    line=${line//__FM_PI_EXT__/$pi_ext}
-    line=${line//__FM_PI_TURNEND_EXT__/$pi_turnend_ext}
-    line=${line//__FM_OMP_RESTART_LONG__/$omp_restart_long}
-    line=${line//__FM_OMP_RESTART_SHORT__/$omp_restart_short}
-    line=${line//__FM_OMP_EXT__/$omp_ext}
-    line=${line//__FM_OMP_TURNEND_EXT__/$omp_turnend_ext}
     line=${line//__FM_X_MODE_ENV_SH__/$x_mode_env_sh}
     line=${line//__FM_X_MODE_ENV__/$x_mode_env}
     printf '%s\n' "$line"
@@ -225,17 +199,6 @@ repair_line() {
         printf '%s%s%s%s\n' "$prefix" 'repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds ' "$checkpoint_seconds" '.'
       fi
       ;;
-    pi|pi-signed)
-      printf '%s%s%s%s%s%s\n' "$prefix" 'repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e ' "$pi_turnend_ext" ' -e ' "$pi_ext" ' if the extensions are not loaded.'
-      ;;
-    omp)
-      # shellcheck disable=SC2016  # backticks are literal markdown in the rendered text
-      if [ "$omp_home_elsewhere" -eq 1 ]; then
-        printf '%s%s%s%s%s%s\n' "$prefix" 'repair a missing or failed watcher cycle with the omp tool fm_watch_arm_omp, or exit omp and relaunch through `fm <project>` (the launcher sets FM_HOME and --cwd) so ' "$omp_turnend_ext" ' and ' "$omp_ext" ' load for this home; a bare omp or /resume from the firstmate checkout does not register the extensions for this home.'
-      else
-        printf '%s%s%s%s%s%s\n' "$prefix" 'repair a missing or failed watcher cycle with the omp tool fm_watch_arm_omp, or restart omp inside this home so ' "$omp_turnend_ext" ' and ' "$omp_ext" ' auto-load from .omp/extensions/ (use -e with both paths only when starting omp from another directory).'
-      fi
-      ;;
     opencode)
       printf '%s%s\n' "$prefix" 'repair missing watcher supervision by letting the OpenCode TUI plugin arm after idle; use bin/fm-watch-arm.sh only as a manual recovery probe if the plugin reports failure.'
       ;;
@@ -266,12 +229,6 @@ ordinary_wake_line() {
       else
         printf '%s\n' '- Ordinary wake: take the next foreground bin/fm-watch-checkpoint.sh checkpoint as directed below.'
       fi
-      ;;
-    pi|pi-signed)
-      printf '%s\n' '- Ordinary wake: the Pi extension already owns watcher continuity; do not arm another cycle.'
-      ;;
-    omp)
-      printf '%s\n' '- Ordinary wake: the omp extension already owns watcher continuity; do not arm another cycle.'
       ;;
     opencode)
       printf '%s\n' '- Ordinary wake: the OpenCode TUI plugin already owns watcher continuity; do not arm manually.'

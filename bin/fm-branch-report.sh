@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# fm-branch-report.sh - the supervision branch's report surface off Pi: the
-# command twin of the Pi branch extension's fm_branch_report tool, for a
-# branch session run by the supervision host (docs/supervision-host.md).
+# fm-branch-report.sh - the supervision branch's report surface: the command
+# a branch session run by the supervision host (docs/supervision-host.md)
+# records its outcome with.
 #
 # It records exactly one handled fleet event in the durable outcome store
 # (bin/fm-branch-outcome.sh owns the store) and gives the host the receipt it
-# requires before it counts a wake handled. It enforces the same scoping the
-# Pi tool does (docs/pi-supervision-branch.md "Components and their owners"):
+# requires before it counts a wake handled. It enforces the branch's report
+# scoping (docs/supervision-branch.md "Components and their owners"):
 # while the host's current turn claims signal or stale rows, only the tasks
 # those rows resolve to may be reported - `fleet` and any remembered task are
 # refused before the store is touched - and a claim that names no task (a
 # heartbeat review, or a claimed heartbeat or check row) is unscoped. The
-# claimed task set comes from .pi/extensions/lib/fm-branch-dispatch.ts through
-# the host's turn record; this script only compares against it.
+# claimed task set comes from bin/lib/fm-host-dispatch.ts through the host's
+# turn record; this script only compares against it.
 #
 # Usage:
 #   fm-branch-report.sh --task <id|fleet> --verdict routine|captain \

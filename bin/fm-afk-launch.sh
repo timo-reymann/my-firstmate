@@ -15,13 +15,11 @@
 # (bin/fm-afk-contract.sh owns the record schema; the words are the whole
 # mandate and no script parses them). The record is the posture in every
 # harness.
-# On Pi and pi-signed the entry ENDS there: the away daemon is no longer launched
-# on Pi, the ordinary supervision session keeps running in both postures, and
-# `start` refuses on those harnesses. The same holds for away mode (not quiet
-# mode) on a claude, cursor, opencode, omp, codex, or agy primary whose home
-# runs the supervision host (fm_supervision_host_enabled: by default on
-# Claude, by config/supervision-host elsewhere), where the host runs the away
-# session; `enter` there adds one line when the host has no
+# For away mode (not quiet mode) on a claude, cursor, opencode, codex, or agy
+# primary whose home runs the supervision host (fm_supervision_host_enabled: by
+# default on Claude, by config/supervision-host elsewhere), the entry ENDS
+# there: the host runs the away session, the ordinary supervision session keeps
+# running in both postures, and `start` refuses; `enter` there adds one line when the host has no
 # engine, because every away wake then reaches main. Every other harness still
 # runs the daemon for now, so `start` and `start-native` require the record
 # `enter` wrote before they launch the daemon.
@@ -55,7 +53,7 @@
 # bin/fm-afk-start.sh execs the supervise daemon in the FOREGROUND of whatever
 # terminal it is already in. Harnesses with a native in-pane tracked-background
 # tool (claude) run it there directly and it is fine. A harness with NO
-# native background mechanism (pi) has to manufacture a terminal, and doing that
+# native background mechanism has to manufacture a terminal, and doing that
 # by SPLITTING the captain's active pane visibly shrinks it - the regression this
 # script fixes. Instead this creates a non-visible tracked terminal (a herdr tab/
 # workspace with --no-focus, or a detached tmux session) that never touches the
@@ -74,7 +72,8 @@
 #                              separate confirmation, then print the entry
 #                              announcement and the read-back. With no words
 #                              while away it is a refresh; new words replace
-#                              the mandate. On Pi this is the whole entry.
+#                              the mandate. Where the supervision host runs
+#                              the away session this is the whole entry.
 #   fm-afk-launch.sh start     Capture the captain pane, then (unless the daemon
 #                              is already running) launch the daemon in a fresh
 #                              non-visible terminal for the detected backend and
@@ -88,7 +87,7 @@
 #                              cleanup flushes WHILE state/.afk is still present,
 #                              wait for it, close a recorded non-native terminal
 #                              by exact id, clear state/.afk, then archive the
-#                              record last. A Pi or native entry that never
+#                              record last. A host or native entry that never
 #                              launched a daemon reports that none was running.
 #   fm-afk-launch.sh reconcile Close a recorded-but-dead daemon terminal by exact
 #                              id and drop the record (recovery after a crash).
@@ -238,7 +237,7 @@ fm_afk_launch_primary_harness() {
 # home runs it (docs/supervision-host.md).
 fm_afk_launch_host_primary() {  # <harness>
   case "$1" in
-    claude|cursor|opencode|omp|codex|agy) return 0 ;;
+    claude|cursor|opencode|codex|agy) return 0 ;;
   esac
   return 1
 }
@@ -311,7 +310,7 @@ fm_afk_launch_quiet_check() {
   printf 'Quiet mode needs nothing on this home: the ordinary supervision session already handles the wakes it can while the captain is present, never opens a turn here for a routine outcome, and hands this conversation only what needs it; no daemon and no away record are used.\n'
 }
 
-# The away daemon is no longer launched on Pi, nor for away mode on a primary
+# The away daemon is not launched for away mode on a primary
 # whose home runs the supervision host (fm_supervision_host_enabled,
 # docs/supervision-host.md): the posture record is the whole entry there and
 # the ordinary supervision session runs in both postures. Quiet mode runs the
@@ -321,11 +320,6 @@ fm_afk_launch_quiet_check() {
 fm_afk_launch_daemon_allowed() {
   local harness mode
   harness=$(fm_afk_launch_primary_harness)
-  case "$harness" in
-    pi|pi-signed)
-      fm_afk_launch_log "the away daemon is no longer launched on $harness; the away-posture record is the posture there (run bin/fm-afk-launch.sh enter and stop)"
-      return 1 ;;
-  esac
   fm_afk_launch_host_primary "$harness" || return 0
   fm_supervision_host_enabled "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" "$harness" || return 0
   mode=$(fm_afk_launch_requested_mode)
@@ -926,8 +920,7 @@ fm_afk_launch_stop() {
     fi
   fi
   # (2) Close the daemon's own terminal by exact id. A native/none record or
-  # an absent record means no terminal existed for this entry (Pi never
-  # launches one).
+  # an absent record means no terminal existed for this entry.
   if [ "$read_result" -eq 0 ]; then
     if [ "$FM_AFK_REC_BACKEND" != none ]; then
       closed_daemon_terminal=1

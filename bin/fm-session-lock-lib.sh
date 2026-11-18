@@ -25,21 +25,18 @@ _FM_SESSION_LOCK_LIB_DIR=${BASH_SOURCE[0]%/*}
 [ "$_FM_SESSION_LOCK_LIB_DIR" != "${BASH_SOURCE[0]}" ] || _FM_SESSION_LOCK_LIB_DIR=.
 # shellcheck source=bin/fm-cursor-lib.sh
 . "${_FM_SESSION_LOCK_LIB_DIR:-/}/fm-cursor-lib.sh"
-# shellcheck source=bin/fm-omp-process-lib.sh
-. "${_FM_SESSION_LOCK_LIB_DIR:-/}/fm-omp-process-lib.sh"
 unset _FM_SESSION_LOCK_LIB_DIR
 
-# Known harness command names; extend when a new adapter is verified. omp and
-# agy are anchored exactly like pi: their process names are the bare words `omp`
-# (verified, omp 18.1.11) and `agy`, and a substring match would claim ompd or
-# comp.
-FM_HARNESS_RE='claude|codex|opencode|kimi|^pi$|^pi-signed$|^omp$|^agy$'
+# Known harness command names; extend when a new adapter is verified. agy is
+# anchored: its process name is the bare word `agy`, and a substring match
+# would claim unrelated commands containing it.
+FM_HARNESS_RE='claude|codex|opencode|kimi|^agy$'
 
 # The same harnesses as exact executable names. Keep in sync with
 # FM_HARNESS_RE. Used only for the stricter path evidence below, where the
 # loose regex would also match ordinary firstmate paths such as
 # bin/fm-claude-stop-autoarm.sh.
-FM_HARNESS_NAMES=(claude codex opencode kimi pi-signed pi omp agy)
+FM_HARNESS_NAMES=(claude codex opencode kimi agy)
 
 # Print the exact harness name carried by executable path $1 - its own basename
 # or any directory component - or return 1.
@@ -108,8 +105,6 @@ fm_ps_ppid() {  # <pid> -> parent pid
 #      is identified by its install path on macOS and by argv[0] on Linux.
 #   3. a bare interpreter (node, python) running a harness script path.
 #   4. Cursor's own structural identity, owned by bin/fm-cursor-lib.sh.
-#   5. omp's structural identity, owned by bin/fm-omp-process-lib.sh, which
-#      also covers the bun-package install whose process name is `bun`.
 FM_HARNESS_IS_CLAUDE=0
 fm_harness_process_matches() {  # <comm> <args>
   local comm=$1 args=$2 base argv0 name
@@ -138,7 +133,6 @@ fm_harness_process_matches() {  # <comm> <args>
   # locate its own harness in the ancestry, so every session start refuses the
   # fleet lock as read-only and the park can never arm.
   fm_cursor_process_matches "$comm" "$args" "$argv0" && return 0
-  fm_omp_process_matches "$comm" "$args" && return 0
   return 1
 }
 
@@ -572,9 +566,7 @@ fm_proc_info() {  # <pid>
 # live session that launched a test as its own subprocess.
 #
 # For every harness except Claude the innermost match is the session, which is
-# where e.g. Pi's shared signed-wrapper ancestry actually holds the lock: a
-# "pi-signed" launcher can be the direct parent of the inner "pi" engine pid that
-# owns the lock, and the wrapper pid above it is not that owner. Claude Code
+# where the lock is actually held. Claude Code
 # instead runs hooks several levels below the session inside its own nested
 # worker chain (hook shell -> claude bg-spare -> claude bg-pty-host -> claude ->
 # claude), with no non-harness process between them. Which pid in that run is the
@@ -775,7 +767,7 @@ fm_session_lock_pid_blocks_reclaim() {
 #
 # Trust gate: CLAUDE_PID must be a Claude-shaped member of this process's
 # contiguous harness ancestry. An id merely retained in a helper environment
-# fails that membership and is ignored: a hand-started Pi or codex primary under
+# fails that membership and is ignored: a hand-started codex primary under
 # a Claude pane still carries the pane's CLAUDE_CODE_SESSION_ID and CLAUDE_PID,
 # and must never own a lock with them. On Windows the ancestry is that tagged
 # CLAUDE_PID itself, so this membership is no secondary check there; the

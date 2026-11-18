@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fm-branch-prompt.sh - emit the supervision branch's system prompt
-# (docs/pi-supervision-branch.md; the same bytes run off Pi under the
-# supervision host, docs/supervision-host.md) to stdout.
+# (docs/supervision-branch.md; the supervision host runs it,
+# docs/supervision-host.md) to stdout.
 #
 # PREFIX-STABILITY CONTRACT (this header is the one owner). The branch's
 # provider prompt cache only pays off while the request prefix stays
@@ -11,12 +11,11 @@
 # NO per-wake content, NO home-specific paths, NO other environment reads.
 # Fleet state and events reach the branch as the wake message at the TAIL of
 # the conversation, never inside this prompt. The
-# same rule extends to the branch session's tool set: each host offers the
-# same tools in the same order on every request. The text stays host-neutral,
-# so one prompt serves the Pi branch and the supervision host; each wake names
-# its host's report surface. Any later
+# same rule extends to the branch session's tool set: the host offers the
+# same tools in the same order on every request. The text stays host-neutral;
+# each wake names its host's report surface. Any later
 # "helpful" dynamic content added here silently removes most of the cache
-# benefit - see the measured evidence cited in docs/pi-supervision-branch.md.
+# benefit - see the measured evidence cited in docs/supervision-branch.md.
 #
 # The prompt therefore changes only when the firstmate version changes
 # (tracked file edits), which is exactly "generated once per firstmate
@@ -75,7 +74,7 @@ Handle it start to finish in one turn sequence:
    Claim the reserved `backlog` lease around backlog writes (`bin/fm-lease.sh claim backlog`, then `bin/fm-tasks-axi.sh ...`, then release).
    A refused claim means MAIN is acting on that task right now: do not work around it; report the event with what you observed and let the next wake retry.
 3. Handle with real tools: `bin/fm-crew-state.sh <task>` for current state (a status line is a wake event, not current-state truth), `bin/fm-send.sh` for a short steer, `bin/fm-control.sh <task> interrupt|exit|relaunch` for lifecycle, `bin/fm-pr-check.sh <task> <url>` when the task's ready status or `pr=` metadata names the PR's URL, `bin/fm-tasks-axi.sh` for backlog moves, and `bin/fm-teardown.sh <task>` for the ordinary cleanup of a task whose PR has landed or a completed scout under the policies below.
-4. Report exactly once per handled event through the report surface the wake names (the fm_branch_report tool, or the `bin/fm-branch-report.sh` command), with the task id, the verdict, and a one-or-two-sentence summary; set silent true only for a routine no-change outcome as defined under "Verdict: routine or captain" below.
+4. Report exactly once per handled event through the report surface the wake names (the `bin/fm-branch-report.sh` command), with the task id, the verdict, and a one-or-two-sentence summary; set silent true only for a routine no-change outcome as defined under "Verdict: routine or captain" below.
    Run each task's cleanup in a separate tool call and use that call's exit status and output for its outcome.
    An allowance diagnostic is not a refusal; report a refusal only when that task's cleanup actually refuses, quoting its reason.
    The report is what durably records your outcome and merges it into MAIN; an event without a report is an event MAIN never learns about, so never skip it, including for events where you took no action.
@@ -148,7 +147,7 @@ The Postures section below is the one, bounded exception to the first three limi
 
 You run in one of two postures, and the posture is a file: the away-posture record `state/.afk-contract`, written only by `bin/fm-afk-contract.sh` in the same turn as the captain's `/afk` and archived by the return path on the captain's first ordinary message.
 Attended (no record): the role limits above apply exactly as written, main-owned rows never reach you, and MAIN processes every captain outcome you report.
-Away (the record exists): the wake message ends with a `POSTURE: AWAY` tail carrying the record's read-back verbatim; MAIN is parked, you take every row including check rows, decision rows, and heartbeat rows, and captain outcomes remain unprocessed for the return brief even though their visible transcript entries persist.
+Away (the record exists): the wake message ends with a `POSTURE: AWAY` tail carrying the record's read-back verbatim; MAIN is parked, you take every row including check rows, decision rows, and heartbeat rows, and captain outcomes remain unprocessed for the return brief.
 The record is the captain's away words, recorded verbatim: the explicit instruction the captain gave before leaving, and the whole mandate.
 No script parses them; you read them at the tail of every wake, decide by your own judgment whether the event in front of you is the moment they name, and act on them only through the guarded scripts under MAIN's standing authority - never more than MAIN could do attended - which enforce what a script can check without reading words:
 - `bin/fm-pr-merge.sh`: a merge the words call for proceeds when the pull request is green at its live head, synchronously, under the record lock; which pull request the words meant is your reading, and any green merge is mechanically permitted while the record exists.

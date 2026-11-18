@@ -42,11 +42,8 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
     # cannot carry it either: ~/.local/bin/muse-bin-<version> has no `muse` path
     # COMPONENT, so the fm_harness_path_name fallback below never fires for it.
     muse|muse-bin-*) printf 'agent' ;;
-    # omp (Oh My Pi) is anchored for the same reason as muse: its live process
-    # name is the bare word `omp` (verified, omp 18.1.11) and a glob would claim
-    # unrelated commands such as ompd or comp.
-    *claude*|*codex*|*opencode*|*kimi*|*rovo*|pi|pi-signed|pi-launcher|Pi|omp) printf 'agent' ;;
-    # agy (Antigravity CLI) is anchored for the same reason as muse and omp: its
+    *claude*|*codex*|*opencode*|*kimi*|*rovo*) printf 'agent' ;;
+    # agy (Antigravity CLI) is anchored for the same reason as muse: its
     # live process name is the bare word `agy` (verified, agy 1.2.0: a Go-compiled
     # single binary, comm=agy with argv[0]=agy), and a glob would claim
     # unrelated commands containing that fragment. devin is anchored the same
@@ -59,7 +56,7 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
     # cortex (Cortex Code) is anchored too (verified, cortex 1.1.104: a
     # Bun-compiled single binary, comm=cortex).
     agy|devin|command-code|polytoken|cortex|hermes) printf 'agent' ;;
-    # kiro (Kiro CLI) is anchored for the same reason as muse, omp, and agy: its
+    # kiro (Kiro CLI) is anchored for the same reason as muse and agy: its
     # live foreground process name is the bare word `kiro-cli` (verified,
     # kiro-cli 2.21.4: a toolbox/aim-sandbox wrapper whose comm and tmux
     # #{pane_current_command} both read kiro-cli), and a glob would claim
@@ -107,7 +104,7 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
   by_name=$(fm_agent_process_classify_name "$name" "$argv0")
   [ "$by_name" != agent ] || { printf 'agent'; return 0; }
   if [ -n "$argv0" ]; then
-    # argv[0] is classified as a path in its own right, so a bare `pi` or a
+    # argv[0] is classified as a path in its own right, so a bare `codex` or a
     # `-zsh` login name reads by basename and an install path by component.
     by_argv0=$(fm_agent_process_classify_name "$argv0" "$argv0")
     [ "$by_argv0" != agent ] || { printf 'agent'; return 0; }

@@ -295,14 +295,9 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
       continue
     fi
     case "${EFFORT[i]}" in
-      ''|low|medium|high|xhigh|max|ultra) ;;
+      ''|low|medium|high|xhigh|max) ;;
       *) EFFORT[i]="" ;;
     esac
-    if [ "${EFFORT[i]}" = ultra ] && ! "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "${HARNESS[i]}" "${MODEL[i]}" "${EFFORT[i]}"; then
-      REASON[i]="the configured Ultra profile does not select native Codex through Pi"
-      i=$((i + 1))
-      continue
-    fi
   fi
 
   if ! corr=$(fm_pending_reply_create "$FM_HOME" "$STATE" "$id" \

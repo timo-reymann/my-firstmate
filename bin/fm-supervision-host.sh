@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fm-supervision-host.sh - the supervision host: watcher-cycle ownership plus a
-# headless engine session that runs the supervision branch's contract beside a
-# non-Pi primary (docs/supervision-host.md owns the design).
+# headless engine session that runs the supervision branch's contract beside
+# the primary (docs/supervision-host.md owns the design).
 #
 # Usage:
 #   fm-supervision-host.sh park [--restart]
@@ -12,8 +12,7 @@
 # host"): the Claude Stop auto-arm
 # (bin/fm-claude-stop-autoarm.sh), the Cursor stop-hook park
 # (bin/fm-turnend-guard-cursor.sh), the OpenCode TUI plugin
-# (.opencode/plugins/fm-primary-watch-arm.js), the omp watch extension
-# (.omp/extensions/fm-primary-omp-watch.ts), Codex's opt-in native Stop park
+# (.opencode/plugins/fm-primary-watch-arm.js), Codex's opt-in native Stop park
 # (bin/fm-codex-stop-park.sh), and Codex's foreground checkpoint
 # (bin/fm-watch-checkpoint.sh). To that owner it IS an arm: it prints the
 # arm's own lines and exits only when main is needed, and stays parked across
@@ -33,7 +32,7 @@
 # the arm's. --restart starts the first cycle with fm-watch-arm.sh --restart,
 # and an FM_WATCH_PREDECESSOR_ARM_PID the owner passes reaches that first
 # cycle only, for owners that start their own successor after every close
-# (OpenCode, omp).
+# (OpenCode).
 #
 # THE LOOP. It owns watcher cycles through bin/fm-watch-arm.sh. The posture is
 # the away-posture record state/.afk-contract, read at every close and again
@@ -46,8 +45,8 @@
 #     primary has a verified dialog mirror (bin/fm-host-mirror.sh verified;
 #     fm_supervision_host_attended_ready owns the list), the main session's
 #     lock holder can be identified, the session is not cooling down after
-#     engine errors, and the Pi branch's offer rule
-#     (bin/fm-branch-dispatch.mjs offer) says the branch may take this close,
+#     engine errors, and the branch's offer rule
+#     (bin/fm-host-dispatch.mjs offer) says the branch may take this close,
 #     so main-only classes (check triggers, decision-owned triggers, a scan
 #     that is unsafe or holds nothing for the branch) stay main's. That
 #     pass-through starts the successor watcher cycle and leaves it running
@@ -145,8 +144,8 @@
 # processes, arms, and leases alone. The engine runs with
 # FM_SUPERVISION_ACTOR=branch, the session-lock holder as FM_LEASE_HOLDER_PID,
 # the primary's harness pin, and this turn's report id, so every guarded
-# script applies the same partition, leases, and away relocation it applies to
-# the Pi branch. At activation the host stops anything a crashed predecessor
+# script applies the supervision branch's partition, leases, and away
+# relocation. At activation the host stops anything a crashed predecessor
 # left running (recorded with identities, never by name), including the
 # engine descendants its turn recorded, removes that turn's files, and
 # releases the branch actor's leases; it releases them again after every
@@ -1037,7 +1036,7 @@ handle_wake() {  # <reason-lines>
   else
     set --
     case "$first" in heartbeat*) set -- --heartbeat ;; esac
-    if ! scope=$(node "$SCRIPT_DIR/fm-branch-dispatch.mjs" scope "$@" --afk 2>/dev/null); then
+    if ! scope=$(node "$SCRIPT_DIR/fm-host-dispatch.mjs" scope "$@" --afk 2>/dev/null); then
       HANDLE_WHY="branch eligibility could not be computed"
       return 1
     fi
@@ -1115,7 +1114,7 @@ handle_wake() {  # <reason-lines>
   rm -f "$WAKE_FILE"
   rc=0
   printf '%s\n' "$reason" \
-    | (umask 077; exec node "$SCRIPT_DIR/fm-branch-dispatch.mjs" wake-prompt "$@" > "$WAKE_FILE" 2>/dev/null) || rc=$?
+    | (umask 077; exec node "$SCRIPT_DIR/fm-host-dispatch.mjs" wake-prompt "$@" > "$WAKE_FILE" 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ]; then
     [ -z "$readback" ] || rm -f "$readback"
     rm -f "$TURN_FILE" "$mirror"
@@ -1219,7 +1218,7 @@ attended_acceptor() {  # <first-reason-line>
     ATTENDED_WHY="the main session could not be identified"
   elif health_cooling; then
     ATTENDED_WHY="the supervision session is cooling down after engine errors"
-  elif ! offer=$(printf '%s\n' "$1" | node "$SCRIPT_DIR/fm-branch-dispatch.mjs" offer 2>/dev/null); then
+  elif ! offer=$(printf '%s\n' "$1" | node "$SCRIPT_DIR/fm-host-dispatch.mjs" offer 2>/dev/null); then
     ATTENDED_WHY="branch eligibility could not be computed"
   elif [ "$(printf '%s\n' "$offer" | sed -n 's/^eligible=//p')" != 1 ]; then
     ATTENDED_WHY="main-only"

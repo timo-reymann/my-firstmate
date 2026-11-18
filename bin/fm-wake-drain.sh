@@ -57,17 +57,18 @@ case "$PRESENTATION_LOCK_TIMEOUT" in ''|*[!0-9]*|0) PRESENTATION_LOCK_TIMEOUT=10
 # - the same actor identity fm-send.sh/fm-control.sh/fm-teardown.sh already use)
 # claims every row not already granted to branch, then drains and acks only
 # that claimed set. branch (FM_SUPERVISION_ACTOR=branch, injected
-# deterministically by the Pi branch extension's bash tool - never agent
-# memory) drains and acks only the row set the extension granted to it.
-# .pi/extensions/lib/fm-branch-dispatch.ts is the single owner of that
+# deterministically by the supervision host's engine environment - never agent
+# memory) drains and acks only the row set the host granted to it.
+# bin/lib/fm-host-dispatch.ts is the single owner of that
 # eligibility classification (which signal/stale rows resolve to a known
 # project, and the existing all-unread-rows-safe rule for a heartbeat); this
-# script never reclassifies a row itself, it only consumes the extension's
-# already-computed verdict. The extension writes the exact eligible sequence
-# numbers to ELIGIBLE_ROWS_FILE under the queue lock, immediately before every
-# branch prompt, so the file is always fresh for the one wake that prompt is about to
-# handle (the branch drains and acks exactly once per prompt, serialized by
-# its own branchChain, before the next wake can overwrite the file).
+# script never reclassifies a row itself, it only consumes the host's
+# already-computed verdict. The host writes the exact eligible sequence
+# numbers to ELIGIBLE_ROWS_FILE under the queue lock (bin/fm-wake-grant.sh),
+# immediately before every branch turn, so the file is always fresh for the one
+# wake that turn is about to handle (the branch drains and acks exactly once
+# per turn, and the host runs one turn at a time, before the next wake can
+# overwrite the file).
 # A row whose sequence number is not in that file is left completely
 # untouched by a branch-actor drain or ack, no matter its sequence number
 # relative to what the branch presents or consumes - that per-row scoping,
@@ -195,7 +196,7 @@ consume_actor_rows_locked() { # <rows-file> <cutoff>
 }
 
 # A branch-actor drain or ack requires a snapshot to already exist and name at
-# least one row. The extension always writes a non-empty snapshot before it
+# least one row. The host always writes a non-empty snapshot before it
 # ever prompts the branch (an empty eligible set means no prompt at all), and
 # the branch's own ack removes the snapshot once it consumes every granted row.
 # So a missing file with a live owner means this turn's grant was already
@@ -247,9 +248,7 @@ esac
 # only when a guarded supervision script (fm-peek/fm-send/...) happens to run.
 # Reuse fm-guard.sh's model-aware alarm and FM_GUARD_GRACE instead of duplicating
 # its supervision verdict. Under Claude's between-turns auto-arm model, a normal
-# fire leaves a recent beacon well inside grace and stays silent mid-turn. Under
-# the Pi extension model, a fresh beacon also stays silent during a genuinely
-# unheld-lock hand-off only while the live session proves extension ownership.
+# fire leaves a recent beacon well inside grace and stays silent mid-turn.
 # Persistent-watcher models still require the live identity-matched watcher.
 # Never let a guard hiccup change the drain's exit status.
 assert_watcher_liveness() {
@@ -587,10 +586,9 @@ EOF
 }
 
 # Print BRANCH OUTCOMES: what the supervision host's session recorded since
-# main last drained (docs/supervision-host.md "Captain outcomes"). Off Pi this
-# presentation is what the Pi branch's transcript entries are. It runs only for
-# main, only where fm_supervision_host_outcomes_drained holds (the Pi branch
-# extension owns this path on Pi), and never while an away record exists,
+# main last drained (docs/supervision-host.md "Captain outcomes"). It runs only
+# for main, only where fm_supervision_host_outcomes_drained holds, and never
+# while an away record exists,
 # because those outcomes wait for the return; quiet mode's record is a present
 # captain (bin/fm-afk-contract.sh AWAY OR QUIET). Bounded, and silent when
 # nothing is new or unprocessed.
@@ -612,8 +610,7 @@ EOF
 #     check the task's current state first and reply to the captain only
 #     about outcomes still open, as if settled ones had never been listed,
 #     then acknowledge every presented outcome, settled and open alike.
-#   - Visible routine outcomes are listed once, for awareness, the way the Pi
-#     branch's routine notes reach main's transcript without a turn; silent
+#   - Visible routine outcomes are listed once, for awareness; silent
 #     routine outcomes never appear. The newest visible rows that fit a byte
 #     cap are listed, and older visible rows collapse into a count, since
 #     bin/fm-branch-outcome.sh list keeps them all.
@@ -878,7 +875,7 @@ if [ -n "$ACK_THROUGH" ]; then
   if [ "$ACTOR" = branch ]; then
     # An away-posture grant can name check-kind rows - the attended
     # partition's check/decision exclusions lift under the away record
-    # (docs/pi-supervision-branch.md "Postures") - so a branch ack must retire
+    # (docs/supervision-branch.md "Postures") - so a branch ack must retire
     # the inactive-outcome and notice receipts carried by the exact granted
     # sequences it consumes. Otherwise the receipt stays pending and every
     # later reconcile scan re-queues the same fingerprint. Attended, a grant
@@ -908,7 +905,7 @@ if [ -n "$ACK_THROUGH" ]; then
   if [ "$ACTOR" = branch ]; then
     require_branch_eligible_rows || exit 1
     # Delete a row only when its sequence is <= cutoff AND it is named in the
-    # extension's eligible snapshot; every other row - including one whose
+    # host's eligible snapshot; every other row - including one whose
     # sequence is below cutoff but not in the snapshot - is kept untouched.
     awk -F '\t' -v cutoff="$ACK_THROUGH" -v seqs="$ELIGIBLE_ROWS_FILE" '
       BEGIN { while ((getline line < seqs) > 0) if (line ~ /^[0-9]+$/) keep[line] = 1 }

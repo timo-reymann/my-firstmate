@@ -1754,7 +1754,7 @@ fm_backend_herdr_server_ensure() {  # <session>
   fi
   (
     unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE \
-      CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS FM_SUPERVISION_MODEL
+      CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE FM_SUPERVISION_MODEL
     fm_backend_herdr_cli "$session" server </dev/null >/dev/null 2>&1 &
   ) || return 1
   for i in $(seq 1 20); do
@@ -2213,9 +2213,9 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #
 # Verified on Herdr 0.9.0 (docs/verification/runtime-backends.md "Stale agent
 # registration"): process-info's `.name` is the kernel process name (`node` for
-# Pi, `zsh` for a shell), `.argv0` the argv[0] basename (`pi`), and `.argv` /
-# `.cmdline` the full command line, so Pi is identified by argv[0] exactly as
-# the tmux probe identifies it from `ps`.
+# a Node-based harness, `zsh` for a shell), `.argv0` the argv[0] basename, and
+# `.argv` / `.cmdline` the full command line, so a harness is identified by
+# argv[0] exactly as the tmux probe identifies it from `ps`.
 fm_backend_herdr_pane_process_state() {  # <session> <pane_id>
   local attempt=0 max_attempts=${FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS:-10} verdict
   while :; do
@@ -2379,7 +2379,7 @@ fm_backend_herdr_pane_owns_session() {  # <session> <pane_id> <pid>
 #                 done, or blocked) but fm_backend_herdr_pane_process_state
 #                 proves the pane is shell-only: the registered agent's process
 #                 has exited and Herdr kept its registration (issue #4115;
-#                 Herdr does not release a Pi registration on TUI shutdown when
+#                 Herdr does not release an agent registration on TUI shutdown when
 #                 a nested shell sits under the pane's top shell, the crew
 #                 shape). This is the explicit agent-free reason: the pane is
 #                 recoverable, and the record it carries is not evidence of a
@@ -2427,56 +2427,6 @@ fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
     shell) printf 'stale-agent' ;;
     *) printf 'unknown' ;;
   esac
-}
-
-# fm_backend_herdr_pane_agent_session_ref: the agent session reference the
-# named pane's Herdr registration currently holds, printed as
-# "<agent-label>\t<session-ref>", or nothing (nonzero) when the pane has no
-# readable registration or the reference is not one a harness can be resumed on.
-#
-# Why a caller wants this: Herdr gives a pane ONE status authority, and for Pi
-# with its integration installed that authority is the lifecycle hooks, so
-# Herdr also skips screen detection for the pane (docs/herdr-backend.md
-# "Agent status authority and relaunch"). The registration survives its agent
-# process in the crew shape (a nested worktree shell under the pane's top
-# shell), and Herdr then applies only reports carrying the session identity it
-# bound: an agent started fresh in that pane reports a new session and its
-# state reports are ignored, leaving the pane frozen at its pre-relaunch value
-# (measured 2026-09-21: herdr 0.9.1, `pane report-agent-session` and
-# `report-agent` accepted with rc=0 but never applied, and `pane release-agent`
-# ineffective from outside the agent process). Handing the bound reference back
-# to the replacement - Pi's own `--session <path-or-id>` - keeps that identity,
-# and the authority with it.
-#
-# The value is only reported when it has the shape the harness can consume: a
-# `path` reference must be absolute, and an `id` reference must be a bare token.
-# An unreadable, missing, or unrecognized reference prints nothing, so a caller
-# falls back to its ordinary behavior rather than launching on a guess.
-# A tab separates the two fields so a caller splits unambiguously.
-#
-# The registration is read whatever the agent label is - handing a FOREIGN
-# adapter's session reference to this harness would resume another agent's
-# conversation - so the label travels with the reference and the caller decides.
-# A pane whose registration is unreadable is not an error here: it is the
-# ordinary no-session case.
-#
-# Never reads as authority for anything else. This is a read of Herdr's own
-# record; it grants no send, close, or lifecycle authority, and a pane whose
-# registration is stale still has that staleness as its pane state.
-fm_backend_herdr_pane_agent_session_ref() {  # <session> <pane_id>
-  local session=$1 pane_id=$2 out agent kind value
-  [ -n "$session" ] && [ -n "$pane_id" ] || return 1
-  out=$(fm_backend_herdr_cli "$session" agent get "$pane_id" 2>&1) || return 1
-  agent=$(printf '%s' "$out" | jq -r '.result.agent.agent // empty' 2>/dev/null)
-  kind=$(printf '%s' "$out" | jq -r '.result.agent.agent_session.kind // empty' 2>/dev/null)
-  value=$(printf '%s' "$out" | jq -r '.result.agent.agent_session.value // empty' 2>/dev/null)
-  [ -n "$agent" ] || return 1
-  case "$kind" in
-    path) case "$value" in /*) ;; *) return 1 ;; esac ;;
-    id) case "$value" in '' | */* | *[[:space:]]*) return 1 ;; esac ;;
-    *) return 1 ;;
-  esac
-  printf '%s\t%s' "$agent" "$value"
 }
 
 # fm_backend_herdr_tab_is_husk: true (0) only for the two conservative husk
@@ -3314,7 +3264,7 @@ fm_backend_herdr_visible_capture_ansi() {  # <target>
 # ANSI viewport capture (`--source visible`, which needs no line count and so
 # no small-N workaround), the native `agent get` identity probe, and the
 # capability descriptor. Every shape - the bordered
-# box, the bare agent-glyph row, opencode's left-bar, and pi's
+# box, the bare agent-glyph row, opencode's left-bar, and the
 # identity-gated separated pair (which this adapter pioneered) - now lives in
 # the shared owner (bin/fm-composer-lib.sh, fm_composer_classify_screen), so
 # a new harness shape is taught there once and every backend learns it in the
@@ -3328,7 +3278,7 @@ fm_backend_herdr_agent_identity_raw() {  # <session> <pane> -> <agent>\t<status>
 }
 
 # fm_backend_herdr_composer_identity: the native agent identity/state probe
-# backing the shared classifier's separated (pi) shape - the genuine herdr
+# backing the shared classifier's separated (polytoken) shape - the genuine herdr
 # primitive no other backend has natively.
 fm_backend_herdr_composer_identity() {  # <target> -> "<agent>\t<status>"
   fm_backend_herdr_parse_target "$1" || return 1
@@ -3340,7 +3290,7 @@ fm_backend_herdr_composer_identity() {  # <target> -> "<agent>\t<status>"
 # shared classifier strip ghost/placeholder text); when it fails on an older
 # herdr, the plain capture degrades the descriptor to styled=0 rather than
 # letting ghost text be misread as typed input. Identity is fetched lazily,
-# only when the classifier reports the verdict depends on it (a pi separator
+# only when the classifier reports the verdict depends on it (a separator
 # pair below every other candidate), preserving this adapter's original
 # consult-only-when-needed behavior.
 # The capture is the FULL VISIBLE VIEWPORT, never a bounded tail: an overlay

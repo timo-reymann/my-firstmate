@@ -31,8 +31,6 @@
 # per-harness trust table; a record whose source is not trusted for the
 # task's recorded harness classifies unknown, so one adapter's writer can
 # never classify another adapter):
-#   pi-ext           Pi/pi-signed per-task extension (agent_start/agent_settled)
-#   omp-ext          omp (Oh My Pi) per-task extension (agent_start/agent_end without willContinue)
 #   opencode-plugin  OpenCode per-task plugin (2.x session.execution.*;
 #                    1.x session.status/session.idle, also accepted by 2.x)
 #   claude-hook      Claude lifecycle hooks (UserPromptSubmit/Stop/StopFailure/SessionEnd)
@@ -95,7 +93,7 @@
 # launch whose busy record never advanced past the fm-spawn seed is
 # indistinguishable, from the record alone, between "still reading its
 # brief" and "parked on an interactive prompt the harness never gets past
-# without a human" - a Claude/Gemini/Pi workspace-trust dialog, a sign-in or
+# without a human" - a Claude/Gemini workspace-trust dialog, a sign-in or
 # auth-method picker, or a first-run setup menu. Left alone this reads as
 # ordinary busy for the full BUSY_TURN_MAX_SECS (one hour) before the
 # separate wedge-suspect bound even looks at it. The signature table matches
@@ -220,85 +218,6 @@ fm_busy_gen_path() {  # <state-dir> <id>
   printf '%s/%s.busy-gen' "$1" "$2"
 }
 
-# Optional Pi model-stream contract. The busy writer owns every mutation under
-# its incarnation lock. model-stream is active evidence; model-stream-order
-# retains the latest request and active/closed phase after the marker is cleared.
-#   order: v1 gen=<token> request=<positive uint> phase=<active|closed>
-#   stream / model-progress: v1 gen=<token> request=<uint> rev=<uint> ts=<epoch>
-# Requests strictly increase within a generation. Progress/close must match the
-# open request; closed and older requests cannot reopen or refresh evidence.
-# model-progress is separate from native progress and is read ONLY by opted-in
-# watchers. Missing, malformed, locked, idle, foreign, or stale evidence conveys
-# no model-phase observation, leaving the general busy bound applicable.
-fm_busy_pi_stream_version_supported() {
-  [ "${1:-}" = 1.2.0 ]
-}
-
-fm_busy_stream_seconds() {  # <configured seconds>; off/invalid prints 0
-  local value=${1:-}
-  case "$value" in ''|*[!0-9]*) printf '0'; return ;; esac
-  [ "${#value}" -le 9 ] || { printf '0'; return; }
-  printf '%s' "$((10#$value))"
-}
-
-fm_busy_stream_uint_valid() {
-  case "${1:-}" in ''|0*|*[!0-9]*) return 1 ;; esac
-  [ "${#1}" -le 15 ]
-}
-
-fm_busy_stream_order_read() {  # <state-dir> <id>
-  local line version gen request phase extra
-  line=$(cat "$1/$2.model-stream-order" 2>/dev/null) || return 1
-  read -r version gen request phase extra <<< "$line"
-  [ "$version" = v1 ] && [ -z "$extra" ] || return 1
-  gen=${gen#gen=} request=${request#request=} phase=${phase#phase=}
-  fm_busy_token_valid "$gen" && fm_busy_stream_uint_valid "$request" || return 1
-  case "$phase" in active|closed) : ;; *) return 1 ;; esac
-  [ "$line" = "v1 gen=$gen request=$request phase=$phase" ] || return 1
-  printf '%s %s %s' "$gen" "$request" "$phase"
-}
-
-fm_busy_stream_record_read() {  # <record path>
-  local line version gen request rev ts extra
-  line=$(cat "$1" 2>/dev/null) || return 1
-  read -r version gen request rev ts extra <<< "$line"
-  [ "$version" = v1 ] && [ -z "$extra" ] || return 1
-  gen=${gen#gen=} request=${request#request=} rev=${rev#rev=} ts=${ts#ts=}
-  fm_busy_token_valid "$gen" && fm_busy_stream_uint_valid "$request" &&
-    fm_busy_stream_uint_valid "$rev" && fm_busy_stream_uint_valid "$ts" || return 1
-  [ "$line" = "v1 gen=$gen request=$request rev=$rev ts=$ts" ] || return 1
-  printf '%s %s %s %s' "$gen" "$request" "$rev" "$ts"
-}
-
-fm_busy_stream_read() {  # <state-dir> <id> <harness>; gen request rev ts
-  local state=$1 id=$2 harness=$3 snapshot gen request rev ts order current
-  case "$harness" in pi|pi-signed) : ;; *) return 1 ;; esac
-  [ ! -e "$state/$id.busy-state.lock" ] || return 1
-  current=$(fm_busy_current_gen "$state" "$id") || return 1
-  order=$(fm_busy_stream_order_read "$state" "$id") || return 1
-  snapshot=$(fm_busy_stream_record_read "$state/$id.model-stream") || return 1
-  read -r gen request rev ts <<< "$snapshot"
-  [ "$gen" = "$current" ] && [ "$order" = "$gen $request active" ] || return 1
-  case "$(fm_busy_record_read "$state" "$id")" in 'busy pi-ext '*) : ;; *) return 1 ;; esac
-  [ ! -e "$state/$id.busy-state.lock" ] &&
-    [ "$(fm_busy_current_gen "$state" "$id")" = "$current" ] &&
-    [ "$(fm_busy_stream_order_read "$state" "$id")" = "$order" ] &&
-    [ "$(fm_busy_stream_record_read "$state/$id.model-stream")" = "$snapshot" ] || return 1
-  printf '%s' "$snapshot"
-}
-
-fm_busy_model_progress_ts() {  # <state-dir> <id> <harness>
-  local snapshot gen request rev ts current
-  case "$3" in pi|pi-signed) : ;; *) return 1 ;; esac
-  [ ! -e "$1/$2.busy-state.lock" ] || return 1
-  current=$(fm_busy_current_gen "$1" "$2") || return 1
-  snapshot=$(fm_busy_stream_record_read "$1/$2.model-progress") || return 1
-  read -r gen request rev ts <<< "$snapshot"
-  [ "$gen" = "$current" ] && [ ! -e "$1/$2.busy-state.lock" ] &&
-    [ "$(fm_busy_current_gen "$1" "$2")" = "$current" ] || return 1
-  printf '%s' "$ts"
-}
-
 # fm_busy_token_valid: conservative token charset shared by gen, source, and
 # event fields. Anything else is malformed.
 fm_busy_token_valid() {  # <value>
@@ -342,8 +261,6 @@ fm_busy_sources_for_harness() {  # <harness>
     commandcode) adapter=commandcode-mod ;;
     polytoken) adapter=polytoken-hook ;;
     kiro) adapter=kiro-hook ;;
-    pi|pi-signed) adapter=pi-ext ;;
-    omp) adapter=omp-ext ;;
     kimi*)
       fm_busy_kimi_verified || { printf ''; return 0; }
       adapter='kimi-wire kimi-hook'
@@ -435,8 +352,8 @@ fm_busy_record_read() {  # <state-dir> <id>
 # in flight, and a settled log is idle: the credentialed multi-step smoke showed
 # one run pair spans a whole multi-step turn, including an Escape interrupt that
 # closes the run with terminal=cancelled instead of continuing the turn in
-# another run. This gives the settled log the same idle trust as the Claude and
-# Pi push sources. A version allowlist would be false precision and a maintenance
+# another run. This gives the settled log the same idle trust as the Claude
+# push source. A version allowlist would be false precision and a maintenance
 # treadmill for an auto-updating vendor binary: busy classification receives
 # only the normalized muse harness identity, while session metadata records
 # semver 0.1.0 plus a build SHA that cannot be matched against it. Resolution
@@ -1040,25 +957,6 @@ fm_busy_claude_launch_prompt_tail() {
     && printf '%s' "$buf" | grep -qiE 'No, disable external imports|Yes, allow external imports'
 }
 
-# fm_busy_pi_launch_prompt_tail: Pi's project-trust dialog. Live-verified on
-# pi 0.86.1 (2026-09-22) in a fresh untrusted worktree carrying a project-local
-# .pi/extensions/ file (the shape a real ship/scout spawn always launches
-# into): the rendered heading is "Trust project folder?" and its declining
-# option is literally "Do not trust". An initial guess sourced only from the
-# installed binary's UI strings ("Project trust", the internal panel-title
-# component name, not this dialog's own rendered heading) was proven wrong by
-# that live run and never matched the real screen - which is exactly why this
-# class of check must be proven end to end rather than read off strings or a
-# name. Matching BOTH the heading and "Do not trust" keeps this from firing on
-# a worker's own prose that happens to use the common word "trust" alone.
-# Covers omp too: it shares Pi's engine and the same project-trust gate.
-fm_busy_pi_launch_prompt_tail() {
-  local buf
-  buf=$(cat)
-  printf '%s' "$buf" | grep -qiE "${FM_BUSY_PI_LAUNCH_PROMPT_REGEX:-Trust project folder\\?}" \
-    && printf '%s' "$buf" | grep -qiE 'Do not trust'
-}
-
 # fm_busy_gemini_launch_prompt_tail: Gemini's workspace-trust dialog ("Do you
 # trust the files in this folder?"), its first-run auth-method picker ("How
 # would you like to authenticate for this project?"), and the credential
@@ -1096,14 +994,13 @@ fm_busy_gemini_launch_prompt_tail() {
 # fm_busy_launch_prompt_parked: dispatch to the signature above for <harness>,
 # or fail when this harness has none. Consumes the tail on stdin. Scoped to
 # exactly the harnesses fm-spawn.sh arms with the fm-spawn busy source
-# (claude*, opencode*, pi, pi-signed, omp, gemini) since only those can ever
+# (claude*, opencode*, gemini) since only those can ever
 # read a pinned "busy fm-spawn" record; codex and standalone Kimi already
 # classify unknown before a record is ever consulted, and opencode ships no
 # trust dialog at all.
 fm_busy_launch_prompt_parked() {  # <harness>
   case "${1:-}" in
     claude*) fm_busy_claude_launch_prompt_tail ;;
-    pi | pi-signed | omp) fm_busy_pi_launch_prompt_tail ;;
     gemini) fm_busy_gemini_launch_prompt_tail ;;
     *) return 1 ;;
   esac

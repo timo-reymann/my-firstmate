@@ -32,8 +32,8 @@
 #               anchors shape selection: the shape containing the cursor is the
 #               composer. Without it, the bottom-most shape wins.
 #   identity=1  a native agent identity/state probe exists (herdr `agent get`;
-#               the tmux pi foreground-process probe). Identity is what makes
-#               Pi's blank separated composer provable; with identity=0 that
+#               the tmux foreground-process probe). Identity is what makes
+#               a blank separated composer provable; with identity=0 that
 #               shape stays `unknown`.
 #   cortex=1    the caller proved the pane's foreground process is Cortex Code
 #               (tmux exact process name, herdr native agent probe). Opt-in:
@@ -70,15 +70,15 @@
 #                A bare composer's WRAP region (typed input continuing on the
 #                rows beneath the glyph row) is bounded by blank rows, by
 #                structural edges, and by the FURNITURE rows a harness draws
-#                directly below its composer - omp's status row and
-#                braille-only animation rows (declared once below, next to
-#                the idle placeholders) - none of which is ever typed input.
+#                directly below its composer - braille-only animation rows
+#                (declared once below, next to the idle placeholders) - none
+#                of which is ever typed input.
 #   left-bar   - opencode: rows prefixed by a heavy left bar `┃` with no
 #                closing border, holding the idle hint, blank rows, and a
 #                mode/model footer line.
-#   separated  - pi: content rows between two solid horizontal `─` rules, no
-#                glyph and no side border. Provable only with a live agent
-#                identity reporting an idle/done pi (herdr `agent
+#   separated  - polytoken: content rows between two solid horizontal `─`
+#                rules, no glyph and no side border. Provable only with a live
+#                agent identity reporting an idle polytoken (herdr `agent
 #                get`; the tmux foreground-process probe), because a blank
 #                region between two transcript rules is otherwise exactly the
 #                strict rule's unidentifiable blank row.
@@ -120,7 +120,7 @@
 # (codex's `permissions: YOLO mode` startup banner) proves nothing and demotes
 # nothing.
 #
-# COVERAGE: this is exercised for the bordered box and the pi separator pair,
+# COVERAGE: this is exercised for the bordered box and the separator pair,
 # the two shapes claude 2.x renders. The opencode left bar is wired in for the
 # same treatment but is UNEXERCISED - every left-bar row this repo records
 # leads with plain text, and opencode's own prompt character is `>`, a SHELL
@@ -131,8 +131,7 @@
 # what a pane shows once its agent has exited to a plain login shell - is a
 # genuine empty agent composer ONLY inside a bordered container. On a bare row
 # it is a dead-shell prompt and classifies `unknown` (never a safe injection
-# target). A `$` followed immediately by a digit is Pi's cost footer, not this
-# prompt (`FM_COMPOSER_PI_STATUS_RE_DEFAULT`).
+# target).
 # The AGENT glyphs `❯` (claude), `›` (codex), `⟩` (U+27E9, muse),
 # `→` (U+2192, cursor), and `❭` (U+276D, devin) are a genuine empty agent
 # composer either way.
@@ -452,7 +451,7 @@ fm_composer_strip_ghost() {
 # Matching a footer to confirm a keystroke landed is a different question from
 # asking what a worker is doing, and the two must not be conflated.
 # Delivery-only rendered busy footers per harness. claude/codex: "esc to
-# interrupt"; opencode: "esc interrupt"; pi: "Working..."; omp: "Working…"; agy: "esc to cancel";
+# interrupt"; opencode: "esc interrupt"; agy: "esc to cancel";
 # devin: "esc twice to interrupt" and its "❭ Guide Devin while it works" working composer;
 # cortex: "(esc to interrupt)" on its spinner row and "Type to queue message..." in its working composer;
 # commandcode: "esc to interrupt" beside a bullet-framed elapsed cell.
@@ -487,7 +486,7 @@ fm_composer_strip_ghost() {
 # takes its pre-typing baseline with no harness, so without the literal an
 # already-busy kiro pane reads `idle` and wrongly arms the idle-to-busy
 # confirmation.
-FM_DELIVERY_BUSY_REGEX_DEFAULT='esc (to )?interrupt|Working(\.\.\.|…)|ctrl\+c to stop|esc[[:space:]]+to[[:space:]]+cancel|esc twice to interrupt|^[[:space:]]*❭ Guide Devin while it works$|^[[:space:]]*›[[:space:]]+Kiro is working'
+FM_DELIVERY_BUSY_REGEX_DEFAULT='esc (to )?interrupt|ctrl\+c to stop|esc[[:space:]]+to[[:space:]]+cancel|esc twice to interrupt|^[[:space:]]*❭ Guide Devin while it works$|^[[:space:]]*›[[:space:]]+Kiro is working'
 FM_DELIVERY_CLAUDE_BUSY_REGEX_DEFAULT='esc to interrupt|…[[:space:]]+\([0-9]+[smh]'
 # Devin 3000.11.1: the working composer and interrupt hint are independent
 # delivery signals. Neither is used as semantic worker-state evidence.
@@ -504,24 +503,6 @@ FM_DELIVERY_CORTEX_BUSY_REGEX_DEFAULT='\(esc to interrupt\)|Type to queue messag
 FM_DELIVERY_COMMANDCODE_BUSY_REGEX_DEFAULT='esc to interrupt|•[[:space:]]+[0-9]+[smh]([[:space:]]+[0-9]+[smh])*[[:space:]]+•'
 FM_DELIVERY_CODEX_BUSY_REGEX_DEFAULT='esc to interrupt'
 FM_DELIVERY_OPENCODE_BUSY_REGEX_DEFAULT='esc interrupt'
-FM_DELIVERY_PI_BUSY_REGEX_DEFAULT='Working\.\.\.'
-# omp (Oh My Pi) renders its TUI busy line as `Working…` with U+2026 HORIZONTAL
-# ELLIPSIS, not Pi's three ASCII dots (verified byte-level on omp 18.1.2,
-# re-verified live on 18.1.11 through the Herdr backend). Only the TUI form is
-# accepted: every supervised omp pane is the TUI, and the three-dot spelling its
-# headless -p mode writes to stderr never reaches a pane. The status row's
-# leading braille spinner plus elapsed cell (`⠧ 11s`) is the second, independent
-# busy signal, so no single vendor string is load-bearing; its idle form is a
-# static identity glyph with no elapsed time.
-# The spinner is an alternation of omp 18.1.11's unicode-preset frames (its
-# `status` set ⣾⣽⣻⢿⡿⣟⣯⣷ and `activity` set ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏, read from the
-# build that rendered the live `⠧`), declared once for the busy regex and the
-# status-row furniture rule below. It is deliberately NOT a bracket range over
-# the braille block: GNU grep rejects a range between multibyte endpoints
-# ("Invalid collation character"), so `[⠁-⣿]` compiled on macOS and failed
-# every omp busy and furniture read on Linux CI.
-FM_OMP_SPINNER_FRAMES_RE='(⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷)'
-FM_DELIVERY_OMP_BUSY_REGEX_DEFAULT='Working…|^[[:space:]]*'"$FM_OMP_SPINNER_FRAMES_RE"'[[:space:]]+[0-9]+[smh]'
 # cursor-agent's busy footer. The TOKEN is matched, not the spinner verb: the
 # same version rendered both `Working` and `Running` beside its braille spinner
 # in two consecutive turns, while `ctrl+c to stop` was present for the whole
@@ -577,8 +558,6 @@ fm_busy_lines_match() {  # [harness]
       commandcode) regex=$FM_DELIVERY_COMMANDCODE_BUSY_REGEX_DEFAULT ;;
       codex) regex=$FM_DELIVERY_CODEX_BUSY_REGEX_DEFAULT ;;
       opencode) regex=$FM_DELIVERY_OPENCODE_BUSY_REGEX_DEFAULT ;;
-      pi|pi-signed) regex=$FM_DELIVERY_PI_BUSY_REGEX_DEFAULT ;;
-      omp) regex=$FM_DELIVERY_OMP_BUSY_REGEX_DEFAULT ;;
       agy) regex=$FM_DELIVERY_AGY_BUSY_REGEX_DEFAULT ;;
       polytoken) regex=$FM_DELIVERY_POLYTOKEN_BUSY_REGEX_DEFAULT ;;
       kiro) regex=$FM_DELIVERY_KIRO_BUSY_REGEX_DEFAULT ;;
@@ -654,32 +633,6 @@ FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT='^(Build|Plan)[[:space:]]+·[[:space:]]+'
 # is deliberately not matched - and the marker is quantifier-free so the same
 # bytes match under LC_ALL=C as under a UTF-8 locale.
 FM_COMPOSER_MODE_HINT_RE_DEFAULT='^[[:space:]]*(⏵|⏸)'
-# omp (Oh My Pi) draws a one-row status line directly BELOW its borderless
-# composer: an identity or spinner cell, then middle-dot separated model, path,
-# git, and context cells. Verified live through Herdr on omp 18.1.11:
-# ` π  · ◔ GPT-6-Astra · 🌳 …-workspace · ⑂ detached · ◫ 15.4%/272K ⟲ · (sub)`
-# idle under the unicode preset, ` 󰵗  ·  qwen3:8b ·  … ·  36.7%/41K` under
-# nerd, and ` ⠧ 11s  · …` while busy. Without this rule the bare composer's
-# wrap region walks straight into that row and an idle omp pane reads
-# `pending`, the false verdict that skipped the doorbell on the first live omp
-# worker. A row is omp status furniture when it opens with omp's identity cell
-# then a middle dot (`π` under the unicode preset, `󰵗` under nerd: the
-# `icon.omp` of those omp 18.1.11 presets, never an arbitrary short token, so
-# a wrapped typed row such as `fix · tests` stays composer input; the ascii
-# preset's `pi` is deliberately absent because that preset's `sep.dot` is
-# ` - `, so its status row never carries a middle dot and a `pi ·` alternative
-# could only ever match typed text), when it opens with one of omp's spinner
-# frames then an elapsed cell, or when it carries the context-usage cell after
-# a middle dot. It is consulted only as the boundary BELOW a bare composer,
-# never on the composer row itself.
-FM_COMPOSER_OMP_STATUS_RE_DEFAULT='^[[:space:]]*(π|󰵗)[[:space:]]+·[[:space:]]|^[[:space:]]*'"$FM_OMP_SPINNER_FRAMES_RE"'[[:space:]]+[0-9]+[smh]([[:space:]]|$)|[[:space:]]·[[:space:]].*[0-9]+(\.[0-9]+)?%/[0-9]+K'
-# Pi's footer stats row opens at column 0 with the session cost when every
-# token counter is zero (`$0.000 (sub) 5.4%/272k (auto)` on pi 0.85.1).
-# That leading `$` is a cost cell, not a dead-shell prompt, only when a digit
-# follows it immediately; `$` then whitespace stays a prompt.
-# Consulted only as the dead-shell exception below, never as composer content,
-# so the same string typed between the separator pair still reads pending.
-FM_COMPOSER_PI_STATUS_RE_DEFAULT='^\$[0-9]+(\.[0-9]+)?([[:space:]]|$)'
 # Braille-pattern cells (U+2800..U+28FF) are animation furniture: codex-cli
 # 0.154.0 draws an idle "starfield" of them on the row above its `›` prompt
 # row, on the `›` row itself after the dim `Ask Codex to do anything`
@@ -689,16 +642,16 @@ FM_COMPOSER_PI_STATUS_RE_DEFAULT='^\$[0-9]+(\.[0-9]+)?([[:space:]]|$)'
 # survive ghost stripping. The rule, applied by shape rather than style:
 #   - a row whose non-whitespace content is entirely braille cells is screen
 #     furniture; it never counts as wrapped typed content and it bounds a bare
-#     composer's wrap region exactly as the status rows above do;
+#     composer's wrap region;
 #   - braille cells behind the glyph row's content are stripped before that
 #     row's emptiness decision when NOTHING else follows the glyph;
 #   - a row that mixes braille with any other non-whitespace text stays typed
 #     content, because a human can type a braille character.
 # fm_composer_strip_braille is the ONE byte-exact remover: under LC_ALL=C awk
 # walks bytes and drops every UTF-8 sequence E2 A0..A3 80..BF. It is
-# deliberately not a grep bracket range over the block, for the reason
-# FM_OMP_SPINNER_FRAMES_RE records (GNU grep rejects a range between multibyte
-# endpoints). Reads stdin, prints the line with its braille cells removed.
+# deliberately not a grep bracket range over the block, because GNU grep
+# rejects a range between multibyte endpoints ("Invalid collation character").
+# Reads stdin, prints the line with its braille cells removed.
 fm_composer_strip_braille() {
   LC_ALL=C awk '
     {
@@ -726,10 +679,10 @@ fm_composer_strip_braille() {
 # also uses this value as the minimum Ctrl+U clear budget after a refused proof.
 FM_COMPOSER_CAPTURE_LINES=${FM_COMPOSER_CAPTURE_LINES:-20}
 
-# Pi allows a multi-line composer between its horizontal separators. Bound the
+# A separated composer may span several lines between its horizontal separators. Bound the
 # structural candidate so two unrelated transcript rules with an arbitrarily
 # large region between them can never be promoted into a composer.
-FM_COMPOSER_PI_MAX_LINES=${FM_COMPOSER_PI_MAX_LINES:-8}
+FM_COMPOSER_SEP_MAX_LINES=${FM_COMPOSER_SEP_MAX_LINES:-8}
 
 # 0 when <content> is exactly one glyph drawn from <glyph-list>.
 _fm_composer_is_prompt_glyph() {  # <content> <glyph-list>
@@ -930,16 +883,16 @@ fm_composer_classify_content() {  # <bordered> <content> [idle_re] [idle_case] [
 # either its result or `probe-absent`; the sentinel never escapes an adapter.
 # Identity stays a lazy second pass: an adapter probes only on `need-identity`
 # or, on tmux, to recheck an `unknown` read for Command Code, so a definite
-# non-pi read never pays for the probe.
+# read never pays for the probe.
 #
 # Consumers that can overwrite input or confirm delivery must accept only the
 # exact positive proof they require (`empty`), so unrecognized future verdicts
 # fail safe by default.
 
-# _fm_composer_pi_separator_row: a solid pi separator - nothing but `─`, at
+# _fm_composer_separator_row: a solid separator - nothing but `─`, at
 # least 8 columns wide. The width floor is a literal substring test so it is
 # byte-exact in every locale.
-_fm_composer_pi_separator_row() {  # <trimmed-row>
+_fm_composer_separator_row() {  # <trimmed-row>
   local row=$1
   [ -n "$row" ] || return 1
   [ -z "${row//─/}" ] || return 1
@@ -955,8 +908,8 @@ _fm_composer_pi_separator_row() {  # <trimmed-row>
 # by collapsing to exactly the column width of <plain-rule-spaces>, the partner
 # closing rule already mapped to spaces.
 #
-# This is deliberately NOT a relaxation of _fm_composer_pi_separator_row, and
-# the two must not be merged: that predicate also feeds the pi identity
+# This is deliberately NOT a relaxation of _fm_composer_separator_row, and
+# the two must not be merged: that predicate also feeds the separated identity
 # conjunction, so it stays strictly dashes-only. This one has the single
 # consumer _fm_composer_bare_rule_sandwich.
 #
@@ -1004,11 +957,11 @@ _fm_composer_scan_screen() {  # <plain-screen> <cursor-or-empty> [extract-wrap] 
   FM_COMPOSER_SCAN_SHELL_ROW=-1
   FM_COMPOSER_SCAN_LEFTBAR_START=-1
   FM_COMPOSER_SCAN_LEFTBAR_END=-1
-  FM_COMPOSER_SCAN_PI_PAIR_FOUND=0
-  FM_COMPOSER_SCAN_PI_PAIR_VALID=0
-  FM_COMPOSER_SCAN_PI_OPEN=-1
-  FM_COMPOSER_SCAN_PI_CLOSE=-1
-  FM_COMPOSER_SCAN_PI_LAST_SEPARATOR=-1
+  FM_COMPOSER_SCAN_SEP_PAIR_FOUND=0
+  FM_COMPOSER_SCAN_SEP_PAIR_VALID=0
+  FM_COMPOSER_SCAN_SEP_OPEN=-1
+  FM_COMPOSER_SCAN_SEP_CLOSE=-1
+  FM_COMPOSER_SCAN_SEP_LAST_SEPARATOR=-1
   # The glyph PROOF of each envelope: the first row strictly inside it whose
   # content leads with an agent prompt glyph once its side borders are
   # stripped, and that glyph. This is what tells a composer container from a
@@ -1016,15 +969,15 @@ _fm_composer_scan_screen() {  # <plain-screen> <cursor-or-empty> [extract-wrap] 
   # and trims every row, so the footer zone never re-reads the screen.
   FM_COMPOSER_SCAN_BOX_GLYPH_ROW=-1
   FM_COMPOSER_SCAN_BOX_GLYPH=
-  FM_COMPOSER_SCAN_PI_GLYPH_ROW=-1
-  FM_COMPOSER_SCAN_PI_GLYPH=
+  FM_COMPOSER_SCAN_SEP_GLYPH_ROW=-1
+  FM_COMPOSER_SCAN_SEP_GLYPH=
   FM_COMPOSER_SCAN_LEFTBAR_GLYPH_ROW=-1
   FM_COMPOSER_SCAN_LEFTBAR_GLYPH=
-  local leftbar_start=-1 pi_open=-1 pi_lines=0 pi_max
+  local leftbar_start=-1 sep_open=-1 sep_lines=0 sep_max
   local probe row_glyph row_glyph_row
-  local box_glyph_row=-1 box_glyph='' pi_glyph_row=-1 pi_glyph=''
-  pi_max=$FM_COMPOSER_PI_MAX_LINES
-  case "$pi_max" in ''|*[!0-9]*|0) pi_max=8 ;; esac
+  local box_glyph_row=-1 box_glyph='' sep_glyph_row=-1 sep_glyph=''
+  sep_max=$FM_COMPOSER_SEP_MAX_LINES
+  case "$sep_max" in ''|*[!0-9]*|0) sep_max=8 ;; esac
   while IFS= read -r line; do
     indent=${line%%[![:space:]]*}
     left_stripped="${line#"${line%%[![:space:]]*}"}"
@@ -1063,33 +1016,33 @@ _fm_composer_scan_screen() {  # <plain-screen> <cursor-or-empty> [extract-wrap] 
         row_glyph_row=$row
       fi
     fi
-    # Pi separator rows: a solid `─` rule at least 8 columns wide. A separator
+    # Separator rows: a solid `─` rule at least 8 columns wide. A separator
     # closes the preceding candidate and immediately opens the next, so an
     # earlier transcript rule can never outrank the live bottom composer pair.
-    if _fm_composer_pi_separator_row "$trimmed"; then
-      FM_COMPOSER_SCAN_PI_LAST_SEPARATOR=$row
-      if [ "$pi_open" -ge 0 ]; then
-        FM_COMPOSER_SCAN_PI_PAIR_FOUND=1
-        FM_COMPOSER_SCAN_PI_OPEN=$pi_open
-        FM_COMPOSER_SCAN_PI_CLOSE=$row
-        if [ "$pi_lines" -le "$pi_max" ]; then
-          FM_COMPOSER_SCAN_PI_PAIR_VALID=1
+    if _fm_composer_separator_row "$trimmed"; then
+      FM_COMPOSER_SCAN_SEP_LAST_SEPARATOR=$row
+      if [ "$sep_open" -ge 0 ]; then
+        FM_COMPOSER_SCAN_SEP_PAIR_FOUND=1
+        FM_COMPOSER_SCAN_SEP_OPEN=$sep_open
+        FM_COMPOSER_SCAN_SEP_CLOSE=$row
+        if [ "$sep_lines" -le "$sep_max" ]; then
+          FM_COMPOSER_SCAN_SEP_PAIR_VALID=1
         else
-          FM_COMPOSER_SCAN_PI_PAIR_VALID=0
+          FM_COMPOSER_SCAN_SEP_PAIR_VALID=0
         fi
-        FM_COMPOSER_SCAN_PI_GLYPH_ROW=$pi_glyph_row
-        FM_COMPOSER_SCAN_PI_GLYPH=$pi_glyph
+        FM_COMPOSER_SCAN_SEP_GLYPH_ROW=$sep_glyph_row
+        FM_COMPOSER_SCAN_SEP_GLYPH=$sep_glyph
       fi
-      pi_open=$row
-      pi_lines=0
-      pi_glyph_row=-1
-      pi_glyph=''
+      sep_open=$row
+      sep_lines=0
+      sep_glyph_row=-1
+      sep_glyph=''
     else
-      if [ "$pi_open" -ge 0 ]; then
-        pi_lines=$((pi_lines + 1))
-        if [ "$pi_glyph_row" -lt 0 ] && [ "$row_glyph_row" -ge 0 ]; then
-          pi_glyph_row=$row_glyph_row
-          pi_glyph=$row_glyph
+      if [ "$sep_open" -ge 0 ]; then
+        sep_lines=$((sep_lines + 1))
+        if [ "$sep_glyph_row" -lt 0 ] && [ "$row_glyph_row" -ge 0 ]; then
+          sep_glyph_row=$row_glyph_row
+          sep_glyph=$row_glyph
         fi
       fi
     fi
@@ -1115,9 +1068,7 @@ _fm_composer_scan_screen() {  # <plain-screen> <cursor-or-empty> [extract-wrap] 
     # Bare agent-glyph rows: the glyph itself is the container proof. Bare
     # shell glyphs are deliberately not candidates (dead-shell rule). Keep
     # lower shell prompts as staleness evidence for cursorless selection.
-    # Pi's cost footer can open with `$0.000`; that is furniture, not a prompt.
     if [ "$top" -lt 0 ] && fm_composer_leading_shell_glyph_var glyph "$trimmed" \
-       && ! _fm_composer_row_is_pi_status "$trimmed" \
        && ! _fm_composer_row_is_cortex_status "$trimmed"; then
       FM_COMPOSER_SCAN_SHELL_ROW=$row
     elif fm_composer_leading_agent_glyph_var glyph "$trimmed"; then
@@ -1446,20 +1397,6 @@ _fm_composer_classify_bare_row() {  # <screen> <styled> <row>
   printf '%s' "$state"
 }
 
-# _fm_composer_row_is_omp_status: 0 when the trimmed row is omp's status line
-# (FM_COMPOSER_OMP_STATUS_RE_DEFAULT above) - composer furniture that sits
-# below a bare composer and must bound its wrap region exactly as an edge does.
-_fm_composer_row_is_omp_status() {  # <trimmed-row>
-  fm_composer_idle_matches "$1" "${FM_COMPOSER_OMP_STATUS_RE:-$FM_COMPOSER_OMP_STATUS_RE_DEFAULT}" sensitive
-}
-
-# _fm_composer_row_is_pi_status: 0 when the trimmed row is Pi's dollar-first
-# footer stats row (FM_COMPOSER_PI_STATUS_RE_DEFAULT above). Furniture below
-# the separated pair; a `$` cost cell must not count as a dead-shell prompt.
-_fm_composer_row_is_pi_status() {  # <trimmed-row>
-  fm_composer_idle_matches "$1" "$FM_COMPOSER_PI_STATUS_RE_DEFAULT" sensitive
-}
-
 # _fm_composer_row_is_cortex_status: 0 when the trimmed row is Cortex Code's
 # mode line drawn under its composer (`>> bypass safeguards  |  teams: off  |
 # plan: off  |  guard: on ...`, verified cortex 1.1.104). Its leading `>>` would
@@ -1516,7 +1453,6 @@ _fm_composer_wrap_region_ok() {  # <plain-screen> <glyph-row> <cursor-row>
     fm_composer_normalize_trim_var trimmed
     [ -n "$trimmed" ] || return 1
     if fm_composer_row_has_edge "$trimmed"; then return 1; fi
-    if _fm_composer_row_is_omp_status "$trimmed"; then return 1; fi
     if _fm_composer_row_is_braille_furniture "$trimmed"; then return 1; fi
     if fm_composer_leading_shell_glyph_var glyph "$trimmed"; then return 1; fi
     row=$((row + 1))
@@ -1792,10 +1728,10 @@ _fm_composer_leftbar_floor_row() {  # <trimmed-row>
 
 # _fm_composer_row_is_composer_furniture: 0 when <trimmed-row> is DEMONSTRABLY
 # a harness's own furniture drawn below its composer, given <proof-glyph> - the
-# agent glyph that proved the envelope above it. Exactly four things qualify,
+# agent glyph that proved the envelope above it. Exactly three things qualify,
 # every one of them already owned elsewhere in this file:
-#   - omp's status row and braille-only animation rows, the two furniture rows
-#     that already bound a bare composer's wrap region;
+#   - braille-only animation rows, the furniture rows that already bound a
+#     bare composer's wrap region;
 #   - claude's permission-mode hint row (FM_COMPOSER_MODE_HINT_RE_DEFAULT);
 #   - a row leading with an agent glyph OTHER than the one that proved the
 #     envelope. One pane runs one harness, so a foreign prompt glyph is never
@@ -1808,7 +1744,6 @@ _fm_composer_leftbar_floor_row() {  # <trimmed-row>
 _fm_composer_row_is_composer_furniture() {  # <trimmed-row> <proof-glyph>
   local row=$1 proof=$2 glyph=''
   [ -n "$row" ] || return 1
-  _fm_composer_row_is_omp_status "$row" && return 0
   _fm_composer_row_is_braille_furniture "$row" && return 0
   fm_composer_idle_matches "$row" \
     "${FM_COMPOSER_MODE_HINT_RE:-$FM_COMPOSER_MODE_HINT_RE_DEFAULT}" sensitive && return 0
@@ -1855,12 +1790,12 @@ _fm_composer_locate_footer_zone() {  # <plain>
       proof=$FM_COMPOSER_SCAN_LEFTBAR_GLYPH
     fi
   fi
-  if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
-     && [ "$FM_COMPOSER_SCAN_PI_CLOSE" -gt "$FM_COMPOSER_FOOTER_AFTER" ] \
-     && [ "$FM_COMPOSER_SCAN_PI_GLYPH_ROW" -ge 0 ]; then
-    FM_COMPOSER_FOOTER_AFTER=$FM_COMPOSER_SCAN_PI_CLOSE
-    FM_COMPOSER_FOOTER_GLYPH=$FM_COMPOSER_SCAN_PI_GLYPH_ROW
-    proof=$FM_COMPOSER_SCAN_PI_GLYPH
+  if [ "$FM_COMPOSER_SCAN_SEP_PAIR_FOUND" = 1 ] \
+     && [ "$FM_COMPOSER_SCAN_SEP_CLOSE" -gt "$FM_COMPOSER_FOOTER_AFTER" ] \
+     && [ "$FM_COMPOSER_SCAN_SEP_GLYPH_ROW" -ge 0 ]; then
+    FM_COMPOSER_FOOTER_AFTER=$FM_COMPOSER_SCAN_SEP_CLOSE
+    FM_COMPOSER_FOOTER_GLYPH=$FM_COMPOSER_SCAN_SEP_GLYPH_ROW
+    proof=$FM_COMPOSER_SCAN_SEP_GLYPH
   fi
   [ "$FM_COMPOSER_FOOTER_AFTER" -ge 0 ] || return 1
   # Nothing below the envelope can be demoted unless a bare candidate sits
@@ -1932,10 +1867,10 @@ _fm_composer_bare_is_popup_selection() {  # <plain-screen> <screen> <styled> <ro
 _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
   local plain=$1 row=$2 above below
   [ "$row" -ge 1 ] || return 1
-  [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -eq "$((row + 1))" ] || return 1
+  [ "$FM_COMPOSER_SCAN_SEP_LAST_SEPARATOR" -eq "$((row + 1))" ] || return 1
   below=$(_fm_composer_screen_row "$((row + 1))" "$plain")
   fm_composer_normalize_trim_var below
-  _fm_composer_pi_separator_row "$below" || return 1
+  _fm_composer_separator_row "$below" || return 1
   above=$(_fm_composer_screen_row "$((row - 1))" "$plain")
   fm_composer_normalize_trim_var above
   _fm_composer_titled_rule_row "$above" "${below//─/ }"
@@ -1987,16 +1922,16 @@ _fm_composer_select_cursorless() {  # <plain-screen> <screen> <styled>
     FM_COMPOSER_SELECTED_KIND=
     return 1
   fi
-  if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
-     && [ "$FM_COMPOSER_SCAN_PI_CLOSE" -gt "$generic" ] \
-     && [ "$generic" -lt "$FM_COMPOSER_SCAN_PI_OPEN" ]; then
-    generic=$FM_COMPOSER_SCAN_PI_CLOSE
-    FM_COMPOSER_SELECTED_KIND=pi
-    FM_COMPOSER_SELECTED_FIRST=$((FM_COMPOSER_SCAN_PI_OPEN + 1))
-    FM_COMPOSER_SELECTED_LAST=$((FM_COMPOSER_SCAN_PI_CLOSE - 1))
+  if [ "$FM_COMPOSER_SCAN_SEP_PAIR_FOUND" = 1 ] \
+     && [ "$FM_COMPOSER_SCAN_SEP_CLOSE" -gt "$generic" ] \
+     && [ "$generic" -lt "$FM_COMPOSER_SCAN_SEP_OPEN" ]; then
+    generic=$FM_COMPOSER_SCAN_SEP_CLOSE
+    FM_COMPOSER_SELECTED_KIND=separated
+    FM_COMPOSER_SELECTED_FIRST=$((FM_COMPOSER_SCAN_SEP_OPEN + 1))
+    FM_COMPOSER_SELECTED_LAST=$((FM_COMPOSER_SCAN_SEP_CLOSE - 1))
   fi
-  if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 0 ] \
-     && [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -gt "$generic" ]; then
+  if [ "$FM_COMPOSER_SCAN_SEP_PAIR_FOUND" = 0 ] \
+     && [ "$FM_COMPOSER_SCAN_SEP_LAST_SEPARATOR" -gt "$generic" ]; then
     # Spare only a bare glyph inside its own titled composer rules; see
     # _fm_composer_bare_rule_sandwich for why that shape is not scrollback.
     if ! { [ "$FM_COMPOSER_SELECTED_KIND" = bare ] \
@@ -2030,7 +1965,6 @@ _fm_composer_select_cursorless() {  # <plain-screen> <screen> <styled>
       fm_composer_normalize_trim_var trimmed
       [ -n "$trimmed" ] || break
       fm_composer_row_has_edge "$trimmed" && break
-      _fm_composer_row_is_omp_status "$trimmed" && break
       _fm_composer_row_is_braille_furniture "$trimmed" && break
       FM_COMPOSER_SELECTED_LAST=$next
       next=$((next + 1))
@@ -2313,13 +2247,7 @@ EOF
       return 0
     fi
     if [ "$FM_COMPOSER_SCAN_BARE_ROW" -ge 0 ] && [ "$cy" -eq "$FM_COMPOSER_SCAN_BARE_ROW" ]; then
-      if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
-         && [ "$cy" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
-         && [ "$cy" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
-        _fm_composer_classify_bare_pi_overlap "$screen" "$styled" "$has_identity" "$identity" "$cy"
-      else
-        _fm_composer_classify_bare_row "$screen" "$styled" "$cy"
-      fi
+      _fm_composer_classify_bare_row "$screen" "$styled" "$cy"
       return 0
     fi
     # A bare composer's WRAP region: long typed input wraps below the glyph
@@ -2334,10 +2262,10 @@ EOF
       _fm_composer_classify_bare_wrap "$screen" "$styled" "$FM_COMPOSER_SCAN_BARE_ROW" "$cy"
       return 0
     fi
-    if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
-       && [ "$cy" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
-       && [ "$cy" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
-      _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
+    if [ "$FM_COMPOSER_SCAN_SEP_PAIR_FOUND" = 1 ] \
+       && [ "$cy" -gt "$FM_COMPOSER_SCAN_SEP_OPEN" ] \
+       && [ "$cy" -lt "$FM_COMPOSER_SCAN_SEP_CLOSE" ]; then
+      _fm_composer_separated_verdict "$screen" "$styled" "$has_identity" "$identity"
       return 0
     fi
     if [ "$FM_COMPOSER_SCAN_CURSOR_EDGE" = 1 ]; then
@@ -2349,16 +2277,16 @@ EOF
     printf 'unknown'
     return 0
   fi
-  # No cursor: the bottom-most shape wins, with the pi-separator staleness
-  # rules layered on (a live pi composer pair below the generic candidate
-  # proves that candidate stale).
+  # No cursor: the bottom-most shape wins, with the separator staleness
+  # rules layered on (a live separated composer pair below the generic
+  # candidate proves that candidate stale).
   if ! _fm_composer_select_cursorless "$plain" "$screen" "$styled"; then
     printf 'unknown'
     return 0
   fi
   case "$FM_COMPOSER_SELECTED_KIND" in
-    pi)
-      _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
+    separated)
+      _fm_composer_separated_verdict "$screen" "$styled" "$has_identity" "$identity"
       ;;
     box)
       _fm_composer_classify_rows "$screen" "$styled" "$FM_COMPOSER_SELECTED_AMBIG" \
@@ -2368,11 +2296,6 @@ EOF
       if [ "$FM_COMPOSER_SELECTED_LAST" -gt "$FM_COMPOSER_SELECTED_FIRST" ]; then
         _fm_composer_classify_bare_wrap "$screen" "$styled" \
           "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"
-      elif [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
-         && [ "$FM_COMPOSER_SELECTED_FIRST" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
-         && [ "$FM_COMPOSER_SELECTED_FIRST" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
-        _fm_composer_classify_bare_pi_overlap "$screen" "$styled" "$has_identity" "$identity" \
-          "$FM_COMPOSER_SELECTED_FIRST"
       else
         _fm_composer_classify_bare_row "$screen" "$styled" "$FM_COMPOSER_SELECTED_FIRST"
       fi
@@ -2436,10 +2359,10 @@ fm_composer_queued_enter_verdict() {  # <composer-state> <busy|idle|unknown>
   fi
 }
 
-_fm_composer_classify_pi_rows() {  # <screen> <styled>
+_fm_composer_classify_separated_rows() {  # <screen> <styled>
   local screen=$1 styled=$2 row raw content
-  row=$((FM_COMPOSER_SCAN_PI_OPEN + 1))
-  while [ "$row" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; do
+  row=$((FM_COMPOSER_SCAN_SEP_OPEN + 1))
+  while [ "$row" -lt "$FM_COMPOSER_SCAN_SEP_CLOSE" ]; do
     raw=$(_fm_composer_screen_row "$row" "$screen")
     content=$(_fm_composer_row_content "$raw" "$styled")
     fm_composer_normalize_trim_var content
@@ -2452,38 +2375,17 @@ _fm_composer_classify_pi_rows() {  # <screen> <styled>
   printf 'empty'
 }
 
-_fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <identity> <bare-row>
-  local screen=$1 styled=$2 has_identity=$3 identity=$4 row=$5 agent
-  if [ "$has_identity" != 1 ]; then
-    _fm_composer_classify_bare_row "$screen" "$styled" "$row"
-    return 0
-  fi
-  if [ -z "$identity" ]; then
-    printf 'need-identity'
-    return 0
-  fi
-  if [ "$identity" = probe-absent ]; then
-    _fm_composer_classify_bare_row "$screen" "$styled" "$row"
-    return 0
-  fi
-  agent=${identity%%$'\t'*}
-  if [ "$agent" = pi ]; then
-    _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
-  else
-    _fm_composer_classify_bare_row "$screen" "$styled" "$row"
-  fi
-}
-
-# The pi separated-shape verdict: identity + structure conjunction (herdr's
+# The separated-shape verdict: identity + structure conjunction (herdr's
 # rule, now fleet-wide). A missing identity capability keeps the shape
 # unknown; an unfetched identity on an identity-capable backend asks the
 # adapter to probe (lazily) and re-call. Proven input remains pending for every
-# live pi state, while only an idle/done pi proves an empty composer. A blocked
-# pi is parked on an interactive prompt waiting for a human keystroke: its menu
-# is drawn above the separator pair, so the composer region looks free while the
-# keys would answer the prompt instead of composing (issue #2797). Structure
-# cannot disprove that, so a blocked pi defers rather than claiming empty.
-_fm_composer_pi_verdict() {  # <screen> <styled> <has_identity> <identity>
+# live owner state, while only an idle/done owner proves an empty composer. A
+# blocked owner may be parked on an interactive prompt waiting for a human
+# keystroke drawn above the separator pair, so the composer region looks free
+# while the keys would answer the prompt instead of composing (issue #2797).
+# Structure cannot disprove that, so a blocked owner defers rather than
+# claiming empty.
+_fm_composer_separated_verdict() {  # <screen> <styled> <has_identity> <identity>
   local screen=$1 styled=$2 has_identity=$3 identity=$4 agent agent_status state
   if [ "$has_identity" != 1 ]; then
     printf 'unknown'
@@ -2499,19 +2401,19 @@ _fm_composer_pi_verdict() {  # <screen> <styled> <has_identity> <identity>
   fi
   agent=${identity%%$'\t'*}
   agent_status=${identity#*$'\t'}
-  # polytoken is the second verified owner of the separated shape (verified
+  # polytoken is the verified owner of the separated shape (verified
   # live, 0.8.19: a full-width separator pair over one blank or pending
-  # content row with a footer below), so its identity passes the same
+  # content row with a footer below), so its identity passes the
   # conjunction: an idle polytoken proves an empty composer, and a working
   # polytoken keeps the strict unknown - its composer really is empty
   # mid-turn (Enter queues, verified live), but the unknown keeps the
   # busy-queue conversion honest through the submit cores.
-  if { [ "$agent" != pi ] && [ "$agent" != polytoken ]; } \
-    || [ "$FM_COMPOSER_SCAN_PI_PAIR_VALID" != 1 ]; then
+  if [ "$agent" != polytoken ] \
+    || [ "$FM_COMPOSER_SCAN_SEP_PAIR_VALID" != 1 ]; then
     printf 'unknown'
     return 0
   fi
-  state=$(_fm_composer_classify_pi_rows "$screen" "$styled")
+  state=$(_fm_composer_classify_separated_rows "$screen" "$styled")
   if [ "$state" = pending ]; then
     printf 'pending'
     return 0

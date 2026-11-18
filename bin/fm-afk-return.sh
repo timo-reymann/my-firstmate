@@ -537,7 +537,7 @@ render_return_brief() {  # <evidence-file> <blockers-file> <since-epoch> <drain-
   local tag task key summary count routine routine_visible captain visible_outcomes live held_err last verb rows status url drained=0 pointer
   now=$(date +%s)
   # Where main processes outcomes through the drain's BRANCH OUTCOMES section
-  # (the supervision host off Pi, docs/supervision-host.md "Captain outcomes"),
+  # (the supervision host, docs/supervision-host.md "Captain outcomes"),
   # the drain alone presents the window's visible notes and owns their read
   # cursor, so the brief points there only when visible outcomes exist, or says
   # they await a successful drain when this return's drain failed.
@@ -668,10 +668,10 @@ EOF
   [ "$count" -gt 0 ] || printf '  (nothing)\n'
 
   # 6. handled while away. Every outcome the away session recorded in the
-  # store during the window counts as handled. On Pi the supervision branch,
-  # and on a home that runs it the supervision host (docs/supervision-host.md), took
-  # every safe actionable wake it could while main was parked; wakes it
-  # declined still fell back to main. The captain rows are listed above.
+  # store during the window counts as handled. On a home that runs it, the
+  # supervision host (docs/supervision-host.md) took every safe actionable
+  # wake it could while main was parked; wakes it declined still fell back to
+  # main. The captain rows are listed above.
   printf 'Handled while away:\n'
   routine=$(printf '%s\n' "$STORE_ROWS" | awk -F '\t' '$3 == "routine" { n++ } END { print n + 0 }')
   routine_visible=$(printf '%s\n' "$STORE_ROWS" | awk -F '\t' '$3 == "routine" && $6 != "true" { n++ } END { print n + 0 }')

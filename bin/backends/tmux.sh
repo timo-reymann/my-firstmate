@@ -336,9 +336,8 @@ fm_backend_tmux_current_command() {  # <target>
 # is what keeps the probe honest in the other direction: a harness-named process
 # left running in the background of an otherwise idle pane is deliberately NOT
 # reported, so a genuinely agent-free pane still classifies `dead`. It also
-# reports every member of a multi-process launcher (the Pi Launcher path runs a
-# `pi-signed` wrapper and a `pi` engine in one group), so no launcher needs its
-# own special case here.
+# reports every member of a multi-process launcher (a wrapper and its engine in
+# one group), so no launcher needs its own special case here.
 #
 # Like fm_backend_tmux_current_command this is a RAW pane read: tmux answers an
 # absent target from the client's active window rather than failing, so callers

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Detect the agent harness this process tree runs on.
-# Usage: fm-harness.sh                  print own harness: claude|codex|opencode|pi|pi-signed|kimi|cursor|gemini|muse|rovo|omp|agy|devin|commandcode|polytoken|cortex|kiro|hermes|unknown
+# Usage: fm-harness.sh                  print own harness: claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|polytoken|cortex|kiro|hermes|unknown
 #        fm-harness.sh crew             print the effective CREWMATE harness
 #                                        (config/crew-harness; "default" resolves to own)
 #        fm-harness.sh secondmate [id]  print the harness the PRIMARY uses to launch
@@ -19,12 +19,6 @@
 #                                        print the optional EFFORT token from
 #                                        config/secondmate-harness, or empty when absent.
 #                                        An id selects that mate's override line first.
-#        fm-harness.sh validate-native-effort <harness> <model> <effort>
-#                                        Refuse ultra unless the harness is pi or
-#                                        pi-signed and the model explicitly names
-#                                        codex-native/<id>. Other efforts retain
-#                                        their adapter's existing policy. Native
-#                                        Codex validates model support at startup.
 #        fm-harness.sh ancestry [<pid>] print "<strength> <harness>" for the nearest
 #                                        harness process at or above <pid> (default this
 #                                        process), or nothing when the walk finds none.
@@ -59,8 +53,7 @@
 # harness_ancestry only report evidence. Record each newly verified env marker
 # in harness_marker, and each newly verified command name in harness_ancestry.
 # Supervision-branch primary pin: a supervision branch running as its own
-# process under another harness (a Pi engine under a Claude primary detects as
-# pi) would otherwise resolve "own" - and with it an absent or "default"
+# process under another harness would otherwise resolve "own" - and with it an absent or "default"
 # config/crew-harness or config/secondmate-harness - to its own harness and
 # dispatch crew there. While FM_SUPERVISION_ACTOR=branch, a non-empty
 # FM_SUPERVISION_PRIMARY_HARNESS names the primary's harness and replaces
@@ -81,8 +74,6 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 . "$SCRIPT_DIR/fm-gemini-lib.sh"
 # shellcheck source=bin/fm-hermes-process-lib.sh
 . "${SCRIPT_DIR:-/}/fm-hermes-process-lib.sh"
-# shellcheck source=bin/fm-omp-process-lib.sh
-. "${SCRIPT_DIR:-/}/fm-omp-process-lib.sh"
 
 # Print the harness named by a verified environment marker, or nothing when no
 # marker is present. Markers only report what the environment CLAIMS; detect_own
@@ -122,27 +113,7 @@ harness_marker() {
   # additionally clears foreign markers at rovo's launch boundary as defense in depth.
   [ "${ATLASSIAN_AGENT_TYPE:-}" = "rovo" ] && { echo rovo; return; }
   [ "${ROVODEV_CLI:-}" = "1" ] && { echo rovo; return; }
-  # omp (Oh My Pi) publishes NO harness-identity marker of its own: verified on
-  # omp 18.1.11 that PI_CODING_AGENT is absent from the binary and that the
-  # default profile sets neither PI_CODING_AGENT_DIR nor OMP_PROFILE in the
-  # process environment. FM_OMP_HARNESS=omp is therefore a Firstmate-OWNED
-  # launch marker, established by bin/fm-spawn.sh at the omp launch boundary
-  # (which also clears every foreign marker) and by the README's primary launch
-  # command. It is a PRECEDENCE override, never evidence on its own: it wins
-  # over an inherited CLAUDECODE only when an omp process is genuinely in the
-  # ancestry, so `FM_OMP_HARNESS=omp omp` started from a Claude pane identifies
-  # as omp, while the same variable leaking from an omp secondmate into that
-  # home's claude worker (whose ancestry holds no omp) changes nothing. The
-  # anchored ancestry arm below covers a plain hand-started `omp` by itself.
-  if [ "${FM_OMP_HARNESS:-}" = omp ] && ancestry_names_omp; then
-    echo omp
-    return
-  fi
   [ "${CLAUDECODE:-}" = "1" ] && { echo claude; return; }
-  if [ "${PI_CODING_AGENT:-}" = "true" ]; then
-    if [ "${FM_PI_HARNESS:-}" = pi-signed ]; then echo pi-signed; else echo pi; fi
-    return
-  fi
   # codex, opencode, kimi, muse, agy, devin, commandcode, polytoken, cortex, and kiro publish no harness-identity marker at all, so
   # they are never named here and are identified by ancestry alone. That is the
   # whole reason a foreign marker must not outrank ancestry: with markers winning
@@ -153,22 +124,6 @@ harness_marker() {
   # to a marker without verifying it reaches children AND that it cannot survive
   # in a multiplexer's stored environment.
   return 0
-}
-
-# True when an omp process sits within eight parents of this one. The same
-# identity as the ancestry walk below (bin/fm-omp-process-lib.sh), kept separate
-# so the marker precedence above can demand real process evidence before
-# trusting FM_OMP_HARNESS.
-ancestry_names_omp() {
-  local pid=$$ comm args
-  for _ in 1 2 3 4 5 6 7 8; do
-    comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
-    args=$(ps -o args= -p "$pid" 2>/dev/null) || args=
-    fm_omp_process_matches "$comm" "$args" && return 0
-    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    [ -n "$pid" ] && [ "$pid" -gt 1 ] || return 1
-  done
-  return 1
 }
 
 # Print "<strength> <harness>" when one process identifies a harness, or nothing.
@@ -196,15 +151,6 @@ harness_process_verdict() {  # <pid>
     echo "comm hermes"
     return
   fi
-  # omp, compiled binary or bun package (bin/fm-omp-process-lib.sh owns both
-  # shapes). It sits above the node*|python* interpreter fallback deliberately:
-  # the optional claude-bridge extension runs a nested executable literally
-  # named `claude` with its own node child, and that fallback's *claude* args
-  # glob would otherwise claim it if that subtree were ever walked.
-  if fm_omp_process_matches "$comm" "$args"; then
-    echo "comm omp"
-    return
-  fi
   case "$(basename -- "$comm")" in
     # gemini precedes claude here for the same precedence reason as the
     # marker layer above, so a gemini worker under a claude primary is never
@@ -230,11 +176,6 @@ harness_process_verdict() {  # <pid>
       # prefix rather than any exact name. Deliberately anchored, never *muse*, so
       # unrelated commands (musescore, amuse) cannot be misread as this harness.
     muse|muse-bin-*) echo "comm muse"; return ;;
-    # Both Pi identities share this launcher name. Ancestry can only prove the
-    # FAMILY; only the launch-boundary marker selects the signed identity, which
-    # is why detect_own keeps a marker that agrees on the family.
-    pi-signed) echo "comm pi"; return ;;
-    pi) echo "comm pi"; return ;;
     # agy (Antigravity CLI) is a Go-compiled single binary whose process name
     # is exactly `agy` (verified, agy 1.2.0: `ps -o comm=` reports agy and
     # Herdr's process-info reports name agy with argv[0] agy). Anchored, never
@@ -293,7 +234,6 @@ harness_process_verdict() {  # <pid>
         *claude*) echo "args claude"; return ;;
         *codex*) echo "args codex"; return ;;
         *opencode*) echo "args opencode"; return ;;
-        *" pi "*|*/pi) echo "args pi"; return ;;
       esac ;;
   esac
 }
@@ -423,23 +363,13 @@ harness_ancestry_descent() {  # <root> [<eligible-leaf-pid>...]
   done
 }
 
-# Collapse a verdict to the harness FAMILY its evidence can actually prove, so a
-# marker's more specific verdict and ancestry's coarser one are not read as a
-# disagreement. Only Pi has two identities behind one launcher name.
-harness_family() {
-  case "$1" in
-    pi-signed) printf 'pi\n' ;;
-    *) printf '%s\n' "$1" ;;
-  esac
-}
-
 # Print the supervision-branch primary pin when it applies (header), or
 # nothing. Returns 2, with the reason on stderr, for a pin naming no harness.
 supervision_primary_pin() {
   local pin=${FM_SUPERVISION_PRIMARY_HARNESS:-}
   [ "${FM_SUPERVISION_ACTOR:-}" = branch ] && [ -n "$pin" ] || return 0
   case "$pin" in
-    claude|codex|opencode|pi|pi-signed|kimi|cursor|gemini|muse|rovo|omp|agy|devin|commandcode|polytoken|cortex|hermes)
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|polytoken|cortex|hermes)
       printf '%s\n' "$pin"
       ;;
     *)
@@ -454,8 +384,7 @@ supervision_primary_pin() {
 # process tree, so a structural (comm) ancestor of a DIFFERENT harness wins.
 #   - No ancestry match: the marker is the only evidence there is.
 #   - No marker: ancestry is the only evidence there is.
-#   - Same family: keep the marker's verdict, which is the more specific one
-#     (pi-signed, which ancestry can only see as pi).
+#   - Same harness: the two layers agree.
 #   - Different harness, structural ancestor: ancestry wins. This is what stops
 #     an inherited or multiplexer-retained CLAUDECODE from renaming a markerless
 #     codex, opencode, kimi, or muse session, and symmetrically stops a retained
@@ -478,7 +407,7 @@ detect_own() {
   strength=${ancestry%% *}
   harness=${ancestry#* }
   [ -n "$marker" ] || { echo "$harness"; return; }
-  if [ "$(harness_family "$marker")" = "$(harness_family "$harness")" ]; then
+  if [ "$marker" = "$harness" ]; then
     echo "$marker"
     return
   fi
@@ -660,20 +589,7 @@ resolve_secondmate_effort() {
   secondmate_field 3 "${1:-}"
 }
 
-validate_native_effort() {
-  local harness=${1:-} model=${2:-} effort=${3:-}
-  [ "$effort" = ultra ] || return 0
-  case "$harness" in
-    pi|pi-signed)
-      case "$model" in codex-native/?*) return 0 ;; esac
-      ;;
-  esac
-  echo "error: ultra effort requires pi or pi-signed with an explicit codex-native/<model> model" >&2
-  return 1
-}
-
 case "${1:-}" in
-  validate-native-effort) shift; validate_native_effort "$@" ;;
   ancestry)
     case "${2:-}" in
       ''|*[!0-9]*) [ -z "${2:-}" ] || { echo "error: ancestry takes a numeric pid" >&2; exit 2; } ;;

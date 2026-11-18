@@ -81,16 +81,13 @@
 #              already recorded for it.
 #              A prefixed raw-command basename cannot reconstruct its launch
 #              command, so relaunch requires an explicit --harness for it.
-#              A replacement Claude or Pi profile must also pass this home's
+#              A replacement Claude profile must also pass this home's
 #              worker account pin (bin/fm-worker-account-lib.sh) here, so a pin
 #              that no longer resolves or is signed out refuses before the old
 #              agent stops. Under a declared config/claude-accounts list, a
 #              Claude ship or scout keeps the account its record names, and
 #              only an explicit --account <entry> moves it to another
 #              declared one, checked here the same way.
-#              A replacement omp secondmate likewise passes its per-secondmate
-#              omp profile pin (bin/fm-omp-profile-lib.sh) before the old agent
-#              stops.
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
@@ -202,8 +199,6 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-worker-account-lib.sh
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
-# shellcheck source=bin/fm-omp-profile-lib.sh
-. "$SCRIPT_DIR/fm-omp-profile-lib.sh"
 # shellcheck source=bin/fm-exclude-tools-lib.sh
 . "$SCRIPT_DIR/fm-exclude-tools-lib.sh"
 
@@ -255,7 +250,7 @@ shift 2
 if ! fm_control_verb_allowed "$VERB"; then
   {
     if [ "$VERB" = resume ]; then
-      echo "error: 'resume' is not a control verb: resuming an exited agent is not deterministic across the verified adapters (codex needs a session id printed at exit, opencode continues the most recent session for the cwd, and claude, pi, pi-signed, and kimi have no verified pane-resume contract). Use 'relaunch', which carries the brief plus a progress note into a fresh agent on any adapter."
+      echo "error: 'resume' is not a control verb: resuming an exited agent is not deterministic across the verified adapters (codex needs a session id printed at exit, opencode continues the most recent session for the cwd, and claude and kimi have no verified pane-resume contract). Use 'relaunch', which carries the brief plus a progress note into a fresh agent on any adapter."
     else
       echo "error: '$VERB' is not a control verb"
     fi
@@ -330,8 +325,8 @@ fi
 [ "$MODEL_SET" = 0 ] || [ -n "$NEW_MODEL" ] || die "--model requires a non-empty value"
 [ "$EFFORT_SET" = 0 ] || [ -n "$NEW_EFFORT" ] || die "--effort requires a non-empty value"
 case "$NEW_EFFORT" in
-  ''|default|low|medium|high|xhigh|max|ultra) ;;
-  *) die "--effort must be one of default, low, medium, high, xhigh, max, ultra" ;;
+  ''|default|low|medium|high|xhigh|max) ;;
+  *) die "--effort must be one of default, low, medium, high, xhigh, max" ;;
 esac
 
 # --- exact task-id resolution ----------------------------------------------
@@ -344,7 +339,7 @@ if ! fm_task_id_creation_valid "$RAW_ID"; then
 fi
 ID=$RAW_ID
 # Supervision lease guard: lifecycle control is overlap territory between the
-# two Pi supervision actors; refuse while the OTHER actor holds this task's
+# two supervision actors; refuse while the OTHER actor holds this task's
 # live lease (contract: bin/fm-lease-lib.sh; no-op in homes without leases).
 # shellcheck source=bin/fm-lease-lib.sh
 . "$SCRIPT_DIR/fm-lease-lib.sh"
@@ -1013,9 +1008,9 @@ resolve_relaunch_profile() {
       die "the configured secondmate effort pin for $ID cannot be read; fix config/secondmate-harness rather than relaunching onto an unresolved effort"
     fi
     case "$CONFIG_EFFORT" in
-      ''|low|medium|high|xhigh|max|ultra) ;;
+      ''|low|medium|high|xhigh|max) ;;
       *)
-        echo "warning: config/secondmate-harness effort token '$CONFIG_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2
+        echo "warning: config/secondmate-harness effort token '$CONFIG_EFFORT' is not one of low, medium, high, xhigh, max; ignoring" >&2
         CONFIG_EFFORT=
         ;;
     esac
@@ -1058,9 +1053,6 @@ resolve_relaunch_profile() {
   else
     TARGET_EFFORT=default
   fi
-  if [ "$TARGET_EFFORT" = ultra ]; then
-    "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$TARGET_HARNESS" "$TARGET_MODEL" "$TARGET_EFFORT" || return 1
-  fi
   if [ "$TARGET_HARNESS" = hermes ]; then
     [ "$BACKEND" = tmux ] || die 'Hermes is verified on tmux only; refusing before the current worker stops'
     [ "$TARGET_MODEL" = default ] || die 'Hermes models are profile-owned; relaunch requires the default model axis'
@@ -1084,15 +1076,12 @@ resolve_relaunch_profile() {
   # signed out must refuse here, while nothing has changed yet.
   # Under a declared Claude account list, the replacement stays on the
   # account the task records unless --account explicitly moves it.
-  local account_model=$TARGET_MODEL account_mate=
-  [ "$account_model" != default ] || account_model=
+  local account_mate=
   [ "$KIND" != secondmate ] || account_mate=$ID
   TARGET_ACCOUNT=$(fm_worker_account_relaunch_request "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
     "$PRIOR_HARNESS" "$(fm_meta_get "$META" account)" "$NEW_ACCOUNT" "$account_mate") || return 1
   fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
-    "$account_model" "$TARGET_HARNESS" "" "$account_mate" "$TARGET_ACCOUNT" >/dev/null || return 1
-  fm_omp_profile_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
-    "$account_mate" >/dev/null || return 1
+    "$TARGET_HARNESS" "" "$account_mate" "$TARGET_ACCOUNT" >/dev/null || return 1
   # Likewise polytoken's launch profile and wiring refusals
   # (bin/fm-polytoken-lib.sh owns them). The launch owner retires the prior
   # incarnation's own generated hook layer, so only one it did not generate

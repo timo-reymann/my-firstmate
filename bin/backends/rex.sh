@@ -886,7 +886,7 @@ fm_backend_rex_rendered_busy_state() {  # <target> [harness]
 }
 
 # fm_backend_rex_composer_identity: the identity probe behind the separated
-# (pi, polytoken) composer shape and Command Code's placeholder ceiling.
+# (polytoken) composer shape and Command Code's placeholder ceiling.
 # Prints "<owner>\t<status>" when the foreground process is one of those
 # owners; status is the trusted native state, else the owner's own rendered
 # busy footer.
@@ -897,7 +897,6 @@ fm_backend_rex_composer_identity() {  # <target>
     [ "$role" = foreground ] || continue
     for base in "${name##*/}" "${argv0##*/}" "${path##*/}"; do
       case "${base#-}" in
-        pi|pi-signed|pi-launcher|Pi) owner=pi ;;
         polytoken) owner=polytoken ;;
         command-code) owner=commandcode ;;
       esac

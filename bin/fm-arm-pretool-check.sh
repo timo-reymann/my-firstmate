@@ -20,7 +20,7 @@
 # cursor-agent 2026.08.11-e8db854), so it needs no new extraction - only --cursor, which selects Cursor's own deny rendering
 # and marks this invocation as the Cursor registration rather than the
 # Claude-settings duplicate Cursor also loads.
-# CLI mode is used by OpenCode and Pi after their adapters extract the exact
+# CLI mode is used by OpenCode after its adapter extracts the exact
 # command string.
 # --background remains accepted for compatibility, but harness-native tracked
 # background execution is not itself a policy signal.
@@ -38,7 +38,7 @@
 #
 # Claude requires stdout to remain empty on deny.
 # Codex blocks on exit 2 and displays stderr.
-# OpenCode and Pi consume exit 2 plus stderr.
+# OpenCode consumes exit 2 plus stderr.
 # Cursor consumes the stdout decision object.
 # Antigravity (agy) consumes the stdout decision object.
 set -u

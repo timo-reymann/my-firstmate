@@ -41,7 +41,7 @@
 //           result.terminal, or result.silent through strict JSON.
 //
 // Discovery is only $FM_HOME/config/extensions.d/*.json. Current directories,
-// projects, task copies, environment payloads, worker text, and Pi packages are
+// projects, task copies, environment payloads, and worker text are
 // never searched. Package executables are spawned directly with shell=false,
 // receive one bounded UTF-8 JSON document on stdin, and must return exactly one
 // bounded UTF-8 JSON document on stdout. Extension stderr is bounded and never

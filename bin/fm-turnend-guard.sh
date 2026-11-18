@@ -11,8 +11,8 @@
 # This script is push-based: verified harness turn-end hooks invoke it every time
 # the primary is about to end a turn.
 # Claude and codex can block directly by preserving exit status 2 and stderr.
-# OpenCode and pi adapters use the same predicate and force one bounded
-# follow-up because their turn-end events are passive. Cursor calls
+# The OpenCode adapter uses the same predicate and forces one bounded
+# follow-up because its turn-end events are passive. Cursor calls
 # this guard back with --cursor from bin/fm-turnend-guard-cursor.sh and renders
 # exit 2 as one bounded follow-up, because exit 2 is a silent no-op on Cursor's
 # stop step; without that flag a Cursor-shaped payload is the Claude-settings

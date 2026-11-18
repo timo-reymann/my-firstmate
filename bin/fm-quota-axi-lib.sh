@@ -33,8 +33,6 @@ FM_QUOTA_PROVIDER_ID_RE='^[a-z0-9]+(-[a-z0-9]+)*\z'
 FM_QUOTA_ROW_JQ='
   def quota_lane($harness; $model):
     if $harness == "codex" then "codex-home"
-    elif ($harness == "pi" or $harness == "pi-signed") and (($model // "") | contains("/"))
-    then ($model | split("/") | first | if . == "codex-native" then "codex-home" else . end)
     else "" end;
   def quota_row($snapshot; $provider; $lane):
     ([$snapshot.providers[]? | select(.provider == $provider)]) as $rows |
@@ -168,17 +166,9 @@ fm_quota_single_provider_for_harness() {
 
 fm_quota_provider_for_harness() {
   case "$1" in
-    omp)
-      case "${2:-}" in
-        openai-codex/*)  printf 'codex\n' ;;
-        claude-bridge/*) printf 'claude\n' ;;
-        *)               return 1 ;;
-      esac
-      ;;
     claude)       printf 'claude\n' ;;
     codex)        printf 'codex\n' ;;
     opencode)     printf 'codex\n' ;;
-    pi|pi-signed) printf 'pi\n' ;;
     kimi)         printf 'kimi\n' ;;
     cursor)       printf 'cursor\n' ;;
     muse)         printf 'meta\n' ;;

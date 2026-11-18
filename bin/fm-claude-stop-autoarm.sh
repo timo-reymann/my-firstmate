@@ -55,12 +55,12 @@
 #     records the failure durably without waking an idle primary. Nothing
 #     shortens a quiet park, because no-change heartbeats are absorbed without
 #     closing the arm.
-#   - Handling successor: Pi, omp, and OpenCode start the next arm before they
-#     deliver an actionable wake, so the fleet stays covered while the model
+#   - Handling successor: OpenCode starts the next arm before it
+#     delivers an actionable wake, so the fleet stays covered while the model
 #     handles it. After an actionable close, including an attached peer cycle
 #     that ended, this hook starts one successor bin/fm-watch-arm.sh with the
 #     closed arm's pid as FM_WATCH_PREDECESSOR_ARM_PID, the same handoff the
-#     Pi extension passes for its closed arm child, so the arm starts a
+#     OpenCode plugin passes for its closed arm child, so the arm starts a
 #     handling-successor watcher and links the lifecycle ledger. A child of
 #     this hook cannot outlive the exit-2 rewake, so the successor is launched
 #     the one way a process survives a Claude hook: nohup, stdio detached, in
@@ -228,20 +228,6 @@ HOOK_EVENT_NAME=$(printf '%s' "$PAYLOAD" | jq -r '.hook_event_name // empty' 2>/
 # the declared multi-hour timeout. Cursor's own park adapter owns
 # its turn boundary, so stand down on a Cursor-delivered payload.
 fm_hook_payload_is_foreign_host "$PAYLOAD" && exit 0
-
-# pi-code (Pi's Claude-hook compatibility extension) also loads the tracked
-# Claude settings and has no asyncRewake, so it awaits every Stop hook and this
-# arm would run SYNCHRONOUSLY inside Pi's turn end, holding that turn open for
-# the declared multi-hour timeout - the same wedge as Cursor above (issue
-# #3343). Pi's own native extensions own Pi supervision, so stand down on a
-# pi-code-delivered payload. The signal is again the PAYLOAD, not the
-# environment: pi-code stamps every hook payload's transcript_path with Pi's
-# own session file under .pi/, which a Claude transcript path never contains.
-# Fail direction matches the guard above: no payload, no jq, or no
-# transcript_path means the hook RUNS.
-if [ -n "$PAYLOAD" ] && command -v jq >/dev/null 2>&1; then
-  printf '%s' "$PAYLOAD" | jq -e '(.transcript_path // "") | type == "string" and contains("/.pi/")' >/dev/null 2>&1 && exit 0
-fi
 
 # --- scope: genuine primary checkout only -----------------------------------
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
@@ -585,8 +571,8 @@ run_arm() {  # <output file, or empty for none>
 }
 
 # --- handling successor --------------------------------------------------------
-# Start the next arm before the rewake delivers the wake, as the Pi, omp, and
-# OpenCode adapters do from their child-close handlers, so a watcher covers the
+# Start the next arm before the rewake delivers the wake, as the OpenCode
+# adapter does from its child-close handler, so a watcher covers the
 # handling turn instead of the home waiting uncovered for the next Stop. The
 # successor receives the closed arm's pid as FM_WATCH_PREDECESSOR_ARM_PID; it
 # must outlive this hook's exit, so it is detached three ways: nohup, stdio

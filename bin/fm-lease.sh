@@ -22,9 +22,9 @@
 #       Print "<actor> <pid> <epoch> <live|stale>" for a held lease, or
 #       nothing (exit 1) when the task is unleased.
 #   fm-lease.sh release-actor --actor main|branch
-#       Drop every lease the named actor holds; the Pi branch extension runs
-#       this at generation activation so a replaced branch conversation's
-#       leases never outlive it.
+#       Drop every lease the named actor holds; the supervision host runs
+#       this at activation and after every engine turn so a replaced branch
+#       conversation's leases never outlive it.
 #   fm-lease.sh sweep
 #       Remove every provably stale lease in this home. Run at session start
 #       (a lease held by a dead actor is cleared at session start); safe to
@@ -118,10 +118,9 @@ case "$CMD" in
     fi
     # The lease outlives this CLI call, so its liveness pid must be the
     # long-lived supervising process: FM_LEASE_HOLDER_PID when the caller
-    # provides one (the supervision host and the Pi branch extension pass the
-    # session-lock holder), else the session-lock holder (state/.lock is the
-    # harness pid), else this shell; without a matching session lock the
-    # resulting lease is stale.
+    # provides one (the supervision host passes the session-lock holder), else
+    # the session-lock holder (state/.lock is the harness pid), else this
+    # shell; without a matching session lock the resulting lease is stale.
     # A pinned holder that is alive but no longer line 1 was moved off by a
     # same-session re-anchor (bin/fm-lock.sh), since another session takes the
     # lock only from a holder that is no longer a live harness, so the claim

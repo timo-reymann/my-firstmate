@@ -36,7 +36,7 @@
 #
 # Stdin mode extracts .tool_name for Claude and Codex, or .toolCall.name for
 # Antigravity.
-# CLI mode is for adapters that already hold the tool name (OpenCode, Pi).
+# CLI mode is for adapters that already hold the tool name (OpenCode).
 #
 # Exit/output contract (identical shape to bin/fm-cd-pretool-check.sh):
 #   ALLOW - exit 0 and no output.
@@ -50,7 +50,7 @@
 #
 # Claude requires stdout to remain empty on deny.
 # Codex blocks on exit 2 and displays stderr.
-# OpenCode and Pi consume exit 2 plus stderr.
+# OpenCode consumes exit 2 plus stderr.
 set -u
 
 # Lowercase substrings that mark a tool name as delegation-shaped: it creates

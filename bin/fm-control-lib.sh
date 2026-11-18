@@ -40,9 +40,7 @@
 # `resume` is deliberately NOT a verb: it is not deterministic across the
 # verified adapters (docs/agent-control.md owns the per-adapter resume facts).
 # `relaunch` uses the brief on disk rather than a harness-private session as
-# its durable instruction. The relaunch-time exception is
-# fm_control_relaunch_resume_flag below: a reference the endpoint's runtime
-# bound as its status authority is returned to a replacement with that adapter.
+# its durable instruction.
 
 # The complete control-plane verb allowlist, one per line.
 fm_control_verbs() {
@@ -64,7 +62,7 @@ fm_control_verb_allowed() {  # <verb>
 # section 4's verified-adapter list; an unverified adapter is refused rather
 # than guessed at, exactly as a spawn on it would be.
 fm_control_harnesses() {
-  printf '%s\n' claude codex opencode pi pi-signed kimi cursor gemini muse rovo omp agy devin commandcode polytoken cortex kiro hermes
+  printf '%s\n' claude codex opencode kimi cursor gemini muse rovo agy devin commandcode polytoken cortex kiro hermes
 }
 
 fm_control_harness_supported() {  # <harness>
@@ -79,16 +77,11 @@ fm_control_harness_supported() {  # <harness>
 # is keyed by the exact verified adapter name, but a task launched from a raw
 # command records the command's basename instead (bin/fm-spawn.sh derives
 # harness= that way), which is why the spawn adapters match `claude*`, `muse*`,
-# and friends. This is the one place that prefix rule is stated. `pi` and
-# `pi-signed` are exact because a `pi*` prefix would swallow the signed adapter,
-# `omp` is exact because an `omp*` prefix would claim unrelated commands, `agy`
-# is exact for the same reason on an even shorter name, `devin` and
+# and friends. This is the one place that prefix rule is stated. `agy` is exact
+# because an `agy*` prefix would claim unrelated commands, `devin` and
 # `commandcode` are exact as well, `kiro` is exact because a `kiro*` prefix has no verified variant to admit, and an unrecognized value returns nonzero rather than being guessed into a family.
 fm_control_harness_family() {  # <recorded-harness>
   case "${1-}" in
-    pi) printf 'pi' ;;
-    pi-signed) printf 'pi-signed' ;;
-    omp) printf 'omp' ;;
     agy) printf 'agy' ;;
     devin) printf 'devin' ;;
     commandcode) printf 'commandcode' ;;
@@ -136,7 +129,7 @@ fm_control_harness_supports_kind() {  # <harness> <kind>
 fm_control_interrupt_transport() {  # <harness>
   case "${1-}" in
     polytoken) printf 'rest' ;;
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|hermes) printf 'key' ;;
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|hermes) printf 'key' ;;
     *) return 1 ;;
   esac
 }
@@ -147,16 +140,14 @@ fm_control_interrupt_transport() {  # <harness>
 # rovo cancels on a single Escape too, printing "Agent cancelled" (verified,
 # 202609.1.2). agy cancels on a single Escape, printing the Interrupted row
 # with an idle composer and no repollution (verified live, agy 1.2.0 through
-# Herdr). omp (Oh My Pi) shares Pi's single Escape, empty composer
-# afterwards, and /quit exit (verified omp 18.1.2 in a PTY, re-verified 18.1.11
-# through Herdr). kiro cancels on a single Escape, printing a `Cancelled ...`
+# Herdr). kiro cancels on a single Escape, printing a `Cancelled ...`
 # row with an idle composer and no repollution (verified live, kiro-cli 2.21.4).
 # cortex cancels on a single Escape, printing the Interrupted row
 # with an idle composer and firing its Stop hook; an Escape pressed on an idle
 # composer does nothing (verified live, cortex 1.1.104).
 fm_control_interrupt_key() {  # <harness>
   case "${1-}" in
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|cortex|kiro|hermes) printf 'Escape' ;;
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|cortex|kiro|hermes) printf 'Escape' ;;
     *) return 1 ;;
   esac
 }
@@ -168,7 +159,7 @@ fm_control_interrupt_key() {  # <harness>
 fm_control_interrupt_repeat() {  # <harness>
   case "${1-}" in
     opencode|devin|hermes) printf '2' ;;
-    claude|codex|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|commandcode|cortex|kiro) printf '1' ;;
+    claude|codex|kimi|cursor|gemini|muse|rovo|agy|commandcode|cortex|kiro) printf '1' ;;
     *) return 1 ;;
   esac
 }
@@ -187,7 +178,7 @@ fm_control_interrupt_repeat() {  # <harness>
 fm_control_interrupt_arm_signal() {  # <harness>
   case "${1-}" in
     devin) printf '%s' 'esc again to interrupt' ;;
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|commandcode|cortex|kiro|hermes) ;;
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|commandcode|cortex|kiro|hermes) ;;
     *) return 1 ;;
   esac
 }
@@ -202,7 +193,7 @@ fm_control_interrupt_arm_signal() {  # <harness>
 fm_control_interrupt_press_gap() {  # <harness>
   case "${1-}" in
     devin|commandcode) printf '0.5' ;;
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|cortex|kiro|hermes) printf '0.2' ;;
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|cortex|kiro|hermes) printf '0.2' ;;
     *) return 1 ;;
   esac
 }
@@ -225,7 +216,7 @@ fm_control_interrupt_hazard_signal() {  # <harness>
     # a hazard surface on its path; the /quit exit opens only the slash palette,
     # where Enter accepts the preselected /quit row (verified live).
     polytoken) ;;
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|muse|rovo|agy|cortex|kiro|hermes) ;;
+    claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|cortex|kiro|hermes) ;;
     *) return 1 ;;
   esac
 }
@@ -249,7 +240,7 @@ fm_control_interrupt_hazard_signal() {  # <harness>
 fm_control_interrupt_clear_key() {  # <harness>
   case "${1-}" in
     muse) printf 'C-u' ;;
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|rovo|agy|devin|commandcode|cortex|kiro|hermes) ;;
+    claude|codex|opencode|kimi|cursor|gemini|rovo|agy|devin|commandcode|cortex|kiro|hermes) ;;
     *) return 1 ;;
   esac
 }
@@ -267,7 +258,7 @@ fm_control_interrupt_ack_source() {  # <harness>
     # kiro's stop hook fires on normal completion but, like claude's, not on a
     # manual Escape, and its `Cancelled ...` row is likewise rendered rather than
     # recorded, so fm-control preserves the adapter-owned busy record instead.
-    claude|codex|opencode|pi|pi-signed|omp|kimi|cursor|gemini|rovo|agy|devin|commandcode|cortex|kiro|hermes) printf 'none' ;;
+    claude|codex|opencode|kimi|cursor|gemini|rovo|agy|devin|commandcode|cortex|kiro|hermes) printf 'none' ;;
     *) return 1 ;;
   esac
 }
@@ -288,46 +279,9 @@ fm_control_exit_command() {  # <harness> [opencode-major]
       esac
       ;;
     claude|kimi|cursor|muse|rovo) printf '/exit' ;;
-    codex|pi|pi-signed|omp|gemini|agy|devin|commandcode|polytoken|cortex|kiro|hermes) printf '/quit' ;;
+    codex|gemini|agy|devin|commandcode|polytoken|cortex|kiro|hermes) printf '/quit' ;;
     *) return 1 ;;
   esac
-}
-
-# The launch argument that makes a RELAUNCH of <harness> RESUME an exact agent
-# session instead of starting a fresh one, printed only when <registered-agent>
-# is the label that session reference belongs to; nothing otherwise.
-#
-# This exists for one runtime failure, not as a general resume feature. Herdr
-# gives a pane one status authority, and for Pi with its installed integration
-# that authority is the lifecycle hooks, which also suppress Herdr's screen
-# detection for the pane. That registration outlives its agent process in the
-# crew shape - a nested worktree shell under the pane's top shell - and Herdr
-# then applies only reports carrying the session identity it bound. A
-# replacement agent started fresh in that same pane reports a NEW session, so
-# its state reports are ignored and the pane stays frozen at whatever the
-# previous agent last reported: a working crewmate reads idle until its task
-# ends (reproduced and fixed live 2026-09-21, herdr 0.9.1; the read that
-# supplies the reference is
-# bin/backends/herdr.sh's fm_backend_herdr_pane_agent_session_ref).
-#
-# So the reference is not chosen from what looks recent - it is the exact
-# identity the endpoint's own runtime recorded, which is why a matched
-# registered-agent label is required: resuming a reference reported by a
-# DIFFERENT agent would inject another agent's conversation into this launch.
-# `pi` is the label Pi and pi-signed both report, so one entry covers both.
-# Every other harness returns nothing and keeps today's fresh-session
-# relaunch, which is what the adapter tables above (and the absence of a
-# verified resume form for those harnesses) require.
-#
-# Prints the flag name only; the caller quotes and appends the reference, since
-# shell quoting belongs to the owner of the launch line (bin/fm-spawn.sh).
-fm_control_relaunch_resume_flag() {  # <harness> <registered-agent>
-  case "${1-}" in
-    pi|pi-signed)
-      [ "${2-}" = pi ] && printf -- '--session'
-      ;;
-  esac
-  return 0
 }
 
 # Which named keys a backend adapter can deliver. Every session provider
@@ -529,8 +483,6 @@ fm_control_harness_wiring_paths() {  # <harness> <worktree> <state-dir> <id> [ki
       fi
       ;;
     opencode) printf '%s\n' "$wt/.opencode/plugins/fm-busy-state.js" ;;
-    pi|pi-signed) printf '%s\n' "$state/$id.pi-ext.ts" ;;
-    omp) printf '%s\n' "$state/$id.omp-ext.ts" ;;
     kimi)
       printf '%s\n' "$wt/.fm-kimi-turnend"
       printf '%s\n' "$state/$id.kimi-turnend-token"

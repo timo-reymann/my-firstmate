@@ -111,12 +111,10 @@
 #   overlay; an existing managed scope is refused. The profile's own gateway
 #   may run only while idle; a mid-turn, ambiguous or unreadable gateway is
 #   refused without changing it. No profile config or SOUL is edited.
-#   --model <name> and --effort <low|medium|high|xhigh|max|ultra> are concrete profile
+#   --model <name> and --effort <low|medium|high|xhigh|max> are concrete profile
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
-#   from that harness's launch rather than guessed. Ultra is the explicit
-#   exception: bin/fm-harness.sh validate-native-effort owns its model scope;
-#   supported Pi launches receive --codex-effort ultra, never --thinking ultra.
+#   from that harness's launch rather than guessed.
 #   OpenCode 2 has no interactive model or effort flag, so its selected model
 #   and effort are written as the build agent's model and variant inside the
 #   OPENCODE_CONFIG_CONTENT JSON its launch already carries (config schema
@@ -259,21 +257,10 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|kimi|cursor|gemini|muse|rovo|omp|agy|devin|commandcode|cortex|kiro)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|kimi|cursor|gemini|muse|rovo|agy|devin|commandcode|cortex|kiro)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
-#   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
-#   name from PATH once, probes that concrete path with --help, and launches the
-#   same path. It adds --tui-mode regular only when that help advertises the flag;
-#   a failed or inconclusive probe omits it so older Pi versions remain launchable.
-#   A --secondmate launch of a Firstmate-seeded home (the existing
-#   .fm-secondmate-home marker validate_firstmate_home_for_spawn already requires)
-#   also adds --approve when that help advertises it, so the first unattended
-#   launch does not stall on Pi's "Trust project folder?" dialog for that home
-#   path; --approve is session-scoped to the launch cwd and does not rewrite the
-#   operator's trust.json. Ordinary Pi worker launches never receive --approve.
-#   A missing selected executable refuses before endpoint creation, and pi-signed
-#   never falls back to pi.
+#   new adapters.
 #   Devin is worker-only: --permission-mode dangerous and
 #   --respect-workspace-trust false allow unattended tools in a fresh worktree.
 #   --config points at a private per-task snapshot of the user config with
@@ -300,28 +287,6 @@
 #   mapped. --effort maps low|medium|high|max; xhigh is omitted (cortex has
 #   no such level). A bad --model is not refused at launch: Cortex starts,
 #   then answers the first prompt with the account's available model ids.
-#   For omp (Oh My Pi), fm-spawn resolves the `omp` executable from PATH once and
-#   refuses when it is absent. Every omp launch clears the foreign harness
-#   markers (omp publishes none of its own), sets the Firstmate-owned
-#   FM_OMP_HARNESS=omp detection marker, suppresses the first-run provider
-#   wizard with OMP_SKIP_SETUP=1, forces --auto-approve, pins the working
-#   directory with --cwd, and passes the tracked worker posture overlay
-#   .omp/fm-worker-overlay.yml through --config. That overlay pins composer
-#   shape, plan mode off, prewalk off, and the non-interactive usage-reserve
-#   policy for the one session only (--auto-approve alone owns approval); the
-#   captain's own ~/.omp/agent/config.yml (model roles, providers, theme) is
-#   never written.
-#   A model written as <provider>/<id> is validated against `omp models --json`
-#   only when that provider appears in the listing; a provider absent from the
-#   listing (an extension-registered provider such as claude-bridge, which omp
-#   never lists) passes through unvalidated with a stderr notice, and a bare
-#   fuzzy pattern is left to omp's own matcher. A crewmate or scout loads its
-#   per-task busy-state extension with -e from state/ (outside the worktree, so
-#   auto-discovery cannot load it a second time); a secondmate names only that
-#   state/<id>.omp-ext.ts busy extension with -e and relies on omp
-#   auto-discovering the home's tracked .omp/extensions/ for the rest
-#   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
-#   cwd-only with no trust dialog).
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -497,9 +462,9 @@
 # Worker tool exclusions:
 #   docs/configuration.md "Worker tool exclusions" owns config/crew-exclude-tools
 #   and its operator contract. Resolve it with bin/fm-exclude-tools-lib.sh
-#   before provisioning; __PIEXCLUDE__ and __CLAUDEEXCLUDE__ below own the Pi and
-#   Claude launch substitutions.
-# Worker account pin (config/claude-account, config/pi-account):
+#   before provisioning; __CLAUDEEXCLUDE__ below owns the Claude launch
+#   substitution.
+# Worker account pin (config/claude-account):
 #   Opt-in. docs/configuration.md's "Worker account pin" section owns unpinned
 #   account selection. A present file pins every supported launch of
 #   that runner from this home - ship, scout, local secondmate, raw Claude
@@ -507,10 +472,8 @@
 #   refuses before any endpoint, worktree, or record exists when the file is
 #   malformed, the root is unusable, or the runner's own check says it is not
 #   signed in. A pinned Claude launch sheds the environment credentials Claude
-#   ranks above the root's login; a pinned Pi launch needs --model
-#   <provider>/<id> for a declared provider and also carries --provider, and a
-#   raw Pi command refuses. The pin is recorded as account= (and Pi's
-#   account_provider=) in the task record and on the spawned line. A local
+#   ranks above the root's login. The pin is recorded as account= in the task
+#   record and on the spawned line. A local
 #   secondmate first checks config/secondmate-accounts/<id>/<runner>-account
 #   in this launching home, then falls back to its home-wide pin when absent.
 #   Pins are never inherited; remote per-mate overrides refuse locally.
@@ -523,13 +486,6 @@
 #   relaunch reuses the recorded entry unless --account moves it. Without the
 #   list, --account refuses and nothing else changes. docs/configuration.md
 #   "Several Claude accounts" owns the contract.
-# Per-secondmate omp profile (config/secondmate-accounts/<id>/omp-profile):
-#   Opt-in, and read only for a local secondmate's own omp agent;
-#   bin/fm-omp-profile-lib.sh owns the file and its refusals. A pinned launch
-#   carries --profile <name> right after the omp executable (__OMPPROFILE__),
-#   the catalog check runs under the same profile, and the pin is recorded as
-#   omp_profile= in the task record and on the spawned line. Every spawn,
-#   relaunch, and recovery re-reads the file; an absent file changes nothing.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
@@ -539,40 +495,14 @@
 #     __CLAUDESETTINGS__ the single claude --settings value: a quoted inline
 #                  JSON object for a crewmate or scout, or a quoted path to
 #                  state/<task-id>.claude-settings.json for a secondmate
-#     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
-#     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
-#     __PIAPPROVE__ optional --approve on a seeded Pi/pi-signed secondmate when
-#                  that executable advertises the flag (empty otherwise; session
-#                  trust for the launch cwd only, never a trust.json rewrite)
-#     __PIEXCLUDE__ optional ` --exclude-tools '<comma-joined names>'` from
-#                  config/crew-exclude-tools on Pi/pi-signed ship and scout
-#                  launches (supplies its own leading space, empty otherwise)
 #     __CLAUDEEXCLUDE__ optional `--disallowedTools '<comma-joined names>' ` from
 #                  config/crew-exclude-tools on Claude ship and scout launches
 #                  (supplies its own trailing space, empty otherwise). Claude
 #                  Code drops a disallowed tool's schema from every request, and
 #                  a later flag always follows so the variadic option cannot
 #                  swallow the launch prompt.
-#     __PIRESUME__ optional relaunch-only `--session <reference>` that keeps a
-#                  Pi replacement on the session the endpoint's runtime already
-#                  reports (relaunch_resume_args below owns it; it supplies its
-#                  own leading space, and is empty on every fresh spawn and for
-#                  every other harness)
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
-#     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi busy-state extension,
-#                  written by this script; outside the worktree to avoid pi's trust gate;
-#                  a secondmate loads it beside its two primary extensions)
-#     __PITURNEND__ absolute path to .pi/extensions/fm-primary-turnend-guard.ts in a pi secondmate home
-#     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
-#     __OMPBIN__   quoted concrete omp executable path resolved from PATH
-#     __OMPPROFILE__ optional ` --profile '<name>'` from the per-secondmate omp
-#                  profile pin (supplies its own leading space, empty otherwise)
-#     __OMPEXT__   absolute path to state/<task-id>.omp-ext.ts (omp busy-state extension,
-#                  written by this script; outside the worktree so omp's cwd-only
-#                  auto-discovery cannot load it a second time; a secondmate names
-#                  this -e and still does not name its auto-discovered primary extensions)
-#     __OMPWORKERCFG__ absolute path to the tracked .omp/fm-worker-overlay.yml posture overlay
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __BRIEFDOORBELL__ quoted printable doorbell naming the launch-brief record this
 #                  script published into the receiving home's operational inbox
@@ -602,14 +532,14 @@
 #     __KIROHOME__  firstmate-owned per-task KIRO_HOME dir (hook agent config + trust setting)
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # A --secondmate launch arms the same semantic busy contract (bin/fm-busy-lib.sh) in THIS
-# parent home for claude, opencode, pi, pi-signed, and omp, so the parent's active-turn
+# parent home for claude and opencode, so the parent's active-turn
 # gate can read a busy verdict. Those hooks do not touch the parent's turn-ended marker:
 # a mate's completed turns stay in its own home. Codex stays unknown until a semantic
 # source exists. Cursor's transcript binding is written for a secondmate the same way
 # as for a crewmate. Muse, gemini, devin, cortex, and rovo are refused as secondmates.
-# A raw launch command for a claude, pi, pi-signed, or omp secondmate is not armed
+# A raw launch command for a claude secondmate is not armed
 # and retires any arm an earlier launch of that mate left, so its verdict is unknown:
-# the raw command carries no --settings or -e flag to load the wiring.
+# the raw command carries no --settings flag to load the wiring.
 # A claude secondmate gets no Stop busy hook; its home's tracked Stop guard is its
 # only Stop writer, through the .fm-busy-stop pointer in that home. A home whose
 # guard predates that pointer keeps the ordinary Stop idle hook instead.
@@ -985,8 +915,6 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-project-capacity-lib.sh"
 # shellcheck source=bin/fm-worker-account-lib.sh
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
-# shellcheck source=bin/fm-omp-profile-lib.sh
-. "$SCRIPT_DIR/fm-omp-profile-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -1233,9 +1161,9 @@ if [ "$TRACEPARENT_SET" -eq 1 ]; then
   }
 fi
 case "$EFFORT" in
-'' | low | medium | high | xhigh | max | ultra) ;;
+'' | low | medium | high | xhigh | max) ;;
 *)
-  echo "error: --effort must be one of low, medium, high, xhigh, max, ultra" >&2
+  echo "error: --effort must be one of low, medium, high, xhigh, max" >&2
   exit 1
   ;;
 esac
@@ -1390,7 +1318,7 @@ spawn_remote_secondmate() {
     harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate "$id")
   fi
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | kimi | cursor | omp) ;;
+  claude | codex | opencode | kimi | cursor) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1422,7 +1350,7 @@ spawn_remote_secondmate() {
     fi
   fi
   case "$effort" in
-  - | low | medium | high | xhigh | max | ultra) ;;
+  - | low | medium | high | xhigh | max) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1430,11 +1358,6 @@ spawn_remote_secondmate() {
     return 1
     ;;
   esac
-  if [ "$effort" = ultra ] && ! "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$harness" "$model" "$effort"; then
-    fm_lock_release "$registry_lock" || true
-    fm_lock_release "$SPAWN_TASK_LOCK" || true
-    return 1
-  fi
   meta="$STATE/$id.meta"
   if [ -e "$meta" ] || [ -L "$meta" ]; then
     if ! fm_backlog_record_present "$meta" "task record" "$STATE" ||
@@ -2667,7 +2590,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-  '' | claude | codex | opencode | pi | pi-signed | kimi | cursor | gemini | muse | rovo | omp | agy | devin | commandcode | polytoken | cortex | kiro | hermes)
+  '' | claude | codex | opencode | kimi | cursor | gemini | muse | rovo | agy | devin | commandcode | polytoken | cortex | kiro | hermes)
     ARG3=${POS[1]:-}
     ;;
   *' '*)
@@ -2695,7 +2618,7 @@ shell_quote() {
   printf "'"
 }
 
-resolve_pi_executable() {
+resolve_path_executable() {
   local candidate dir
   candidate=$(type -P -- "$1" 2>/dev/null) || return 1
   [ -x "$candidate" ] || return 1
@@ -2706,57 +2629,6 @@ resolve_pi_executable() {
     printf '%s/%s\n' "$dir" "$(basename "$candidate")"
     ;;
   esac
-}
-
-# Pi's CLI surface is version-dependent, so probe the resolved executable's help
-# before composing the optional regular-TUI flag. An absent or inconclusive probe
-# omits the flag so older Pi versions can still spawn.
-pi_supports_tui_mode() {
-  local executable=$1 help
-  help=$("$executable" --help 2>&1) || return 1
-  printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--tui-mode([[:space:]=]|$)'
-}
-
-# Same help-probe shape as pi_supports_tui_mode for the session-scoped project
-# trust flag. A seeded secondmate home carries tracked .pi/extensions that gate
-# Pi behind "Trust project folder?" on first launch; --approve trusts that
-# launch cwd for the run without rewriting ~/.pi/agent/trust.json.
-pi_supports_approve() {
-  local executable=$1 help
-  help=$("$executable" --help 2>&1) || return 1
-  # Pi prints "--approve, -a"; allow comma (and any non-token char) after the name.
-  printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--approve([^[:alnum:]_-]|$)'
-}
-
-# omp pre-launch model validation. `omp models --json` (omp 18.1.11) prints
-# {"models":[{"provider","id","selector":"<provider>/<id>",...}]} for built-in and
-# auto-discovered providers only; it never lists a provider an extension
-# registers at runtime (claude-bridge is the verified example), so the check is
-# scoped exactly to what the listing can prove: a <provider>/<id> whose provider
-# IS listed must be listed too, a provider the listing does not know passes
-# through with a notice, a bare fuzzy pattern is omp's own matcher's job, and an
-# unreadable listing establishes nothing (harness-adapters model-and-effort.md).
-omp_model_validate() { # <omp-bin> <model> [<profile>]
-  local bin=$1 model=$2 profile=${3:-} provider listing providers
-  local -a profile_args=()
-  [ -n "$model" ] && [ "$model" != default ] || return 0
-  case "$model" in */*) ;; *) return 0 ;; esac
-  command -v jq >/dev/null 2>&1 || return 0
-  # A pinned profile has its own provider logins, so list its catalog.
-  [ -z "$profile" ] || profile_args=(--profile "$profile")
-  listing=$(OMP_SKIP_SETUP=1 "$bin" "${profile_args[@]+"${profile_args[@]}"}" models --json 2>/dev/null) || return 0
-  providers=$(printf '%s' "$listing" | jq -r '.models[]?.provider // empty' 2>/dev/null | sort -u) || return 0
-  [ -n "$providers" ] || return 0
-  provider=${model%%/*}
-  if ! printf '%s\n' "$providers" | grep -qxF -- "$provider"; then
-    echo "notice: omp provider '$provider' is not in 'omp models --json' (extension-registered providers are never listed); launching '$model' unvalidated" >&2
-    return 0
-  fi
-  if printf '%s' "$listing" | jq -e --arg m "$model" '.models[]? | select(.selector == $m)' >/dev/null 2>&1; then
-    return 0
-  fi
-  echo "error: omp model '$model' is not listed by 'omp models --json' although provider '$provider' is; choose a listed <provider>/<id> or omit --model" >&2
-  return 1
 }
 
 # agy pre-launch model validation. `agy models` (agy 1.2.0) prints one model per
@@ -2970,33 +2842,6 @@ launch_template() {
     fi
     ;;
   opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}__EFFORTFLAG__}'\'' __OPENCODEBIN__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
-  pi | pi-signed)
-    printf '%s' '__PIBIN____PITUIMODE____PIAPPROVE____PIEXCLUDE____PIRESUME__'
-    if [ "$kind" = secondmate ]; then
-      # The two primary extensions supervise the mate's own home. __PIEXT__ is
-      # the parent-home busy contract, loaded from outside the home so Pi's
-      # project-trust gate does not fire on it.
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ -e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
-    else
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
-    fi
-    ;;
-  # omp (Oh My Pi), a Pi fork. Same one-positional-brief, --model, --thinking,
-  # and -e shape as Pi, verified on omp 18.1.11. The differences are all at
-  # the launch boundary and documented in the header above: foreign markers
-  # cleared (omp has none of its own, so an inherited CLAUDECODE would win),
-  # FM_OMP_HARNESS=omp established for bin/fm-harness.sh, OMP_SKIP_SETUP=1
-  # against the fresh-profile provider wizard, --auto-approve so no approval
-  # prompt can park an unattended worker, the tracked posture overlay so a
-  # captain-level plan, prewalk, or usage dialog cannot either, and --cwd
-  # pinned to the worktree because omp's extension discovery is cwd-only. A
-  # secondmate loads its two primary extensions by that discovery alone:
-  # naming them with -e as well loads each twice (verified), doubling every
-  # session_stop continuation. The busy extension is the exception: it lives
-  # outside the home, so discovery never sees it, and -e is the only load.
-  omp)
-    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
-    ;;
   # agy (Antigravity CLI): --prompt-interactive "<brief>" starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
   # command (verified: a multi-line brief submitted itself with no extra Enter,
@@ -3020,7 +2865,7 @@ launch_template() {
   # TUI), so bin/fm-harness.sh must not read an agy worker as its launcher.
   # agy exposes no hook surface, so busy state is a rendered-tail fallback
   # (bin/fm-busy-lib.sh) and nothing is armed below.
-  agy) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS __AGYBIN__ --prompt-interactive "$(__OPINPUT__ encode launch-brief < __BRIEF__)" __MODELFLAG____EFFORTFLAG__--dangerously-skip-permissions' ;;
+  agy) printf '%s' 'env -u CLAUDECODE __AGYBIN__ --prompt-interactive "$(__OPINPUT__ encode launch-brief < __BRIEF__)" __MODELFLAG____EFFORTFLAG__--dangerously-skip-permissions' ;;
   # kiro (Kiro CLI, V2 engine): a positional prompt starts the supervised
   # interactive session and auto-submits the brief (verified: a positional
   # brief submitted itself with no extra Enter, kiro-cli 2.21.4). --agent-engine
@@ -3038,7 +2883,7 @@ launch_template() {
   # inherited CLAUDECODE, so bin/fm-harness.sh must not read a kiro worker as its
   # launcher. The V2 stop hook is a real turn-end pair, so busy state is armed
   # below (unlike agy's screen-scrape-only fallback).
-  kiro) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS KIRO_HOME=__KIROHOME__ __KIROBIN__ chat --agent-engine v2 --agent firstmate __MODELFLAG____EFFORTFLAG__--trust-all-tools "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  kiro) printf '%s' 'env -u CLAUDECODE KIRO_HOME=__KIROHOME__ __KIROBIN__ chat --agent-engine v2 --agent firstmate __MODELFLAG____EFFORTFLAG__--trust-all-tools "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Cursor Agent CLI. --trust suppresses the workspace-trust prompt, which
   # --yolo does NOT cover and which would otherwise block every spawn, since
   # each task gets a fresh worktree path cursor has never seen. --yolo is the
@@ -3051,7 +2896,7 @@ launch_template() {
   # inherited CLAUDECODE cannot outrank cursor's own marker in a process that
   # only reads the environment. Cursor exposes no effort flag, so the shared
   # effort axis is deliberately omitted and stays in task metadata only.
-  cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  cursor) printf '%s' 'env -u CLAUDECODE -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # gemini (Google Gemini CLI): a positional query starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
   # command exactly as it does for claude (verified: a multi-line
@@ -3086,11 +2931,11 @@ launch_template() {
   # stays in task metadata only, per the record-and-omit contract.
   # Its turn-end and busy-state signals do NOT ride the launch command:
   # they are project hooks written into the worktree below.
-  gemini) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS GEMINI_CLI_TRUST_WORKSPACE=true GEMINI_CLI_SYSTEM_SETTINGS_PATH=__GEMINISETTINGS__ gemini -y __MODELFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  gemini) printf '%s' 'env -u CLAUDECODE GEMINI_CLI_TRUST_WORKSPACE=true GEMINI_CLI_SYSTEM_SETTINGS_PATH=__GEMINISETTINGS__ gemini -y __MODELFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Devin receives the typed launch envelope after --. Its private config
   # appends native worker lifecycle hooks. Clear NO_COLOR so the shared
   # composer guard can distinguish the dim placeholder from a real draft.
-  devin) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u NO_COLOR __DEVINBIN__ --permission-mode dangerous --respect-workspace-trust false --config __DEVINCONFIG__ __MODELFLAG__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  devin) printf '%s' 'env -u CLAUDECODE -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u NO_COLOR __DEVINBIN__ --permission-mode dangerous --respect-workspace-trust false --config __DEVINCONFIG__ __MODELFLAG__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # polytoken (Polytoken CLI): a pane-attached TUI worker whose control verbs
   # ride the daemon REST API (the captain-approved hybrid). The launch runs in
   # the task worktree so the worktree's `.polytoken/` is the project hook and
@@ -3120,23 +2965,23 @@ launch_template() {
   # effort inside the model reference as `<model>(<effort>)`, so the effort
   # axis rides `__MODELFLAG__` after mapping to the nearest compatible
   # level in the installed model's selectable set.
-  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Command Code receives the typed launch envelope after -- as its initial
   # message. --yolo bypasses permission prompts, --trust skips the folder-trust
   # prompt of a fresh worktree, and --skip-onboarding skips taste onboarding.
   # __COMMANDCODEMOD__ loads the tracked busy-state mod for this process only.
   # NO_COLOR is cleared and COLORTERM pinned so the composer placeholder keeps
   # the truecolor styling the shared composer guard reads.
-  commandcode) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u NO_COLOR COLORTERM=truecolor __COMMANDCODEBIN__ --yolo --trust --skip-onboarding --no-auto-update __MODELFLAG____EFFORTFLAG____COMMANDCODEMOD__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  commandcode) printf '%s' 'env -u CLAUDECODE -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u NO_COLOR COLORTERM=truecolor __COMMANDCODEBIN__ --yolo --trust --skip-onboarding --no-auto-update __MODELFLAG____EFFORTFLAG____COMMANDCODEMOD__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Cortex Code receives the typed launch envelope as its positional prompt
   # after --. --dangerously-allow-all-tool-calls approves tool calls and skips
   # the project-trust dialog (verified, cortex 1.1.104); --plugin-dir loads the
   # private per-task plugin with the lifecycle hooks. CLAUDECODE is cleared
   # because Cortex loads Claude-compatible hooks, and Herdr's claude integration
   # hook claims a pane as a claude session whenever that variable is set.
-  cortex) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI __CORTEXBIN__ --dangerously-allow-all-tool-calls --plugin-dir __CORTEXPLUGIN__ __MODELFLAG____EFFORTFLAG__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  cortex) printf '%s' 'env -u CLAUDECODE -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI __CORTEXBIN__ --dangerously-allow-all-tool-calls --plugin-dir __CORTEXPLUGIN__ __MODELFLAG____EFFORTFLAG__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Hermes's native interactive query starts a visible TUI, never one-shot.
-  hermes) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI FM_HERMES_HARNESS=hermes HERMES_HOME=__HERMESHOME__ HERMES_MANAGED_DIR=__HERMESHOOKS__ __HERMESBIN__ __HERMESPROFILE__chat --tui --yolo --accept-hooks -q "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  hermes) printf '%s' 'env -u CLAUDECODE -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI FM_HERMES_HARNESS=hermes HERMES_HOME=__HERMESHOME__ HERMES_MANAGED_DIR=__HERMESHOOKS__ __HERMESBIN__ __HERMESPROFILE__chat --tui --yolo --accept-hooks -q "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Kimi Code rejects a positional prompt, so it launches bare and receives
   # only an absolute brief pointer after the TUI readiness gate below.
   # Its turn-end signal is a globally configured Stop hook plus a guarded
@@ -3168,7 +3013,7 @@ launch_template() {
   # inherited marker. The clearing stays on the cursor and muse templates as the
   # verified launch behavior their evidence records, not as the only thing
   # standing between a retained marker and a misidentified worker.
-  muse) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS XDG_CONFIG_HOME=__MUSECONFIG__ XDG_DATA_HOME=__MUSEDATA__ MUSE_EXPERIMENTAL_FOREIGN_PERSONAL_CONTEXT_KILL=on __MUSEBIN__ --yolo __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  muse) printf '%s' 'env -u CLAUDECODE XDG_CONFIG_HOME=__MUSECONFIG__ XDG_DATA_HOME=__MUSEDATA__ MUSE_EXPERIMENTAL_FOREIGN_PERSONAL_CONTEXT_KILL=on __MUSEBIN__ --yolo __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # rovo (Atlassian Rovo CLI): a positional brief is dead-on-arrival - rovo
   # loads, never enters a working state, and drops back to an idle shell within
   # about 10-15 seconds (confirmed live four times over a raw PTY and once under
@@ -3195,7 +3040,7 @@ launch_template() {
   # respect the grant, confirmed live) - merged with agent.efficiencyLevel
   # when a supported effort is requested, since a second --config-override
   # would silently discard the first (confirmed live).
-  rovo) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS __ROVOBIN__ run --yolo __MODELFLAG____ROVOCONFIGOVERRIDE__' ;;
+  rovo) printf '%s' 'env -u CLAUDECODE __ROVOBIN__ run --yolo __MODELFLAG____ROVOCONFIGOVERRIDE__' ;;
   *) return 1 ;;
   esac
 }
@@ -3378,30 +3223,6 @@ cortex)
     exit 1
   }
   ;;
-pi | pi-signed)
-  PI_BIN=$(resolve_pi_executable "$HARNESS") || {
-    echo "error: $HARNESS executable not found on PATH; install it or select a different verified harness" >&2
-    exit 1
-  }
-  PI_TUI_MODE=
-  if pi_supports_tui_mode "$PI_BIN"; then
-    PI_TUI_MODE=' --tui-mode regular'
-  fi
-  LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
-  # Seeded-home signal is .fm-secondmate-home (required by
-  # validate_firstmate_home_for_spawn before any secondmate launch reaches
-  # the pane). Session-only --approve; never expand to a parent path or
-  # rewrite the operator trust store.
-  PI_APPROVE=
-  if [ "$KIND" = secondmate ] && pi_supports_approve "$PI_BIN"; then
-    PI_APPROVE=' --approve'
-  fi
-  LAUNCH=${LAUNCH//__PIAPPROVE__/$PI_APPROVE}
-  PI_EXCLUDE=
-  [ -z "$EXCLUDE_TOOLS" ] || PI_EXCLUDE=" --exclude-tools $(shell_quote "$EXCLUDE_TOOLS")"
-  LAUNCH=${LAUNCH//__PIEXCLUDE__/$PI_EXCLUDE}
-  LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH"
-  ;;
 cursor)
   # `cursor` is not the CLI name, and the legacy alias `agent` is far too
   # generic to launch on its name alone, so resolution runs through the
@@ -3418,25 +3239,14 @@ cursor)
     fi
   fi
   ;;
-omp)
-  OMP_BIN=$(resolve_pi_executable omp) || {
-    echo "error: omp executable not found on PATH; install Oh My Pi or select a different verified harness" >&2
-    exit 1
-  }
-  OMP_WORKER_CFG="$FM_ROOT/.omp/fm-worker-overlay.yml"
-  [ -f "$OMP_WORKER_CFG" ] || {
-    echo "error: omp worker posture overlay missing at $OMP_WORKER_CFG; a worker launched without it can park on the captain's own approval or plan-mode settings" >&2
-    exit 1
-  }
-  ;;
 agy)
-  AGY_BIN=$(resolve_pi_executable agy) || {
+  AGY_BIN=$(resolve_path_executable agy) || {
     echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
     exit 1
   }
   ;;
 kiro)
-  KIRO_BIN=$(resolve_pi_executable kiro-cli) || {
+  KIRO_BIN=$(resolve_path_executable kiro-cli) || {
     echo "error: kiro-cli executable not found on PATH; install Kiro CLI or select a different verified harness" >&2
     exit 1
   }
@@ -3464,33 +3274,13 @@ if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
     SM_EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$ID")
     if [ -n "$SM_EFFORT" ]; then
       case "$SM_EFFORT" in
-      low | medium | high | xhigh | max | ultra) EFFORT=$SM_EFFORT ;;
-      *) echo "warning: config/secondmate-harness effort token '$SM_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2 ;;
+      low | medium | high | xhigh | max) EFFORT=$SM_EFFORT ;;
+      *) echo "warning: config/secondmate-harness effort token '$SM_EFFORT' is not one of low, medium, high, xhigh, max; ignoring" >&2 ;;
       esac
     fi
   fi
 fi
 fm_backend_validate_harness "$BACKEND" "$HARNESS" || exit 1
-# Ultra is an explicit native capability, never a Pi thinking-level alias.
-# Validate the fully resolved profile before worktree or endpoint provisioning.
-if [ "$EFFORT" = ultra ]; then
-  "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$HARNESS" "$MODEL" "$EFFORT" || exit 1
-  [ "$RAW_LAUNCH" = 0 ] || {
-    echo "error: --effort ultra requires the canonical --harness pi or pi-signed launch so its native flag cannot be omitted" >&2
-    exit 1
-  }
-fi
-# Per-secondmate omp profile pin (header above): resolved before any endpoint,
-# worktree, or record exists, and before the catalog check that must read the
-# same profile. A ship or scout passes no mate, so it never reads a pin.
-OMP_PROFILE_MATE=
-[ "$KIND" != secondmate ] || OMP_PROFILE_MATE=$ID
-OMP_PROFILE_RAW=
-[ "$RAW_LAUNCH" = 0 ] || OMP_PROFILE_RAW=$ARG3
-OMP_PROFILE_PIN=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW") || exit 1
-if [ "$HARNESS" = omp ]; then
-  omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_PIN" || exit 1
-fi
 if [ "$HARNESS" = agy ]; then
   agy_model_validate "$AGY_BIN" "$MODEL" || exit 1
 fi
@@ -3527,11 +3317,9 @@ if [ "$RELAUNCH" -eq 1 ]; then
   WORKER_ACCOUNT_REQUEST=$(fm_worker_account_relaunch_request "$HARNESS" "$CONFIG" "$RELAUNCH_PRIOR_HARNESS" \
     "$(fm_meta_get "$RELAUNCH_META" account)" "$ACCOUNT_ARG" "$WORKER_ACCOUNT_MATE") || exit 1
 fi
-WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_REQUEST") || exit 1
+WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$HARNESS" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_REQUEST") || exit 1
 WORKER_ACCOUNT_DECLARED=${WORKER_ACCOUNT%%$'\t'*}
 WORKER_ACCOUNT_ROOT=${WORKER_ACCOUNT#*$'\t'}
-WORKER_ACCOUNT_PROVIDER=${WORKER_ACCOUNT_ROOT#*$'\t'}
-WORKER_ACCOUNT_ROOT=${WORKER_ACCOUNT_ROOT%%$'\t'*}
 # T3 starts the agent itself, at full access, with its provider instance's own
 # account and environment, so a launch setting only a Firstmate-built command
 # line can apply refuses here instead of being silently widened or dropped.
@@ -3684,49 +3472,6 @@ muse_credential_present() {
   [ -s "$auth" ] || muse_worker_meta_api_key_present
 }
 
-# relaunch_resume_args: the launch arguments that keep a RELAUNCH bound to the
-# agent session this endpoint's runtime already reports, so the runtime's own
-# status authority survives the replacement.
-#
-# Why this exists, and why it is relaunch-only: some runtimes bind a pane's
-# agent status to one session identity and ignore reports carrying another (the
-# defect fixed 2026-09-21 for Herdr-backed Pi workers - docs/herdr-backend.md
-# "Agent status authority and relaunch"). A fresh replacement session is
-# exactly such a report, so the pane freezes at the previous agent's last
-# reported state. Passing the SAME session back to the replacement keeps that
-# identity, and the authority with it; no fresh spawn needs this because nothing
-# is bound yet.
-#
-# The reference is read from the endpoint's own runtime record, never guessed
-# from what looks recent, and only for an adapter with a verified resume form
-# whose own agent label reported it
-# (bin/fm-control-lib.sh's fm_control_relaunch_resume_flag owns both rules, and
-# bin/backends/herdr.sh's fm_backend_herdr_pane_agent_session_ref owns the
-# read). Every other combination prints nothing, so the launch stays exactly
-# what it was before this existed: a fresh session.
-#
-# Prints the arguments with the single leading space that appends them to the
-# launch line, so an empty result leaves every other launch byte-identical.
-#
-# Only the Herdr backend is asked: it is the one adapter whose runtime records a
-# per-pane agent session, and on every other backend the pane carries no such
-# identity for a replacement to preserve. An unreadable registration - no
-# agent, a stale one, a malformed reference - degrades to that same
-# fresh-session launch rather than refusing, because nothing here is a safety
-# property; it preserves a display and supervision signal.
-relaunch_resume_args() {  # <harness> <backend> <target>
-  local harness=${1-} backend=${2-} target=${3-} identity agent ref flag
-  [ "$backend" = herdr ] || return 0
-  [ -n "$target" ] || return 0
-  fm_backend_herdr_parse_target "$target" || return 0
-  identity=$(fm_backend_herdr_pane_agent_session_ref "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE") || return 0
-  agent=${identity%%$'\t'*}
-  ref=${identity#*$'\t'}
-  flag=$(fm_control_relaunch_resume_flag "$harness" "$agent") || return 0
-  [ -n "$flag" ] && [ -n "$ref" ] || return 0
-  printf -- ' %s %s' "$flag" "$(shell_quote "$ref")"
-}
-
 model_flag_for_harness() {
   local harness=$1 model=$2 oc_major=${3:-}
   [ -n "$model" ] && [ "$model" != default ] || return 0
@@ -3739,7 +3484,7 @@ model_flag_for_harness() {
     [ "$oc_major" = 1 ] || return 0
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
-  claude | codex | pi | pi-signed | kimi | cursor | gemini | muse | rovo | omp | agy | devin | commandcode | cortex | kiro)
+  claude | codex | kimi | cursor | gemini | muse | rovo | agy | devin | commandcode | cortex | kiro)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   # polytoken encodes reasoning effort inside the model reference, so the
@@ -3807,24 +3552,6 @@ effort_flag_for_harness() {
     deepseek/deepseek-v4.1-flash:low | deepseek/deepseek-v4.1-flash:high | deepseek/deepseek-v4.1-flash:max)
       printf -- '--effort %s ' "$(shell_quote "$effort")"
       ;;
-    esac
-    ;;
-  pi | pi-signed)
-    # Pi 0.80.6 accepts the full shared effort vocabulary, including max, through
-    # its --thinking flag.
-    case "$effort" in
-    ultra)
-      "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$harness" "$model" "$effort" || return 1
-      printf -- '--codex-effort %s ' "$(shell_quote ultra)"
-      ;;
-    low | medium | high | xhigh | max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  omp)
-    # omp 18.1.11 --thinking accepts off|minimal|low|medium|high|xhigh|max|auto,
-    # a superset of the shared vocabulary, so every level maps straight across.
-    case "$effort" in
-    low | medium | high | xhigh | max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
     esac
     ;;
   opencode)
@@ -6416,7 +6143,7 @@ fi
 OPENCODE_BIN=
 OPENCODE_VERSION=
 if [ "$HARNESS" = opencode ]; then
-  OPENCODE_BIN=$(resolve_pi_executable opencode) || OPENCODE_BIN=
+  OPENCODE_BIN=$(resolve_path_executable opencode) || OPENCODE_BIN=
   if [ -n "$OPENCODE_BIN" ]; then
     OPENCODE_VERSION=$("$OPENCODE_BIN" --version 2>/dev/null \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
@@ -6443,17 +6170,17 @@ esac
 # armed: its BeforeAgent / AfterAgent / SessionEnd hooks are a verified
 # open-close pair. A secondmate's hooks update this record and do not touch
 # the parent's turn-ended marker; parent turn-end wiring for kimi
-# stays on the ordinary-task path below. A raw launch command for a claude,
-# pi, pi-signed, or omp secondmate is not armed: those four reach their
-# wiring only through a launch-template flag (--settings, -e) that a raw
-# command does not carry, so the record would never be updated.
+# stays on the ordinary-task path below. A raw launch command for a claude
+# secondmate is not armed: it reaches its wiring only through a
+# launch-template flag (--settings) that a raw command does not carry, so the
+# record would never be updated.
 busy_notify_turnend=true
 WIRING_HARNESS=$HARNESS
 if [ "$KIND" = secondmate ]; then
   busy_notify_turnend=false
   if [ "$RAW_LAUNCH" -ne 0 ]; then
     case "$HARNESS" in
-    claude* | pi | pi-signed | omp)
+    claude*)
       WIRING_HARNESS=
       if [ -e "$STATE_REAL/$ID.busy-gen" ]; then
         "$FM_ROOT/bin/fm-busy-event.sh" retire "$STATE_REAL" "$ID" --current-gen || {
@@ -6478,7 +6205,7 @@ BUSY_GEN=
     ;;
   esac
   case "$WIRING_HARNESS" in
-  claude* | opencode* | pi | pi-signed | omp)
+  claude* | opencode*)
     # opencode arms on every detected major: OpenCode 2 and the OpenCode 1 /
     # undetected->1.x path both provision a busy-state plugin below that needs
     # this gen, so gating the arm on major >= 2 would leave OpenCode 1 without
@@ -6871,177 +6598,6 @@ EOF
     fi
     exclude_path '.opencode/plugins/fm-busy-state.js'
     ;;
-  pi | pi-signed)
-    # Written OUTSIDE the worktree: pi's project-trust gate fires on any extension
-    # loaded from inside the project (verified live), but an explicit -e path
-    # elsewhere loads without a dialog. Lives in state/, cleaned by teardown.
-    pi_stream_monitoring=false
-    if [ "$(fm_busy_stream_seconds "${FM_STREAM_SILENT_MAX_SECS:-}")" -gt 0 ]; then
-      pi_stream_version=$(fm_run_timed 5 "$PI_BIN" --version 2>/dev/null || true)
-      if fm_busy_pi_stream_version_supported "$pi_stream_version"; then
-        pi_stream_monitoring=true
-      else
-        echo "warning: $HARNESS model-stream observation unavailable for version ${pi_stream_version:-unknown}; verified version: 1.2.0; existing busy bound remains active" >&2
-      fi
-    fi
-    cat >"$STATE/$ID.pi-ext.ts" <<EOF
-// Firstmate semantic busy-state events, turn-end notification, and - when this
-// worker was launched with opted-in stream observation - foreground model-stream
-// evidence; written by fm-spawn under the contract owned by bin/fm-busy-lib.sh.
-// Semantic state: "agent_start" -> busy when a low-level agent run begins;
-// "agent_settled" -> idle only when ctx.isIdle() confirms Pi will not
-// continue automatically - auto-retries, auto-compaction retries, tool
-// loops, and queued continuations all keep the run un-settled, and a settle
-// that raced another extension's fresh run keeps state busy via isIdle().
-// "turn_end" fires at every inner turn boundary (one LLM response plus its
-// tool calls) and stays a wake NOTIFICATION touch for the watcher, never
-// current-state truth.
-import { execFile } from "node:child_process";
-import { appendFileSync } from "node:fs";
-const notifyTurnEnd = $busy_notify_turnend;
-const streamMonitoring = $pi_stream_monitoring;
-const excludeTools = "$EXCLUDE_TOOLS".split(",").filter(Boolean);
-const excludeFile = $(perl -MJSON::PP -MEncode=decode_utf8 -e 'print encode_json(decode_utf8($ARGV[0]))' -- "$CONFIG/crew-exclude-tools");
-const statusFile = $(perl -MJSON::PP -MEncode=decode_utf8 -e 'print encode_json(decode_utf8($ARGV[0]))' -- "$STATE/$ID.status");
-const busyEvent = (state: string, event: string) =>
-  new Promise<void>((resolve) => {
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "apply", "$STATE_REAL", "$ID", state,
-      "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
-    ], () => resolve());
-  });
-export default function (pi: any) {
-  let checkedExclusions = false;
-  let request = 0;
-  let activeRequest = 0;
-  let lastStreamProgress = -Infinity;
-  let lastContent = "";
-  let streamWrites: Promise<void> = Promise.resolve();
-  const streamEvent = (operation: string, current: number) => {
-    streamWrites = streamWrites.then(() => new Promise<void>((resolve) => {
-      execFile("bash", [
-        "-c", '. "\$1"; shift; fm_exec_timed 5 1 "\$@"', "fm-stream-observation",
-        "$FM_ROOT/bin/fm-timeout-lib.sh", "$FM_ROOT/bin/fm-busy-event.sh",
-        "stream", "$STATE_REAL", "$ID", operation,
-        "--gen", "$BUSY_GEN", "--request", String(current),
-      ], (error) => {
-        if (error) console.error("Firstmate model-stream observation write failed; inspect worker instrumentation.");
-        resolve();
-      });
-    }));
-    return streamWrites;
-  };
-  const closeStream = () => {
-    const current = activeRequest;
-    activeRequest = 0;
-    return current ? streamEvent("close", current) : streamWrites;
-  };
-  if (streamMonitoring) {
-    // Foreground context excludes Pi's background provider/cache-warming calls.
-    pi.on("context", () => {
-      request = Math.max(request + 1, Date.now());
-      activeRequest = request;
-      lastStreamProgress = -Infinity;
-      lastContent = "";
-      return streamEvent("open", request);
-    });
-    pi.on("message_update", (event: any) => {
-      if (!activeRequest || event.message?.role !== "assistant") return streamWrites;
-      const now = Date.now();
-      if (now - lastStreamProgress < 1000) return streamWrites;
-      const content = (event.message.content || []).map((part: any) => {
-        if (part.type === "text" && part.text) return ["text", part.text];
-        if (part.type === "thinking" && (part.thinking || part.thinkingSignature)) {
-          return ["thinking", part.thinking || "", part.thinkingSignature || ""];
-        }
-        if (part.type === "toolCall" && part.name) return ["toolCall", part.name, part.arguments];
-        return null;
-      }).filter(Boolean);
-      if (!content.length) return streamWrites;
-      const signature = JSON.stringify(content);
-      if (signature === lastContent) return streamWrites;
-      lastContent = signature;
-      lastStreamProgress = now;
-      return streamEvent("progress", activeRequest);
-    });
-    pi.on("message_end", (event: any) => {
-      if (event.message?.role === "assistant") return closeStream();
-    });
-    pi.on("tool_execution_start", closeStream);
-  }
-  pi.on("agent_start", async () => {
-    await busyEvent("busy", "agent-start");
-    // Verify only this worker's registry, never connect servers from Firstmate.
-    // Check before actions so the warning cannot supersede this turn's terminal status.
-    if (!checkedExclusions && excludeTools.length) {
-      const loaded = new Set(pi.getAllTools().map((tool: any) => tool.name));
-      const unmatched = excludeTools.filter((name) => !loaded.has(name));
-      if (unmatched.length) {
-        appendFileSync(statusFile, "note [at=" + Math.floor(Date.now() / 1000) + "]: warning: " + excludeFile
-          + " unmatched exclusion entries (unverified: absent from the worker's loaded-tool registry; excluded tools or unavailable servers cannot be verified): "
-          + unmatched.join(", ") + "\n");
-      }
-      checkedExclusions = true;
-    }
-  });
-  pi.on("agent_settled", async (_event: any, ctx: any) => {
-    if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
-    await closeStream();
-    return busyEvent("idle", "agent-settled");
-  });
-  pi.on("turn_end", () => { if (notifyTurnEnd) execFile("touch", ["$TURNEND"]); });
-  // A native harness can make progress inside one Pi turn. This separate
-  // marker prevents false wedge alarms without fabricating a completed turn.
-  let lastProgress = 0;
-  pi.events?.on?.("codex-native:progress", () => {
-    const now = Date.now();
-    if (now - lastProgress < 1000) return;
-    lastProgress = now;
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "progress", "$STATE_REAL", "$ID", "--gen", "$BUSY_GEN",
-    ]);
-  });
-}
-EOF
-    ;;
-  omp)
-    # Written OUTSIDE the worktree like Pi's, but for a different reason: omp
-    # has no trust gate, yet its cwd-only extension auto-discovery would load a
-    # worktree-resident copy a SECOND time next to the explicit -e (verified,
-    # omp 18.1.11). Lives in state/, cleaned by teardown.
-    cat >"$STATE/$ID.omp-ext.ts" <<EOF
-// Firstmate semantic busy-state events + turn-end notification for omp (Oh My
-// Pi); written by fm-spawn under the contract owned by bin/fm-busy-lib.sh.
-// Semantic state: "agent_start" -> busy when a low-level agent run begins;
-// "agent_end" -> idle only when event.willContinue is not true. omp has no
-// agent_settled at all (verified, omp 18.1.2 and 18.1.11: zero occurrences in
-// the binary); agent_end is its loop boundary and willContinue is the reliable
-// "another loop is coming" flag, covering auto-retries, compaction retries,
-// queued follow-ups, and a session_stop-forced continuation. ctx.isIdle() is
-// deliberately NOT consulted: at a natural TUI agent_end it still reads false
-// because session_stop is awaited before the session settles, so gating on it
-// would leave every completed turn recorded busy. "turn_end" fires at every
-// inner turn boundary and stays a wake NOTIFICATION touch for the watcher,
-// never current-state truth.
-import { execFile } from "node:child_process";
-const notifyTurnEnd = $busy_notify_turnend;
-const busyEvent = (state: string, event: string) =>
-  new Promise<void>((resolve) => {
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "apply", "$STATE_REAL", "$ID", state,
-      "--gen", "$BUSY_GEN", "--source", "omp-ext", "--event", event,
-    ], () => resolve());
-  });
-export default function (pi: any) {
-  pi.on("agent_start", () => busyEvent("busy", "agent-start"));
-  pi.on("agent_end", (event: any) => {
-    if (event && event.willContinue === true) return;
-    return busyEvent("idle", "agent-end");
-  });
-  pi.on("turn_end", () => { if (notifyTurnEnd) execFile("touch", ["$TURNEND"]); });
-}
-EOF
-    ;;
   codex*)
     # Semantic busy-state source negotiation (bin/fm-busy-lib.sh owns the
     # probes and the evidence). Neither Codex path is usable on the
@@ -7253,7 +6809,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness hermes_profile hermes_home kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
+      split("window endpoint_task_id worktree project harness hermes_profile hermes_home kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -7292,10 +6848,6 @@ preserve_relaunch_meta() {
   # The worker account pin, only when this home declares one, so an unpinned
   # task record stays byte-identical.
   [ -z "$WORKER_ACCOUNT" ] || echo "account=$WORKER_ACCOUNT_DECLARED"
-  [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
-  # The per-secondmate omp profile pin, only when one applies, so every other
-  # task record stays byte-identical.
-  [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
   [ "$HARNESS" != hermes ] || { echo "hermes_profile=$HERMES_PROFILE"; echo "hermes_home=$HERMES_PROFILE_HOME"; }
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
@@ -7461,27 +7013,12 @@ fi
 
 sq_brief=$(shell_quote "$BRIEF")
 sq_turnend=$(shell_quote "$TURNEND")
-sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
-sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
-sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
-sq_ompext=$(shell_quote "$STATE/$ID.omp-ext.ts")
-sq_ompcfg=$(shell_quote "${OMP_WORKER_CFG:-$FM_ROOT/.omp/fm-worker-overlay.yml}")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
 sq_worktree=$(shell_quote "$WT")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL" "$OPENCODE_MAJOR")
-# A pinned Pi launch confines Pi's model lookup to the declared provider.
-[ -z "$WORKER_ACCOUNT_PROVIDER" ] || MODELFLAG="--provider $(shell_quote "$WORKER_ACCOUNT_PROVIDER") $MODELFLAG"
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL" "$OPENCODE_MAJOR") || exit 1
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
-# Relaunch session continuity. Computed here, where the adopted endpoint (T) is
-# known, and substituted only into the Pi-family template's `__PIRESUME__`
-# placeholder; an empty value leaves every other launch byte-identical.
-RESUME_ARGS=
-if [ "$RELAUNCH" -eq 1 ]; then
-  RESUME_ARGS=$(relaunch_resume_args "$HARNESS" "$BACKEND" "$T") || RESUME_ARGS=
-fi
-LAUNCH=${LAUNCH//__PIRESUME__/$RESUME_ARGS}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 CLAUDE_EXCLUDE=
 [ -z "$EXCLUDE_TOOLS" ] || [ "$HARNESS" != claude ] || CLAUDE_EXCLUDE="--disallowedTools $(shell_quote "$EXCLUDE_TOOLS") "
@@ -7511,22 +7048,10 @@ if [ "$HARNESS" = rovo ]; then
 fi
 LAUNCH=${LAUNCH//__BRIEF__/$sq_brief}
 LAUNCH=${LAUNCH//__TURNEND__/$sq_turnend}
-LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
-LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
-LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
-LAUNCH=${LAUNCH//__OMPEXT__/$sq_ompext}
-LAUNCH=${LAUNCH//__OMPWORKERCFG__/$sq_ompcfg}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
 case "$HARNESS" in
-pi | pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;
 cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemini-settings.json")"} ;;
-omp)
-  LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"}
-  OMPPROFILE=
-  [ -z "$OMP_PROFILE_PIN" ] || OMPPROFILE=" --profile $(shell_quote "$OMP_PROFILE_PIN")"
-  LAUNCH=${LAUNCH//__OMPPROFILE__/$OMPPROFILE}
-  ;;
 devin)
   LAUNCH=${LAUNCH//__DEVINBIN__/"$(shell_quote "$DEVIN_BIN")"}
   LAUNCH=${LAUNCH//__DEVINCONFIG__/"$(shell_quote "$STATE_REAL/$ID.devin-config.json")"}
@@ -7609,7 +7134,7 @@ case "$LAUNCH" in
   ;;
 esac
 case "$HARNESS" in
-claude | codex | opencode | pi | pi-signed | kimi | gemini | muse | rovo | agy | devin | commandcode | cortex | kiro | hermes)
+claude | codex | opencode | kimi | gemini | muse | rovo | agy | devin | commandcode | cortex | kiro | hermes)
   LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
   ;;
 esac
@@ -7632,9 +7157,6 @@ if [ -n "$WORKER_ACCOUNT" ]; then
       LAUNCH="$(fm_worker_account_claude_shed) -u CLAUDE_CONFIG_DIR $LAUNCH"
     fi
     ;;
-  pi | pi-signed)
-    LAUNCH="PI_CODING_AGENT_DIR=$(shell_quote "$WORKER_ACCOUNT_ROOT") $LAUNCH"
-    ;;
   esac
 elif [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
@@ -7648,12 +7170,8 @@ if [ "$KIND" = secondmate ]; then
   # Keep this in step with fm_supervision_model (bin/fm-wake-lib.sh): Claude's
   # Stop auto-arm and Cursor's stop-hook park both run the watcher only BETWEEN
   # turns, so a fresh beacon with no live watcher is their healthy mid-turn state.
-  # Pi and pi-signed secondmates previously received persistent here and now
-  # receive extension to match fm_supervision_model's own table, so their pull
-  # guard tolerates the extension hand-off exactly as a Pi primary does.
   case "$HARNESS" in
   claude | cursor | agy) supervision_model=autoarm ;;
-  pi | pi-signed | omp) supervision_model=extension ;;
   *) supervision_model=persistent ;;
   esac
   # Deliver the primary's EFFECTIVE trace-context decision as a normalized on/off
@@ -7739,7 +7257,6 @@ fi
 OSC7501_AGENT_BIN=
 if [ "$RAW_LAUNCH" = 0 ]; then
   case "$HARNESS" in
-    pi | pi-signed) OSC7501_AGENT_BIN=${PI_BIN:-} ;;
     muse) OSC7501_AGENT_BIN=${MUSE_BIN:-} ;;
     *) OSC7501_AGENT_BIN=$HARNESS ;;
   esac
@@ -8235,8 +7752,6 @@ SPAWN_DELIVERY=
 [ -z "$MODE" ] || SPAWN_DELIVERY=" mode=$MODE yolo=$YOLO"
 SPAWN_ACCOUNT=
 [ -z "$WORKER_ACCOUNT" ] || SPAWN_ACCOUNT=" account=$WORKER_ACCOUNT_DECLARED"
-[ -z "$WORKER_ACCOUNT_PROVIDER" ] || SPAWN_ACCOUNT="$SPAWN_ACCOUNT account_provider=$WORKER_ACCOUNT_PROVIDER"
-[ -z "$OMP_PROFILE_PIN" ] || SPAWN_ACCOUNT="$SPAWN_ACCOUNT omp_profile=$OMP_PROFILE_PIN"
 # Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test.
 [ ! -e "$CONFIG/fleet-ledger" ] || [ "$RELAUNCH" -eq 1 ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-fleet-ledger.sh" dispatched "$ID" "$KIND" "${PROJ_ABS##*/}" "$HARNESS" "$MODEL" || true
 # Opt-in Herdr project groups (docs/herdr-backend.md "Project groups") tag the

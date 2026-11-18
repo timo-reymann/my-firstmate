@@ -23,7 +23,7 @@
 #      that names none - a raw launch command whose agent fm-spawn cannot
 #      establish - never reports
 #   5. the harness must not already report natively: Claude Code >= 2.1.295
-#      and Pi >= 1.1.0 (herdr discussions #5073/#5106, verified 2026-10-30),
+#      (herdr discussions #5073/#5106, verified 2026-10-30),
 #      codex-cli >= 0.163.0 (openai/codex#52725, first released in
 #      rust-v0.163.0, verified 2026-11-01), and Muse Code >= 1.4.11 (the
 #      lowest version verified reporting on Rex,
@@ -258,7 +258,6 @@ osc_native() {
   local floor ver
   case "$1" in
     claude) floor=2.1.295 ;;
-    pi | pi-signed) floor=1.1.0 ;;
     codex) floor=0.163.0 ;;
     muse) floor=1.4.11 ;;
     *) return 1 ;;

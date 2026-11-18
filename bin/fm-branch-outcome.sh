@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# fm-branch-outcome.sh - the durable outcome store for the Pi supervision
-# branch (docs/pi-supervision-branch.md).
+# fm-branch-outcome.sh - the durable outcome store for the supervision
+# branch (docs/supervision-branch.md).
 #
 # CONTRACT (this header is the one owner of the store's format).
 #   - Store: $STATE/branch-outcomes.jsonl, strictly APPEND-ONLY. One JSON
@@ -17,17 +17,16 @@
 #     entirely in the cursor sidecar so marking outcomes read cannot disturb
 #     the log. Retention: the log is small (one line per handled fleet event)
 #     and truncation, if ever needed, is a captain-approved manual act.
-#   - Cursor: $STATE/.branch-outcomes-cursor holds the highest seq presented
-#     by Pi as a routine merge note or sequence-keyed visible captain entry,
-#     emitted by Pi's locked session-start replay, silently consumed there
-#     because `silent` is true, or presented by the supervision-host drain.
+#   - Cursor: $STATE/.branch-outcomes-cursor holds the highest seq emitted
+#     by the locked session-start replay, silently consumed there because
+#     `silent` is true, or presented by the supervision-host drain.
 #     Records above the cursor are unread. A captain row advances only after
-#     Pi persists its matching visible entry or the host prints its drain
-#     section, so interrupted presentation can be retried.
+#     the host prints its drain section, so interrupted presentation can be
+#     retried.
 #     A cursor beyond the validated store tail fails closed.
 #   - Processed marker: $STATE/.branch-outcomes-processed holds the highest
 #     seq whose captain rows main has ACKNOWLEDGED as processed, separately
-#     from the read cursor: reading (the visible entry) is the branch's act,
+#     from the read cursor: reading (the presentation) is the branch's act,
 #     processing (main acting on the outcome and calling its acknowledgement
 #     tool) is main's. A captain row between the two markers is "unprocessed":
 #     delivered and shown, not yet acted on. Routine rows never wait on this
@@ -37,13 +36,11 @@
 #     refused. It never moves past the read cursor or backwards, so an
 #     unrelated or empty model answer cannot move it. An absent marker reads as
 #     0 (every delivered captain row is unprocessed, the safe direction), and
-#     nothing ever creates it from the read cursor: the Pi branch's visible
-#     entries and a supervision-host drain's presentation both advance that
-#     cursor without main acknowledging anything, and no stored state tells
-#     which one did. So a home without a marker, including one upgraded from
-#     before the marker existed or switched between Pi and the host, presents
-#     its delivered captain rows again, dated and check-first, until main
-#     acknowledges them. A marker ahead of the read cursor fails closed.
+#     nothing ever creates it from the read cursor: a supervision-host drain's
+#     presentation advances that cursor without main acknowledging anything.
+#     So a home without a marker, including one upgraded from before the
+#     marker existed, presents its delivered captain rows again, dated and
+#     check-first, until main acknowledges them. A marker ahead of the read cursor fails closed.
 #   - Outcome index: $STATE/.<task>.branch-outcome-index stores one bounded
 #     cache of the latest outcome's status provenance. The authoritative copy
 #     is in the append-only row. $STATE/.branch-outcome-index-ready is removed
@@ -69,8 +66,8 @@
 #     it from a bounded window of the store's newest complete rows when it is
 #     absent, so a home whose store predates it gains one at its next session
 #     start without scanning lifetime history.
-#   - Every mutation runs under $STATE/.branch-outcomes.lock so the branch
-#     extension and a concurrent session-start replay cannot interleave.
+#   - Every mutation runs under $STATE/.branch-outcomes.lock so the branch's
+#     report and a concurrent session-start replay or drain cannot interleave.
 #   - The store is written BEFORE the outcome is delivered to main
 #     (store-first durability): nothing about a handled event depends on
 #     conversation memory.
@@ -82,8 +79,8 @@
 #   fm-branch-outcome.sh unread
 #     Print every unread record (raw JSONL). Exit 0 with no output when none.
 #   fm-branch-outcome.sh mark-read --through <seq>
-#     Advance the cursor (never backwards) after Pi delivers the records or
-#     the host presents them in its drain.
+#     Advance the cursor (never backwards) after the host presents the
+#     records in its drain.
 #   fm-branch-outcome.sh unprocessed
 #     Print read but unprocessed captain records as JSONL in ascending seq, up to 32 per call, each with "recordedAgo".
 #     Summaries over 1024 characters are abbreviated within that bound and point to lookup --seqs <n> for the full outcome.
@@ -93,21 +90,20 @@
 #     through <seq>; the target itself must be a currently unprocessed captain
 #     row at or below the read cursor.
 #   fm-branch-outcome.sh present
-#     A supervision-host drain's presentation off Pi (bin/fm-wake-drain.sh
+#     A supervision-host drain's presentation (bin/fm-wake-drain.sh
 #     "BRANCH OUTCOMES", docs/supervision-host.md "Captain outcomes"): under
 #     the lock, print every unread record and every unprocessed captain record
 #     (JSONL, ascending seq, each with an added "unread" boolean, and each
-#     captain record also with "recordedAgo"). It moves nothing: off Pi that
-#     drain presentation is what the visible entry is, so the drain runs
+#     captain record also with "recordedAgo"). It moves nothing: the drain runs
 #     mark-read once it has presented the rows; it is the only reader that
 #     advances the cursor there. Prints nothing when nothing is unread or
 #     unprocessed.
 #     "recordedAgo" is how long before this read the row was appended, as
 #     whole minutes under an hour, whole hours under two days, else whole days
 #     (for example "0m", "5h", "6d"; a future epoch reads "0m"). It is the one
-#     owner of that wording for both presenters, the drain's BRANCH OUTCOMES
-#     section and the Pi branch's processing request, because a row main never
-#     acknowledged can be presented again long after its situation settled.
+#     owner of that wording for the drain's BRANCH OUTCOMES section, because
+#     a row main never acknowledged can be presented again long after its
+#     situation settled.
 #   fm-branch-outcome.sh processed-init [--held-lock]
 #     Validate the read cursor and the processed marker without changing them,
 #     then rebuild the bounded per-task outcome indexes. --held-lock is only
@@ -124,8 +120,8 @@
 #     Session-start recovery: print the leading routine unread records under a
 #     labeled header into the locked startup digest, skip rows whose `silent`
 #     field is true, and mark those leading routine rows read. Stop before the
-#     first captain row because only Pi's sequence-keyed visible entry may
-#     acknowledge that row. Prints nothing when nothing replayable is unread.
+#     first captain row because only the supervision-host drain's
+#     presentation may acknowledge that row. Prints nothing when nothing replayable is unread.
 #     Run it only when the session holds the lock (fm-session-start.sh owns the
 #     call site).
 #   fm-branch-outcome.sh seed-tail

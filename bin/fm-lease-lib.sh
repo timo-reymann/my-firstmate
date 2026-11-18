@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # fm-lease-lib.sh - the per-task supervision lease contract (one owner).
 #
-# WHY. A supervision branch (docs/pi-supervision-branch.md) is a second LLM
-# actor beside MAIN (the captain's chat) in one firstmate home - on Pi, a
-# persistent conversation inside the same pi process; beside another primary,
-# a headless engine session run by the supervision host
-# (docs/supervision-host.md) - and nothing in this contract assumes the two
-# actors share a process. Most records have exactly one natural owner, but the
+# WHY. A supervision branch (docs/supervision-branch.md) is a second LLM
+# actor beside MAIN (the captain's chat) in one firstmate home - a headless
+# engine session run by the supervision host (docs/supervision-host.md) - and
+# nothing in this contract assumes the two actors share a process. Most records have exactly one natural owner, but the
 # overlap set - steering or stopping a worker, post-landing cleanup, backlog
 # status for a task, stuck-worker recovery - could otherwise be mutated by both
 # actors at once. The lease is the
@@ -22,8 +20,8 @@
 #   - Actors: exactly "main" and "branch". The current actor is
 #     $FM_SUPERVISION_ACTOR when set, else "main". The branch's shell gets
 #     FM_SUPERVISION_ACTOR=branch injected deterministically by the process
-#     hosting it (on Pi, the branch extension's bash tool; elsewhere, the
-#     supervision host's engine environment), not by agent memory. Any other
+#     hosting it (the supervision host's engine environment), not by agent
+#     memory. Any other
 #     value is refused loudly - an unknown actor is a wiring bug, not a third
 #     role.
 #   - Staleness: the recorded pid is the long-lived supervising process (the
@@ -33,15 +31,14 @@
 #     test, identical in every calling context: the recorded pid is alive and
 #     IS the current state/.lock holder. So a lease left by an exited session
 #     goes stale for every reader, whichever harness now owns the home, and an
-#     unmarked main honors a live branch lease exactly as a Pi main does. A
+#     unmarked main honors a live branch lease exactly as a marked main does. A
 #     same-session re-anchor that moves lock line 1 off a live pid
 #     (bin/fm-lock.sh) moves the leases recorded against that pid with it
 #     (fm_lease_rekey_holder), so they stay live. The one residual is a
 #     recorded pid recycled onto the next session-lock holder itself; the
 #     host that owns a branch conversation releases that actor's leases when
-#     it activates a new one (the Pi branch extension's
-#     generation-activation cleanup; the supervision host also releases them
-#     after every engine turn), which also recovers a lease held by the live
+#     it activates a new one (the supervision host also releases them after
+#     every engine turn), which also recovers a lease held by the live
 #     session but an abandoned branch conversation.
 #
 # THREAT MODEL (deliberate, captain-decided): these guards are
@@ -49,16 +46,14 @@
 # for the gate refusal. They stop non-deliberate misuse - the injected actor
 # identity, the loud refusals, and the session-bound staleness make every
 # accidental cross-actor mutation fail loudly. A deliberately forging shell
-# running as the same uid inside the same pi process can evade any in-process
+# running as the same uid inside the same process can evade any in-process
 # discriminator (it can rewrite env, spawn fresh shells, and edit state
 # files), so adversarial-grade separation is explicitly out of scope here and
-# tracked as separate follow-up design work. The branch's shell prelude makes
-# the actor variables readonly (see the Pi branch extension), so an
-# ACCIDENTAL override fails loudly inside the branch's own shell as well.
+# tracked as separate follow-up design work.
 #   - Guard semantics (fm_lease_guard): no lease, a same-actor lease, or a
 #     provably stale lease passes; a live lease held by the OTHER actor
 #     refuses with exit FM_LEASE_REFUSE_EXIT. Whenever the guard engages - a
-#     supervision context (Pi, or an explicit actor), a home that runs the
+#     supervision context (an explicit actor), a home that runs the
 #     supervision host (fm_supervision_host_enabled, whose host can claim a
 #     task that has no lease yet), or any lease file for the task - it retains the
 #     lease-command lock until fm_lease_guard_release, so the other actor
@@ -71,7 +66,7 @@
 #     decision, retiring a secondmate - refuse the branch actor outright,
 #     lease or no lease, while the home is attended. While a confirmed,
 #     readable, live away record exists (bin/fm-afk-contract.sh validate and
-#     mode, never quiet mode's record, whose captain is present; docs/pi-
+#     mode, never quiet mode's record, whose captain is present; docs/
 #     supervision-branch.md "Postures"), main is parked and its STANDING authority
 #     relocates to the branch for exactly the actions whose guarded script
 #     opts in with --away-relocated: a PR merge, a fresh spawn of queued work,
@@ -267,8 +262,8 @@ fm_lease_guard() {
   local task=$1 action=$2 actor lock lease_actor
   fm_lease_valid_id "$task" || return 0
   actor=$(fm_lease_actor) || exit "$FM_LEASE_REFUSE_EXIT"
-  case "${PI_CODING_AGENT:-}:${FM_SUPERVISION_ACTOR:-}" in
-    true:*|*:main|*:branch) ;;
+  case "${FM_SUPERVISION_ACTOR:-}" in
+    main|branch) ;;
     *)
       [ -e "$(fm_lease_path "$task")" ] || fm_lease_home_runs_host || return 0
       ;;
@@ -325,9 +320,9 @@ fm_lease_forbid_branch() {
   actor=$(fm_lease_actor) || exit "$FM_LEASE_REFUSE_EXIT"
   [ "$actor" = branch ] || return 0
   if [ "$relocatable" = --away-relocated ] && fm_lease_away_relocated; then
-    echo "note: $action proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md \"Postures\")" >&2
+    echo "note: $action proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/supervision-branch.md \"Postures\")" >&2
     return 0
   fi
-  echo "error: $action refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)" >&2
+  echo "error: $action refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/supervision-branch.md)" >&2
   exit "$FM_LEASE_REFUSE_EXIT"
 }
