@@ -404,6 +404,7 @@ A ship brief records its mode as a fixed machine-readable line and the spawn ref
 It also owns the named-head reachability gate that refuses a ship `done:` while that head exists only in the worker's disposable copy, testing the named head rather than whether some branch moved.
 Its header owns local-only readiness pinning, and the [`fm-merge-local.sh` header](../bin/fm-merge-local.sh) owns landing checks and recovery.
 `bin/fm-crew-state.sh`, `bin/fm-pr-check.sh`, and the secondmate ledger-first publisher call that same gate before treating a ship `done:` as ready.
+`bin/fm-crew-state.sh` reports a local-only refusal whose head moved past that readiness pin as `stale-head`, a ready branch that needs re-approval or a fresh task, rather than `blocked`; its header owns that reading.
 It is also the one owner of the no-mistakes `--intent` contract those workers follow.
 `data/projects.md` records each project's standing posture and optional `+yolo` merge flag as the captain's default and as context for that decision, including the conditional `no-mistakes-prod-only` policy; a ship spawn that drops below the registered rigor prints a deviation notice and continues.
 The registry's optional `forge=` token is different in kind: it is the captain's confirmed project fact rather than a standing default, orthogonal to both the mode and `+yolo`, and it changes what a publishing mode publishes rather than firstmate's latitude over it ([gerrit-forge-integration.md](gerrit-forge-integration.md) is the design).

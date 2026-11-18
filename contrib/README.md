@@ -26,6 +26,7 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 - `firstmate-tui` draws the two views of that screen, written in Python with Textual.
   `--pane activity` is a box with the last 8 events of the [fleet activity ledger](../docs/fleet-ledger.md) as full lines, newest first, and a "NEEDS YOU" count; events that need you (a decision, a blocked worker, a PR ready for review) have a yellow bar.
   `--pane workers` lists the workers, needs-you first, each with its state symbol, kind, task, state, and the age of its last report; a working worker with no report for over an hour shows its age in yellow with `…`.
+  A local-only worker whose head changed after its ready report shows `⟳ new head` among the needs-you workers, not `blocked`, and its live view has a one-line hint to re-approve the head or start a fresh task.
   Below the list is a live view of the selected worker's screen, read from Herdr about once a second.
   `enter` on a worker starts input mode: the live view title says `INPUT`, and every key you type, including `enter`, arrows, `ctrl` combinations and pasted text, goes to that worker's Herdr pane.
   `escape` (or `ctrl+]`) leaves input mode at once, and the other keys work as before again.
