@@ -17,7 +17,7 @@ Usage: firstmate-herdr [--no-attach] [--check] [--ratio SHARE] [--activity-ratio
   and how to start the first mate there instead.
   --no-attach             build the layout and stop (outside Herdr only)
   --check                 check that Herdr, jq, uv and firstmate-tui are usable, print why not, and stop
-  --ratio SHARE           share of the width for the first mate pane (default 0.6)
+  --ratio SHARE           share of the width for the first mate pane (default 0.55)
   --activity-ratio SHARE  share of the height for the activity pane (default: exactly the activity box, 10 rows)
 USAGE
 }
@@ -28,7 +28,7 @@ firstmate_bin="${FIRSTMATE_BIN:-$here/firstmate}"
 tui_bin="${TUI_BIN:-$here/firstmate-tui}"
 herdr_bin="${HERDR_BIN:-herdr}"
 session="${FM_HERDR_SESSION:-}"
-ratio=0.6
+ratio=0.55
 # The activity pane fits the box firstmate-tui draws: ACTIVITY_HEIGHT rows (8 events plus the border).
 # An explicit --activity-ratio wins; otherwise the share comes from the real tab height (activity_share).
 activity_rows=10

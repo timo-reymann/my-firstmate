@@ -146,7 +146,7 @@ test_herdr_builds_three_panes() {
   [ "$RC" -eq 0 ] || fail "layout exit $RC: $OUT"
   assert_contains "$LOG" "pane split p1 --direction down --ratio 0.1266 --no-focus" "activity split is exactly the activity box"
   assert_contains "$LOG" "pane swap --source-pane p1 --target-pane p2" "activity moves to the top"
-  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.6 --no-focus" "workers split"
+  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.55 --no-focus" "workers split"
   assert_contains "$LOG" "pane rename p2 firstmate-activity" "activity label"
   assert_contains "$LOG" "pane rename p3 firstmate-workers" "workers label"
   assert_contains "$(sed -n 's/^pane run p2 clear; //p' "$HERDR_LOG")" "$tui --pane activity" "activity pane"
@@ -253,7 +253,7 @@ test_firstmate_hands_over_to_herdr() {
   route -- --verbose
   [ "$RC" -eq 0 ] || fail "hand-over exit $RC: $OUT"
   assert_contains "$LOG" "workspace create --cwd $HOME_DIR/workspace/firstmate --label firstmate-screen --no-focus" "screen workspace"
-  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.6 --no-focus" "workers pane"
+  assert_contains "$LOG" "pane split p1 --direction right --ratio 0.55 --no-focus" "workers pane"
   mate=$(sed -n 's/^pane run p1 clear; //p' "$HERDR_LOG")
   assert_equals "$ROOT/contrib/firstmate --plain --verbose" "$mate" "first mate pane runs the plain path"
   assert_not_contains "$OUT" "plain mode" "no fallback line"
