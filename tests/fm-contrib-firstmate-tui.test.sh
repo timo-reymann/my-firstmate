@@ -409,6 +409,68 @@ test_once_failures_and_help() {
 }
 
 # uv_ready: true when uv can run the script offline from its cache.
+# HERDR_LAYOUT: "herdr pane layout" output exactly as Herdr 0.9.5 printed it for the launcher's tab
+# (40-row client, so a 39-row tab): the activity pane w2:p2 is 10 rows tall but shows 8, because Herdr
+# frames every pane of a split tab.
+HERDR_LAYOUT='{"id":"cli:pane:layout","result":{"layout":{"area":{"height":39,"width":94,"x":0,"y":0},"focused_pane_id":"w2:p1","panes":[{"focused":false,"pane_id":"w2:p2","rect":{"height":10,"width":94,"x":0,"y":0}},{"focused":true,"pane_id":"w2:p1","rect":{"height":29,"width":52,"x":0,"y":10}},{"focused":false,"pane_id":"w2:p3","rect":{"height":29,"width":42,"x":52,"y":10}}],"splits":[{"direction":"down","id":"split_0_root","ratio":0.2564,"rect":{"height":39,"width":94,"x":0,"y":0}},{"direction":"right","id":"split_1_1","ratio":0.55,"rect":{"height":29,"width":94,"x":0,"y":10}}],"tab_id":"w2:t1","workspace_id":"w2","zoomed":false},"type":"pane_layout"}}'
+
+test_fit_resize_counts_the_herdr_frame() {
+  HERDR_LAYOUT="$HERDR_LAYOUT" py '
+import copy, json, os
+layout = json.loads(os.environ["HERDR_LAYOUT"])["result"]["layout"]
+want = tui.ACTIVITY_HEIGHT
+# 10 rows tall shows 8: the pane grows to 12 of 39, the share 0.3077 from 0.2564.
+assert tui.fit_resize(layout, "w2:p2", 8, want) == (39, "down", 0.0513), tui.fit_resize(layout, "w2:p2", 8, want)
+fitted = copy.deepcopy(layout)
+fitted["panes"][0]["rect"]["height"] = 12
+fitted["splits"][0]["ratio"] = 0.30769998
+assert tui.fit_resize(fitted, "w2:p2", 10, want) == (39, "", 0.0), "a fitted pane stays"
+tall = copy.deepcopy(layout)
+tall["panes"][0]["rect"]["height"] = 16
+tall["splits"][0]["ratio"] = 0.4103
+assert tui.fit_resize(tall, "w2:p2", 14, want) == (39, "up", 0.1026), "a tall pane shrinks"
+# Before a client draws the tab, the terminal of the pane still has its old size.
+assert tui.fit_resize(layout, "w2:p2", 27, want) is None, "a terminal that lags the layout waits"
+assert tui.fit_resize(layout, "w2:p2", 2, want) is None, "a frame bigger than a border waits"
+small = copy.deepcopy(layout)
+small["splits"][0]["rect"]["height"] = 20
+small["splits"][0]["ratio"] = 0.34
+small["panes"][0]["rect"]["height"] = 7
+assert tui.fit_resize(small, "w2:p2", 5, want) == (20, "", 0.0), "a small terminal keeps room below"
+assert tui.fit_resize(layout, "w2:p1", 27, want) is None, "a pane at the bottom of its split is not fitted"
+assert tui.fit_resize(layout, "w9:p9", 8, want) is None, "an unknown pane"
+for bad in (None, {}, {"panes": "x"}, {"panes": [{"pane_id": "w2:p2", "rect": {"height": "10"}}]}):
+    assert tui.fit_resize(bad, "w2:p2", 8, want) is None, bad
+' || fail "fit_resize"
+  pass "the activity fit reads the real Herdr layout: it counts the pane frame, waits for a lagging terminal, and keeps room in a small one"
+}
+
+test_fit_pane_resizes_once_per_terminal_height() {
+  local herdr="$TMP_ROOT/fit-herdr"
+  cat > "$herdr" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$HERDR_LOG"
+[ "$1 $2" != "pane layout" ] || printf '%s\n' "$HERDR_LAYOUT"
+exit "${FAKE_RC:-0}"
+EOF
+  chmod +x "$herdr"
+  : > "$TMP_ROOT/fit.log"
+  HERDR_LAYOUT="$HERDR_LAYOUT" HERDR_LOG="$TMP_ROOT/fit.log" FIT_HERDR="$herdr" py '
+import os, subprocess
+herdr, log = os.environ["FIT_HERDR"], os.environ["HERDR_LOG"]
+assert tui.fit_pane(herdr, "w2:p2", 8, tui.ACTIVITY_HEIGHT) == 39
+assert open(log).read().split("\n")[1] == "pane resize --pane w2:p2 --direction down --amount 0.0513", open(log).read()
+open(log, "w").close()
+assert tui.fit_pane(herdr, "w2:p2", 8, tui.ACTIVITY_HEIGHT, 39) == 39
+assert "resize" not in open(log).read(), "a border moved by hand stays while the terminal keeps its height"
+assert tui.fit_pane(herdr, "w2:p2", 27, tui.ACTIVITY_HEIGHT) == 0, "a lagging terminal tries again later"
+os.environ["FAKE_RC"] = "1"
+assert tui.fit_pane(herdr, "w2:p2", 8, tui.ACTIVITY_HEIGHT) == 0, "herdr refused"
+assert tui.fit_pane(os.path.join(os.path.dirname(herdr), "no-herdr"), "w2:p2", 8, tui.ACTIVITY_HEIGHT) == 0, "no herdr"
+' || fail "fit_pane"
+  pass "the activity fit resizes the split through herdr once per terminal height and tells when it could not"
+}
+
 uv_ready() {
   command -v uv >/dev/null 2>&1 || return 1
   uv run --offline --quiet --script "$TUI" --help >/dev/null 2>&1
@@ -530,6 +592,59 @@ EOF
   pass "uv runs --once, and the workers app moves, shares the selection, marks read, filters, opens overlays, jumps, and forwards input mode keys in order until escape, and a quick double escape reaches the worker"
 }
 
+test_uv_activity_app_fits_its_pane() {
+  if ! uv_ready; then
+    printf 'ok - the activity app fits its pane # SKIP uv absent or Textual not cached (the suite stays offline)\n'
+    return 0
+  fi
+  local home="$TMP_ROOT/uv-fit" pilot="$TMP_ROOT/fit-pilot.py" deps herdr="$TMP_ROOT/fit-app-herdr"
+  cat > "$herdr" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$HERDR_LOG"
+[ "$1 $2" != "pane layout" ] || printf '%s\n' "$HERDR_LAYOUT"
+EOF
+  chmod +x "$herdr"
+  make_home "$home" >/dev/null
+  deps=$(python3 -B -c '
+import re, sys
+block = re.search(r"^# /// script\n(.*?)^# ///$", open(sys.argv[1]).read(), re.S | re.M).group(1)
+print(",".join(re.findall(r"\"([^\"]+)\"", block.split("dependencies", 1)[1])))
+' "$TUI") || fail "could not read the script dependencies"
+  cat > "$pilot" <<'EOF'
+import asyncio, importlib.machinery, importlib.util, os, sys
+loader = importlib.machinery.SourceFileLoader("firstmate_tui", sys.argv[1])
+spec = importlib.util.spec_from_loader("firstmate_tui", loader)
+tui = importlib.util.module_from_spec(spec)
+loader.exec_module(tui)
+
+def resizes():
+    return [l for l in open(os.environ["HERDR_LOG"]).read().split("\n") if l.startswith("pane resize")]
+
+async def main():
+    app = tui.build_app(os.environ["FIRSTMATE_DIR"], dict(os.environ), 6.0, "activity", fit_target="w2:p2")
+    async with app.run_test(size=(94, 8)) as pilot:
+        for _ in range(50):
+            await pilot.pause(0.1)
+            if resizes():
+                break
+        assert resizes() == ["pane resize --pane w2:p2 --direction down --amount 0.0513"], resizes()
+        await pilot.resize_terminal(94, 9)
+        await pilot.pause(1.0)
+        assert len(resizes()) == 1, "the same terminal height fits once"
+    plain = tui.build_app(os.environ["FIRSTMATE_DIR"], dict(os.environ), 6.0, "activity")
+    async with plain.run_test(size=(94, 8)) as pilot:
+        await pilot.pause(1.0)
+    assert len(resizes()) == 1, "without --fit the pane keeps its share"
+
+asyncio.run(main())
+EOF
+  : > "$TMP_ROOT/fit-app.log"
+  OUT=$(FIRSTMATE_DIR="$home" FM_FLEET_SNAPSHOT_CMD="cat '$home/snapshot.json'" HERDR_BIN="$herdr" HERDR_LAYOUT="$HERDR_LAYOUT" \
+    HERDR_LOG="$TMP_ROOT/fit-app.log" uv run --offline --quiet --no-project --with "$deps" python -B "$pilot" "$TUI" 2>&1) ||
+    fail "activity fit app failed: $OUT"
+  pass "the activity app with --fit resizes its Herdr pane to the activity box once the terminal settles"
+}
+
 fm_test_run \
   test_ledger_parser_tolerates_bad_input \
   test_ledger_file_partial_tail_and_missing \
@@ -542,4 +657,7 @@ fm_test_run \
   test_input_mode_keys_and_frame \
   test_once_without_ledger_hints_and_stays_read_only \
   test_once_failures_and_help \
-  test_uv_once_and_headless_app
+  test_fit_resize_counts_the_herdr_frame \
+  test_fit_pane_resizes_once_per_terminal_height \
+  test_uv_once_and_headless_app \
+  test_uv_activity_app_fits_its_pane

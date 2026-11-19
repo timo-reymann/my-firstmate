@@ -40,6 +40,7 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 - `firstmate-tui` reads `bin/fm-fleet-snapshot.sh --json`, `state/fleet-ledger.jsonl`, and the worker screens, costs no model tokens, and never steers a worker on its own: only the keys you type in input mode reach a worker.
   The only file it writes is `state/firstmate-tui.json` in the home, which holds the selected worker, the activity filter, and the read marks, so both panes share them.
   `--interval SECONDS` sets the refresh period (default 6), and `--once` prints one plain frame of the pane and exits without a terminal or Textual.
+  `--fit`, with `--pane activity` in Herdr, resizes the split of its own pane so the pane shows exactly the activity box.
 
 ## How the screen works
 
