@@ -222,6 +222,9 @@ Claude uses the slash form shown here; codex uses the same names with `$`, such 
 | `/lavish-url <url> [--mobile]` | Capture an http or https page without URL credentials, public or local, into an annotatable Lavish review snapshot with `[Fix Layout]`, `[Update Text]`, and `[Mobile Bug]` chips and project-aware element labels; add `--mobile` for mobile emulation. Feedback returns as a notification and is filed to the backlog of the registered project that owns the site, or surfaced for a decision when the site's project is not certain |
 | `/updatefirstmate` | Guardedly update the running firstmate and its secondmates - fast-forward, or reconcile a redundant post-squash-merge divergence - then persist and restart every live mate successfully left on the target commit - including already-current homes - with an honest re-read nudge only when restart cannot be proven |
 | `/stow`            | Sweep the session for uncaptured durable knowledge, persist the open work records this session knows are unfiled or now wrong, curate tiered startup memory with decay and cold archival, enforce each home's budget or surface the required decision, cascade to registered second mates, and report what is safe to reset |
+| `/invoke-cleaner`  | Clean up the home: tear down finished workers whose work has landed, archive Done backlog rows and walk each open row with you, remove Firstmate-owned temporary leftovers, then give a short overview and ask you to run `/compact` |
+
+`/invoke-cleaner` carries a semantic `metadata.version` in its frontmatter, bumped in the same commit as any change to the skill or `bin/fm-clean.sh`; the skill's own Versioning section owns which part to bump.
 
 Bearings invocation examples:
 
