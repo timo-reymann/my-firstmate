@@ -20,7 +20,7 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
   The first mate pane runs `firstmate --plain`, so it never hands over to the screen again, and takes the `FIRSTMATE_*`, `CLAUDE_CONFIG_DIR` and `XDG_CONFIG_HOME` settings that are set where you started it.
   While another session holds the home's `state/.lock`, the pane shows one line with that session's pid and the command to start the first mate there once it quits; `FIRSTMATE_FORCE=1` starts it anyway.
   The workers stay in their own `firstmate` workspace in the same Herdr session, and their tabs keep the `fm-<id>` labels that firstmate uses to find them.
-  Options: `--no-attach` builds the layout and stops, `--check` stops after the prerequisite checks with the reason for a failure, `--ratio SHARE` sets the width share of the first mate pane (default 0.55), and `--activity-ratio SHARE` sets the height share of the activity pane (default: exactly the 10 rows of the activity box, whatever the terminal height).
+  Options: `--no-attach` builds the layout and stops, `--check` stops after the prerequisite checks with the reason for a failure, `--ratio SHARE` sets the width share of the first mate pane (default 0.55), and `--activity-ratio SHARE` sets the height share of the activity pane (default: the activity pane keeps itself exactly as tall as the activity box, 8 events in their frame, through every change of the terminal height).
   `firstmate` passes these options to `firstmate-herdr` only when you run `firstmate-herdr` directly.
   Without `uv` on `PATH` it stops with the install hint.
 - `firstmate-tui` draws the two views of that screen, written in Python with Textual.
@@ -45,6 +45,7 @@ This fork ships no bash fleet view; the firstmate screen is `firstmate-tui`.
 ## How the screen works
 
 - Herdr reads `--ratio` as the share kept by the original pane, which is the first mate pane.
+- Herdr keeps a split as a share and frames every pane of a split tab, so no share keeps the activity box exact; the activity pane runs `firstmate-tui --fit`, which sets its split to the box plus that frame on start and whenever the terminal height changes, and leaves a border moved by hand alone until then.
 - The workers pane has the label `firstmate-workers` and the activity pane `firstmate-activity`.
   Inside Herdr, a second run finds the workers label in the current tab and does not split again.
 - A new pane shell drops text typed before its startup ends, so the launcher first waits until the shell proves it reads input.
