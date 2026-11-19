@@ -115,6 +115,7 @@ case "$1 ${2:-}" in
   "status --json") echo '{"server":{"running":true}}' ;;
   "workspace list") echo "{\"result\":{\"workspaces\":[${FAKE_WORKSPACES:-}]}}" ;;
   "workspace create") echo '{"result":{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"p1"}}}' ;;
+  "pane layout") echo "{\"result\":{\"layout\":{\"area\":{\"height\":${FAKE_HEIGHT:-79},\"width\":300}}}}" ;;
   "pane split")
     n=$(($(grep -c '^pane split' "$HERDR_LOG") + 1))
     printf '{"result":{"pane":{"pane_id":"p%s"}}}\n' "$n" ;;
@@ -143,7 +144,7 @@ test_herdr_builds_three_panes() {
   fm_fake_exit0 "$FAKEBIN" uv
   herdr_layout
   [ "$RC" -eq 0 ] || fail "layout exit $RC: $OUT"
-  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.28 --no-focus" "activity split"
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.1266 --no-focus" "activity split is exactly the activity box"
   assert_contains "$LOG" "pane swap --source-pane p1 --target-pane p2" "activity moves to the top"
   assert_contains "$LOG" "pane split p1 --direction right --ratio 0.6 --no-focus" "workers split"
   assert_contains "$LOG" "pane rename p2 firstmate-activity" "activity label"
@@ -156,7 +157,17 @@ test_herdr_builds_three_panes() {
   assert_contains "$LOG" "pane split p1 --direction down --ratio 0.2 --no-focus" "--activity-ratio"
   assert_contains "$LOG" "pane split p1 --direction right --ratio 0.7 --no-focus" "--ratio"
   herdr_layout FM_HERDR_SESSION=lab
-  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.28 --no-focus --session lab" "named session"
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.1266 --no-focus --session lab" "named session"
+  herdr_layout FAKE_HEIGHT=40
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.2500 --no-focus" "the share follows the tab height"
+  herdr_layout FAKE_HEIGHT=12
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.3400 --no-focus" "a very small terminal clamps the share"
+  herdr_layout FAKE_HEIGHT=1000
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.0200 --no-focus" "a very tall terminal clamps the share"
+  herdr_layout FAKE_HEIGHT=abc
+  assert_contains "$LOG" "pane split p1 --direction down --ratio 0.28 --no-focus" "an unreadable height keeps the old share"
+  assert_equals "ACTIVITY_SIZE = 8 ACTIVITY_HEIGHT = ACTIVITY_SIZE + 2 activity_rows=10" \
+    "$(grep -h '^ACTIVITY_SIZE\|^ACTIVITY_HEIGHT' "$ROOT/contrib/firstmate-tui" | tr '\n' ' ')$(grep -h '^activity_rows=' "$HERDR_LAUNCHER")" "the launcher height matches the activity box"
   OUT=$(bash "$HERDR_LAUNCHER" --help 2>&1)
   assert_contains "$OUT" "--activity-ratio SHARE" "help names --activity-ratio"
   pass "firstmate-herdr puts the activity across the top, the first mate bottom left and the workers bottom right"

@@ -18,7 +18,7 @@ Usage: firstmate-herdr [--no-attach] [--check] [--ratio SHARE] [--activity-ratio
   --no-attach             build the layout and stop (outside Herdr only)
   --check                 check that Herdr, jq, uv and firstmate-tui are usable, print why not, and stop
   --ratio SHARE           share of the width for the first mate pane (default 0.6)
-  --activity-ratio SHARE  share of the height for the activity pane (default 0.28)
+  --activity-ratio SHARE  share of the height for the activity pane (default: exactly the activity box, 10 rows)
 USAGE
 }
 
@@ -29,7 +29,10 @@ tui_bin="${TUI_BIN:-$here/firstmate-tui}"
 herdr_bin="${HERDR_BIN:-herdr}"
 session="${FM_HERDR_SESSION:-}"
 ratio=0.6
-activity_ratio=0.28
+# The activity pane fits the box firstmate-tui draws: ACTIVITY_HEIGHT rows (8 events plus the border).
+# An explicit --activity-ratio wins; otherwise the share comes from the real tab height (activity_share).
+activity_rows=10
+activity_ratio=
 attach=1
 check=0
 label=firstmate-workers
@@ -144,10 +147,27 @@ split() {
   printf '%s' "$new"
 }
 
+# activity_share <pane>: the height share that gives the activity pane activity_rows rows in the tab of the pane,
+# clamped for very small terminals; the old 0.28 when Herdr does not report the height.
+activity_share() {
+  local height
+  height=$(hr pane layout --pane "$1" 2>/dev/null | jq -r '.result.layout.area.height // empty' 2>/dev/null)
+  case "$height" in
+    '' | *[!0-9]* | 0) printf '0.28'; return ;;
+  esac
+  awk -v rows="$activity_rows" -v h="$height" 'BEGIN {
+    r = rows / h
+    if (r > 0.34) r = 0.34
+    if (r < 0.02) r = 0.02
+    printf "%.4f", r
+  }'
+}
+
 # Herdr splits only right or down, so the activity pane is split off below and swapped to the top.
 build() {
-  local mate=$1 activity workers
-  activity=$(split "$mate" down "$activity_ratio") || exit 1
+  local mate=$1 activity workers share=$activity_ratio
+  [ -n "$share" ] || share=$(activity_share "$mate")
+  activity=$(split "$mate" down "$share") || exit 1
   hr pane swap --source-pane "$mate" --target-pane "$activity" >/dev/null || die "could not move the activity pane to the top"
   workers=$(split "$mate" right "$ratio") || exit 1
   hr pane rename "$activity" "$activity_label" >/dev/null
