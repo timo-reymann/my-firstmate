@@ -47,6 +47,8 @@ The session-start hint retains its pre-optimization maximum until CI measures th
 
 The new `tests/fm-remote-herdr-identity.test.sh` serial hint is provisionally 6158 ms, from a successful local macOS arm64 `bin/fm-test-run.sh` sample on 2026-11-08. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh; this is not whole-shard CI timing evidence.
 
+The 2026-11-23 `tests/fm-status-render.test.sh` serial hint is provisionally 3500 ms, above the slowest of four local `bin/fm-test-run.sh` samples (2595-2900 ms) on a macOS arm64 host. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh.
+
 ## Parallel lanes
 
 The two parallel lanes use longest-processing-time assignment over those hints.
