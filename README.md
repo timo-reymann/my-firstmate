@@ -67,6 +67,8 @@ This fork adds the following.
 - The `lavish` skill, for visual plans and reviews through `lavish-axi`.
   It is versioned in `.agents/skills/lavish/`, with its source pinned in `skills-lock.json`.
 - Guidance in `AGENTS.md` that plans, comparisons, diagrams, and structured reports go to `lavish-axi`, and that a worker, never the first mate, builds a visual plan.
+- The `board-design` skill: one stylesheet and usage rule for every firstmate board, with light and dark mode, Source Sans 3, and status glyphs that match the chat task list.
+  It lives in `.agents/skills/board-design/`; scout briefs point to it, and the Bearings board uses it.
 - Three optional launchers in `contrib/`: `firstmate` (resume or start the session, in the firstmate screen when Herdr is usable), `firstmate-herdr` (the firstmate screen in Herdr), and `firstmate-tui` (its views); see [contrib/README.md](contrib/README.md).
 - The firstmate screen: `firstmate-herdr` builds one Herdr tab with the activity across the top (the last 8 fleet ledger events), the first mate bottom left, and the workers bottom right (needs-you first, over a live view of the selected worker's screen that you can type into).
   Both views are `contrib/firstmate-tui`, in Python and Textual, run through `uv`, which the screen needs.
