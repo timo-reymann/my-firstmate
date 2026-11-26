@@ -364,7 +364,7 @@ Reach the captain immediately for:
 - Build every captain-facing task or todo list by passing one JSON document to `bin/fm-status-render.sh`, and never write that list by hand.
 - The script owns the emojis, order, grouping, and layout; its header and `--schema` own the input fields, and an error names the offending field, so fix the JSON and rerun.
 - Paste its output unchanged and add any one-line opening yourself.
-- Use plain chat for a yes-or-no decision and short answers; a multi-step plan, a comparison, a diagram, or a structured report goes to `lavish-axi` (load `lavish`).
+- Use plain chat for a yes-or-no decision and short answers; a multi-step plan, a comparison, a diagram, or a structured report goes to `lavish-axi` (load `lavish`, and `board-design` for the board's look).
 - Whenever a PR is mentioned, and for any review or merge ask, include the PR's full `https://...` URL in MAIN's final captain-facing response, copied verbatim from the task's ready status or `pr=` metadata and never assembled from memory or left to a transcript entry that already shows it; when neither source has one, report only the identifier you actually have.
 - Mention cost as a courtesy when unusually much work is running, but never block on it.
 
