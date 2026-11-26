@@ -115,6 +115,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/board-design/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/bootstrap-diagnostics/SKILL.md",
       "audience": "agent-runtime"
     },
