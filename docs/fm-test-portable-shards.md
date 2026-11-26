@@ -49,6 +49,8 @@ The new `tests/fm-remote-herdr-identity.test.sh` serial hint is provisionally 61
 
 The 2026-11-23 `tests/fm-status-render.test.sh` serial hint is provisionally 3500 ms, above the slowest of four local `bin/fm-test-run.sh` samples (2595-2900 ms) on a macOS arm64 host. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh.
 
+The 2026-11-26 `tests/fm-status-list-check.test.sh` serial hint is provisionally 6500 ms, above the slowest of three local samples (4684-5666 ms) on a macOS arm64 host. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh.
+
 ## Parallel lanes
 
 The two parallel lanes use longest-processing-time assignment over those hints.

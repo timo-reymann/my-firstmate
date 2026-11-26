@@ -848,6 +848,7 @@ tests/fm-spawn-worktree-settle.test.sh 9309
 tests/fm-startup-memory-budget.test.sh 8086
 tests/fm-startup-network.test.sh 72106
 tests/fm-stat-shadowing.test.sh 75
+tests/fm-status-list-check.test.sh 6500
 tests/fm-status-render.test.sh 3500
 tests/fm-stow-cascade.test.sh 3058
 tests/fm-stow-guard.test.sh 30000
