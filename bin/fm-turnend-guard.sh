@@ -197,6 +197,48 @@ fi
 # so this exempts them while guarding every real secondmate home.
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || allow_exit
 
+# --- hand-written work list in the final reply ---------------------------------
+# AGENTS.md section 9 builds every captain-facing work list with bin/fm-status-render.sh.
+# bin/fm-status-list-check.sh recognises a list that is not that output in the Stop payload's
+# last_assistant_message; one block per prompt sends the reply back to the renderer.
+# Claude marks every stop after any Stop-hook continuation stop_hook_active=true, so --claude keeps its
+# own once-per-prompt marker and treats an active stop in the same session shortly after a block as the retry.
+# The check is silent in a secondmate home, under --cursor or --agy, and on any unreadable input.
+status_list_guard() {
+  local msg hits rc=0 prompt session marker prev prev_session prev_prompt prev_at now reason
+  [ "$CURSOR_MODE" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] || return 0
+  fm_root_is_secondmate_home "$FM_ROOT" && return 0
+  msg=$(printf '%s' "$PAYLOAD" | jq -r '(.last_assistant_message // "") | if type == "string" then . else "" end' 2>/dev/null) || return 0
+  [ -n "$msg" ] || return 0
+  hits=$(printf '%s\n' "$msg" | "$SCRIPT_DIR/fm-status-list-check.sh" 2>/dev/null) || rc=$?
+  [ "$rc" -eq 1 ] || return 0
+  if [ "$CLAUDE_MODE" -eq 1 ]; then
+    session=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // "unknown"' 2>/dev/null) || return 0
+    prompt=$(printf '%s' "$PAYLOAD" | jq -r '.prompt_id // ""' 2>/dev/null) || return 0
+    marker="$STATE/.status-list-guard"
+    now=$(date +%s)
+    prev=$(cat "$marker" 2>/dev/null || true)
+    read -r prev_session prev_prompt prev_at <<<"$prev"
+    case "${prev_at:-}" in ''|*[!0-9]*) prev_at=0 ;; esac
+    if [ "${prev_session:-}" = "$session" ]; then
+      [ -n "$prompt" ] && [ "${prev_prompt:-}" = "$prompt" ] && return 0
+      [ "$STOP_HOOK_ACTIVE" = "true" ] && [ $((now - prev_at)) -lt 600 ] && return 0
+    fi
+    [ -n "$prompt" ] || [ "$STOP_HOOK_ACTIVE" != "true" ] || return 0
+    mkdir -p "$STATE" 2>/dev/null || return 0
+    printf '%s %s %s\n' "$session" "${prompt:--}" "$now" > "$marker" 2>/dev/null || return 0
+  fi
+  reason=$(printf '%s\n' "$hits" | head -n 5)
+  {
+    printf 'fm-turnend-guard: this reply holds a hand-written work list:\n%s\n' "$reason"
+    printf 'Build every captain-facing task or todo list by passing one JSON document to %s (its input schema: %s --schema), and paste the output unchanged.\n' \
+      "$SCRIPT_DIR/fm-status-render.sh" "$SCRIPT_DIR/fm-status-render.sh"
+    printf 'Send the reply again with the rendered list; this check blocks once per prompt.\n'
+  } >&2
+  exit 2
+}
+status_list_guard
+
 # --- the actual predicate ----------------------------------------------------
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
