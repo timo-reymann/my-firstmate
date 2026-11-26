@@ -118,6 +118,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-tasks-axi.sh`        | Run `tasks-axi` against this home's backlog from any working directory               |
 | `fm-clean.sh`            | Plan, and with `--apply` perform, the `/invoke-cleaner` steps through teardown, tasks-axi, and captain-hold owners |
 | `fm-status-render.sh`    | Validate one JSON document of titled groups against its versioned schema and print the end-of-turn task list, or an error naming the offending field and no output |
+| `fm-status-list-check.sh` | Recognise a hand-written work list in reply text, as opposed to `fm-status-render.sh` output, for the turn-end guard |
 | `fm-tasks-axi-lib.sh`    | Shared backlog-backend selector and `tasks-axi` compatibility probe                  |
 | `fm-backlog-transition-lib.sh` | Pair task-record changes with their backlog transitions and replay interrupted closes |
 | `fm-quota-axi-lib.sh`    | Shared `quota-axi` compatibility floor and quota snapshot schema validation           |

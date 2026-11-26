@@ -23,6 +23,7 @@ Do not infer this guard's scope, loop safety, or compatibility tradeoffs for tho
 | How long a beacon stays fresh | [Guard grace and the poll cadence](#guard-grace-and-the-poll-cadence) |
 | How each harness blocks or follows up | [Harness integrations](#harness-integrations) |
 | Claude's Stop auto-arm cooperation, block budget, and fail-open | [Claude cooperative mode](#claude-cooperative-mode) |
+| The hand-written work list check | [Hand-written work lists](#hand-written-work-lists) |
 | Cursor's parked hook | [Cursor park](#cursor-park) |
 | Antigravity's parked hook | [Antigravity park](#antigravity-park) |
 | Known gaps | [Compatibility limits](#compatibility-limits) |
@@ -265,6 +266,27 @@ Both payloads carry `stop_hook_active`.
 In the default foreground-checkpoint Codex mode, a true value lets the second stop finish after one forced continuation.
 The tracked Codex Stop hook runs this guard through `bin/fm-codex-stop-park.sh --guard`, which adds behavior only for a native park session on a home that [opts in](configuration.md#codex-native-stop-park-configcodex-stop-park): while supervision is needed it accepts a live session-bound park or an immediate queued-wake handoff, blocks the Stop and latches the session to foreground fallback when no park owner appears within the startup grace, blocks a latched session's Stop while supervision is still needed, and otherwise runs this guard.
 [The Codex protocol](supervision-protocols/codex.md) owns that mode and its failure behavior.
+
+### Hand-written work lists
+
+AGENTS.md section 9 requires every captain-facing task or todo list to come from `bin/fm-status-render.sh`.
+The same guard also checks the reply for a list that did not.
+It reads `last_assistant_message` from the Claude and Codex `Stop` payload and passes the text to `bin/fm-status-list-check.sh`, whose header owns what counts as a hand-written list.
+In short, it flags a block with a status-emoji line that is not the renderer's exact group, and a "Still running" style heading over a bullet list.
+It skips fenced code, blockquotes, and indented code blocks, and a reply that carries renderer output unchanged passes.
+A list typed in the renderer's exact shape also passes, because the output carries no marker.
+
+The check runs after primary scope and before the supervision predicate, so it applies whether or not supervision is needed.
+It is silent in a secondmate home, under `--cursor` and `--agy`, for a payload with no string `last_assistant_message`, and when the checker script is absent.
+A hit exits 2 with a message that names the offending lines and points at `bin/fm-status-render.sh` and its `--schema`.
+
+The check blocks once per prompt:
+
+- Default (Codex-shaped) mode lets the stop finish when `stop_hook_active` is true, like the rest of this guard.
+- `--claude` mode cannot use `stop_hook_active` alone, because Claude sets it after any Stop-hook continuation.
+  It records the session, `prompt_id`, and time in `state/.status-list-guard`, and lets a stop through when the marker names the same session and prompt.
+  It also lets through an active stop in the same session within ten minutes of a block, in case the continuation carries a new prompt id.
+  A payload with neither a `prompt_id` nor a marker write is allowed when `stop_hook_active` is true, and an unwritable marker never blocks.
 
 ### Claude cooperative mode
 
@@ -537,6 +559,14 @@ That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it alwa
 - The away-mode beacon's poll-derived grace widening for a live daemon still mid-cycle and its bound against a dead daemon, a beacon older than that wider grace, and FM_POLL's inapplicability with away mode off.
 - Missing-`jq` behavior.
 - The primary registrations.
+
+`tests/fm-status-list-check.test.sh` covers the hand-written work list check:
+
+- Genuine renderer output passing unchanged, alone and inside prose.
+- Hand-typed emoji lists and still-running lists being flagged, with the offending lines named.
+- A false-positive set of prose, plain bullet lists, inline emoji, fenced code, blockquotes, and indented code.
+- The guard's once-per-prompt loop guard in `--claude` and default mode, without a prompt id, across sessions, and with an unwritable marker.
+- Secondmate, `--agy`, `--cursor`, non-primary, and missing-checker silence.
 
 `tests/fm-turnend-foreign-owner-arm-fix.test.sh` runs the extracted isolated executable reproduction against real auto-arm and turn-end guard scripts.
 It proves that a live foreign owner still prevents arming while repeated non-owner Stops receive a diagnostic and exit safely.
