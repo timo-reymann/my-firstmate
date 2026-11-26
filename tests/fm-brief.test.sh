@@ -1135,6 +1135,7 @@ test_scout_lavish_line_follows_presentation_floor() {
   local base label version expect case_dir fakebin brief n=0
   local hosting='use the lavish-axi rule'
   local text_only='deliver your findings as a text report without Lavish'
+  local board_design='.agents/skills/board-design/SKILL.md and paste its assets/board.css'
   base=$(fm_test_base_path_sans "${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" lavish-axi)
   while IFS='^' read -r label version expect; do
     [ -n "$label" ] || continue
@@ -1150,9 +1151,11 @@ test_scout_lavish_line_follows_presentation_floor() {
     if [ "$expect" = hosting ]; then
       assert_grep "$hosting" "$brief" "$label: scout brief did not offer the Lavish review loop"
       assert_no_grep "$text_only" "$brief" "$label: scout brief withheld Lavish from a compatible build"
+      assert_grep "$board_design" "$brief" "$label: scout brief did not point boards at the board design asset"
     else
       assert_grep "$text_only" "$brief" "$label: scout brief did not ask for a text report"
       assert_no_grep "$hosting" "$brief" "$label: scout brief offered a below-floor Lavish"
+      assert_no_grep "$board_design" "$brief" "$label: text-only scout brief pointed at a board design asset"
     fi
   done <<'ROWS'
 lavish-axi at the board compatibility floor^0.1.77^hosting
