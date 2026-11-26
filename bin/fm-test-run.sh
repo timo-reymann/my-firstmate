@@ -698,6 +698,7 @@ tests/fm-bearings-board-lavish-live-e2e.test.sh 51
 tests/fm-bearings-board-render.test.sh 15612
 tests/fm-bearings-board.test.sh 40817
 tests/fm-bearings-snapshot.test.sh 186219
+tests/fm-board-design-parity.test.sh 1000
 tests/fm-bootstrap-network-parallel.test.sh 30424
 tests/fm-bootstrap.test.sh 50965
 tests/fm-branch-supervision.test.sh 22979

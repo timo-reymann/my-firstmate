@@ -51,6 +51,8 @@ The 2026-11-23 `tests/fm-status-render.test.sh` serial hint is provisionally 350
 
 The 2026-11-26 `tests/fm-status-list-check.test.sh` serial hint is provisionally 6500 ms, above the slowest of three local samples (4684-5666 ms) on a macOS arm64 host. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh.
 
+The 2026-11-26 `tests/fm-board-design-parity.test.sh` serial hint is provisionally 1000 ms, above the slowest of three local `bin/fm-test-run.sh` samples (about 300 ms) on a macOS arm64 host. Replace it with an Ubuntu timing-artifact maximum at the next CI refresh.
+
 ## Parallel lanes
 
 The two parallel lanes use longest-processing-time assignment over those hints.
